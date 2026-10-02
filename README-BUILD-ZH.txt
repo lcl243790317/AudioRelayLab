@@ -33,6 +33,8 @@ gh run view <运行编号> --log-failed
 gh run download <运行编号> --name AudioRelayLab-iOS-Build --dir dist
 
 若通过 GitHub 连接器上传后，本机尚未建立 Git 拉取凭据，先完成正常 Git 登录，再拉取远端。
+本次源码已使用连接器提交，本地 main 通过 Git 对象 SHA 校验同步了同一远端历史。
+原 Windows 初始提交保留在 windows-initial 分支；这不包含 GitHub 登录凭据。
 不要强制推送覆盖远端历史。确需另建工作副本时可运行：
 git clone https://github.com/lcl243790317/AudioRelayLab.git AudioRelayLab-clone
 

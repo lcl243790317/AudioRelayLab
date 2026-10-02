@@ -5,7 +5,17 @@ GitHub 仓库：https://github.com/lcl243790317/AudioRelayLab（私有）。
 Bundle ID：com.audiorelaylab.AudioRelayLab。
 Deployment Target：iOS 17.0。
 Background Audio：project.yml 已配置 audio。
-XcodeGen、模拟器构建、iPhoneOS 构建与 IPA：待真实 GitHub Actions 验证。
-本机 Git：已初始化 main，已配置 origin；尚无可用 GitHub Git 登录凭据。
-GitHub 连接器：账户已认证；新建私有仓库尚需纳入授权范围，目前返回 404。
-状态将在获得真实 CI 结果后更新；静态检查不是 iOS 编译成功。
+首轮真实 CI：全部成功，无编译错误。
+运行：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37071810125
+编译提交：020631b58d495ef3f1ea47d6192a407285617562。
+macOS 26.6.2；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+模拟器 Debug、真机 Release 均真实输出 BUILD SUCCEEDED。
+unsigned IPA：已生成，313342 字节；Artifact 11254874127。
+首轮 IPA SHA-256：c0eed65931a35e6a771dbae95643d92916a9c84c399e7ccbb83f399b378598f4。
+本地已下载并重新验证 Mach-O、Info.plist、后台音频与无签名状态。
+本地 Git main 已通过 SHA 校验同步同一 GitHub 历史；原初始提交保存在 windows-initial 分支。
+源码通过已授权 GitHub 连接器提交，未扩展 Actions 权限；CI 保持 contents: read。
+本机暂无 GitHub CLI / Git 登录凭据，后续若使用命令行推送需完成自己的正常 Git 登录。
+首轮仅有旧蓝牙选项别名弃用警告与未使用 AppIntents 的工具提示。
+蓝牙选项已按真实 SDK 警告修正，正在验证下一轮 CI；本文件将在得到结果后更新。
+真机重新签名、安装、后台调度与微信声学收录实验尚未执行。

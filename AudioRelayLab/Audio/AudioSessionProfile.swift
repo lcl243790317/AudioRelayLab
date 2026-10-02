@@ -29,11 +29,10 @@ enum AudioSessionProfile: String, Codable, CaseIterable, Identifiable {
         case .bluetooth:
             // Xcode 26 起使用 HFP 的明确名称；旧 SDK 保留同等公开选项。
             #if compiler(>=6.2)
-            if #available(iOS 26.0, *) {
-                return [.mixWithOthers, .defaultToSpeaker, .allowBluetoothHFP]
-            }
-            #endif
+            return [.mixWithOthers, .defaultToSpeaker, .allowBluetoothHFP]
+            #else
             return [.mixWithOthers, .defaultToSpeaker, .allowBluetooth]
+            #endif
         case .playback, .ambient: return []
         }
     }
