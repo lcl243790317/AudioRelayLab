@@ -1,0 +1,103 @@
+name: iOS 无签名构建
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: 读取源码
+        uses: actions/checkout@v4
+      - name: 记录真实构建环境
+        run: |
+          set -euo pipefail
+          mkdir -p build dist
+          {
+            sw_vers
+            xcodebuild -version
+            xcrun --sdk iphoneos --show-sdk-version
+            swift --version
+            printf '源码提交：%s\n' "$GITHUB_SHA"
+          } 2>&1 | tee build-environment.log
+      - name: 安装 XcodeGen 并静态检查
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+          xcodegen --version 2>&1 | tee build-xcodegen-version.log
+          python3 scripts/static_check.py 2>&1 | tee build-static.log
+          python3 -m unittest discover -s tests -v 2>&1 | tee build-tests.log
+      - name: 生成 Xcode 工程
+        run: |
+          set -euo pipefail
+          xcodegen generate 2>&1 | tee build-xcodegen.log
+          xcodebuild -project AudioRelayLab.xcodeproj -list 2>&1 | tee build-project-list.log
+      - name: 编译模拟器
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/simulator \
+            -resultBundlePath build/simulator.xcresult \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build-simulator.log
+      - name: 编译 iPhoneOS Release
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device \
+            -resultBundlePath build/device.xcresult \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build-device.log
+      - name: 验证真机产物并打包 unsigned IPA
+        run: |
+          set -euo pipefail
+          bash scripts/package-ipa.sh 2>&1 | tee build-package.log
+      - name: 上传构建与诊断文件
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AudioRelayLab-iOS-Build
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            dist/AudioRelayLab-unsigned.ipa
+            dist/ipa-manifest.json
+            AudioRelayLab.xcodeproj/
+            build-*.log
+            build/*.xcresult/
+            README-BUILD-ZH.txt
+            README-INSTALL-ZH.txt
+            TEST-PROTOCOL-ZH.txt
+      - name: 记录最终状态
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo '### 音频接力实验室'
+            echo "任务状态：$BUILD_STATUS"
+            echo "源码提交：$GITHUB_SHA"
+            if [ -f dist/AudioRelayLab-unsigned.ipa ]; then
+              echo '真实产物：AudioRelayLab-unsigned.ipa；仅供用户自行重新签名安装。'
+              shasum -a 256 dist/AudioRelayLab-unsigned.ipa
+            else
+              echo '本轮未生成 unsigned IPA，请检查日志 Artifact。'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
