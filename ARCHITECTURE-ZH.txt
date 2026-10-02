@@ -1,0 +1,37 @@
+音频接力实验室 — 实现与诊断边界
+
+主线程协调：ExperimentCoordinator / AudioSessionManager / 两套播放引擎维护音频控制状态。
+非主线程 delegate 与节点完成通知通过 MainActor 交接；DiagnosticsLogger 使用锁保护记录和文件写入。
+导入复制在工作任务执行，安全作用域覆盖复制与检查，随后释放。
+测试 WAV 在沙盒生成，16 位 PCM、单声道、44.1 kHz、11.7 秒、峰值 0.28、10 ms 淡入淡出。
+导入文件以 UUID 命名，用户显示原始文件名，后续仅使用沙盒副本。
+
+AVAudioPlayer：prepareToPlay → deviceCurrentTime + delay → play(atTime:)。
+AVAudioEngine：配置 node / mixer / 可选 EQ → prepare / start → scheduleSegment → 未来 hostTime 的 play(at:)。
+scheduleSegment 排队到播放器时间线的开始，未来启动由 AVAudioTime(hostTime:) 负责。
+不使用静音循环、不使用后台定时器触发播放、不控制微信。
+Engine 使用 dataPlayedBack 完成回调；stop / 中断 / 重准备都会改变 generation，拒绝旧队列回调。
+Engine 配置改变后如果已停止，标记中断并保留最近可观察帧，等待合法恢复或用户停止。
+媒体服务丢失/重置会让本轮失败，下一轮重新创建所有音频对象。
+
+语音优化：不写回原文件，以 8192 帧块扫描并制作浮点单声道 CAF 临时副本。
+归一化只衰减到峰值不超过 0.7，0.45 以上使用轻量 3:1 压缩，并钳位幅值。
+引擎 EQ 设 120 Hz 高通、7.5 kHz 低通（按低采样率降低）、-2 dB 输出余量。
+优化限制最长 10 分钟，导入限制文件小于等于 256 MB，避免第一版不必要的内存开销。
+原始 Engine 调度的总帧数不超过 UInt32.max。
+
+诊断：完整记录会话参数、路由端口、关键快照、生命周期、通知、播放状态和调度时钟。
+前台 250 ms 的状态采样与 UI 倒计时从不触发播放。
+数据中可能缺少后台阶段的状态采样；返回前台的首次观察可能晚于真正开始。
+日志不声称能精确测量实际扬声器起始时间。
+系统 mixWithOthers / background audio 不保证其他 App 的录音会话允许此播放。
+注入能力只读，18.2 availability 和 SDK 编译保护均保留。
+用户停止后禁止自动恢复；恢复是新播放尝试，明确写入日志。
+
+持久化：每次启动一个 JSONL 诊断日志；每次实验一个 UUID.json。
+历史 JSON 原子写入，损坏文件保留并提示，不因单个损坏文件清空全部历史。
+实验开始固定 settings，播放中调整音量保留事件，settings.volume 表示初始值。
+实验草稿默认 uncertain / resultReviewed=false，用户回听填写后才标记已判断。
+清空日志页面不会删除审计记录；所有导出为真实数据。
+导出 JSON、CSV、文本到临时 Exports 目录，UIKit 系统分享菜单可保存到文件。
+App 无网络请求、无账号、无证书配置、无额外 entitlement。

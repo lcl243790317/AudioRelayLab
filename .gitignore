@@ -1,0 +1,17 @@
+build/
+dist/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+.tools/
+__pycache__/
+*.p12
+*.pfx
+*.mobileprovision
+*.cer
+*.key
+.env
+.env.*
