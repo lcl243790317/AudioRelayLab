@@ -37,10 +37,45 @@ https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
 87 XCTest、15 Python 通过；Simulator Debug / iPhoneOS Release 成功，Swift 警告 0。
 这仅是音频导入/编辑阶段证据，不代替下方最终 Voice Lab 源码证据。
 
-待本轮真实 CI 更新：
-Voice 检查点 2c3910d66b9ff1143699bdcd9c34436f4b440bf9 的 run 37093849549 已完成
-105 XCTest、15 Python、双平台编译和 IPA。新增后台开关/原生离线 Mixer 回归与
-显式修复第三方 seeded-constructor 精度警告后的最终版本等待以下真实证据。
+本轮真实 CI 证据：
+- 源码提交：f2f64dbe855b339c483f41a11b5dfad0cc12e63d
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37094209876
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：108 项，0 失败，TEST SUCCEEDED。
+- Python 自检：15 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；646118 字节。
+- SHA-256：74cc893387e51a3738795538f62fe8e09c2788822d03c0c69e10102088f3607f
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
+
+本地最终交付（下载后再次 verify_ipa，未伪造签名）：
+- Artifact：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37094209876/artifacts/11263199911
+- Artifact ID：11263199911；外层 ZIP SHA-256：b5848078be8ce91af01fab8f57d3d9adbd251d3e3f3b529877f73c0afcb6f002
+- IPA 实际路径：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-unsigned.ipa
+- IPA：1.2.0 / build 3；646118 字节；SHA-256：74cc893387e51a3738795538f62fe8e09c2788822d03c0c69e10102088f3607f
+- 完整 Artifact 解压目录：D:\Codex projectless\Wechat delay playback app\dist\ci-run-37094209876
+- 外层 Artifact ZIP：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-1.2.0-iOS-Build.zip
+- 真实生成的 AudioRelayLab.xcodeproj 已复制到项目根目录，仍以 project.yml 为工程配置依据。
+- 所有源码修改已提交；本机与远端 main 同步。构建后的证据文档单独提交，不改变已编译源码。
+- 本轮阶段检查点：导入/编辑 87 XCTest，Voice 105 XCTest；最终结果以上方证据为准。
+- 已核对 Bundle 测试 WAV、第三方 MIT notices、环境/测试日志哈希和真实 xcresult。
+
+主要修改文件：
+- Audio/AudioFileManager.swift：统一资产、Bundle、scope/provider 导入、真实解码、音频库。
+- Audio/AudioPlaybackSettings.swift、PreviewPlaybackController.swift、AudioProcessor.swift：编辑参数、独立试听、偏移裁剪。
+- Audio/AVAudioPlayerPlaybackEngine.swift、AVAudioEnginePlaybackEngine.swift、PlaybackEngineProtocol.swift：共享起点/rate。
+- Experiments/ExperimentCoordinator.swift、Experiment.swift、ExperimentParameters.swift：取消/替换、状态重置与兼容历史。
+- VoiceLab/VoiceProcessingEngine.swift、VoicePreset.swift、VoiceRecordingWriter.swift、VoiceOutputLimiter.swift、AudioMixParameters.swift、DSP/VoiceDSP.cpp：麦克风、DSP、预设、CAF、Mixer 和输出保护。
+- Views/MainView.swift、AudioEditorView.swift、VoiceLabView.swift、ExperimentResultView.swift、AudioRelayLabApp.swift：导航与操作闭环。
+- Diagnostics/AudioSessionSnapshot.swift、Sharing/ExportManager.swift：延迟与新参数审计/导出。
+- AudioRelayLabTests/AudioImportEditorTests.swift、VoiceLabTests.swift：真实格式/状态/DSP/CAF/原生离线 Mixer 回归。
+- project.yml、.github/workflows/build-ios.yml、scripts/generate-audio-fixtures.py、static_check.py：资源、C++、真实 CI。
+- README.md、README-BUILD-ZH.txt、ARCHITECTURE-ZH.txt、两份真机协议与 Voice 技术研究：功能/许可证/证据边界。
+以上 App 源码文件路径均相对 AudioRelayLab/，测试/工程/脚本为仓库相对路径。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。
