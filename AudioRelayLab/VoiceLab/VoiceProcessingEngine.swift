@@ -32,6 +32,9 @@ import Combine
     private var inputTapInstalled = false
     private var observer: NSObjectProtocol?
     private var task: Task<Void, Never>?
+    private var hardwareTask: Task<Void, Never>?
+    private var builtRoute: VoiceHardwareRoute?
+    private var restartedSameFormat = false
     private var timer: Timer?
     private var token = UUID()
     private var ownsSession = false
@@ -64,7 +67,7 @@ import Combine
             }
         } catch { logger.log("Voice Lab 历史读取失败", diagnosticError(error)) }
     }
-    deinit { task?.cancel(); timer?.invalidate(); if let observer { NotificationCenter.default.removeObserver(observer) } }
+    deinit { task?.cancel(); hardwareTask?.cancel(); timer?.invalidate(); if let observer { NotificationCenter.default.removeObserver(observer) } }
     private static func recordsURL() throws -> URL { try AudioFileManager.audioDirectory().appendingPathComponent("voice-lab-records.json") }
     func start(_ mode: Mode, music: AudioAsset? = nil, settings: AudioPlaybackSettings? = nil) {
         guard !isActive else { return }
@@ -72,6 +75,7 @@ import Combine
         errorMessage = nil; self.mode = mode; state = .preparing
         modeLabel = String(describing: mode)
         let generation = UUID(); token = generation
+        restartedSameFormat = false
         task = Task { [weak self] in
             guard let self else { return }
             defer { if self.token == generation { self.task = nil } }
@@ -88,6 +92,8 @@ import Combine
                 try self.preset.validate()
                 try self.session.configure(profile: .mixingSpeaker, speakerOverride: self.allowSpeakerMonitoring)
                 self.ownsSession = true
+                // Category/override notifications can arrive after configure() returns.
+                try await self.waitForStableRoute(generation: generation)
                 guard self.token == generation, self.state == .preparing else { self.cleanup(stopHardware: true); return }
                 try self.build(mode: mode, music: music, settings: settings, generation: generation)
                 self.state = .running
@@ -103,6 +109,19 @@ import Combine
                 self.abort(error)
             }
         }
+    }
+    private func waitForStableRoute(generation: UUID) async throws {
+        var previous: VoiceHardwareRoute?, stable = 0
+        for _ in 0..<15 {
+            try await Task.sleep(for:.milliseconds(100))
+            guard token == generation, state == .preparing else { throw CancellationError() }
+            try session.validateForPlayback()
+            let current = VoiceHardwareRoute.current()
+            stable = current == previous && current.isUsable ? stable+1 : 0
+            if stable>=2 { return }
+            previous = current
+        }
+        throw LabError.message("麦克风路由尚未稳定，请检查耳机或音频环境后重试")
     }
     private func build(mode: Mode, music: AudioAsset?, settings: AudioPlaybackSettings?, generation: UUID) throws {
         try session.validateForPlayback()
@@ -176,15 +195,48 @@ import Combine
         observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: next, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.token == generation, self.isActive else { return }
-                self.abort(LabError.message("Voice Lab 硬件配置已改变，请重新开始以建立新图"))
+                self.checkHardwareSoon("Engine configuration notification", generation: generation)
             }
         }
         try session.validateForPlayback()
         next.prepare(); try next.start()
         guard next.isRunning else { throw LabError.audioUnavailable }
+        builtRoute = VoiceHardwareRoute.current()
         musicNode?.play()
         status = "\(Int(hardware.sampleRate)) Hz / \(hardware.channelCount)ch 输入 · DSP \(String(format: "%.1f", Double(VLLatency(dsp.pointer)) / hardware.sampleRate * 1000)) ms · 输入 \(String(format: "%.1f", snapshot.inputLatency*1000)) ms · 输出 \(String(format: "%.1f", snapshot.outputLatency*1000)) ms"
         logger.log("Voice DSP", "pitch=\(preset.pitch)，formant=\(preset.formant)，highpass=\(preset.highpass)，lowmid=\(preset.lowmid)，presence=\(preset.presence)，air=\(preset.air)，compression=\(preset.compression)，deesser=\(preset.deesser)，wet=\(preset.wet * strength)，gain=\(preset.outputGain)，\(status)")
+    }
+    private func checkHardwareSoon(_ reason:String, generation:UUID) {
+        guard state == .running else { return }
+        hardwareTask?.cancel()
+        hardwareTask = Task { [weak self] in
+            do { try await Task.sleep(for:.milliseconds(100)) } catch { return }
+            guard let self, self.token == generation, self.state == .running,
+                let engine = self.engine, let baseline = self.builtRoute else { return }
+            do {
+                try self.session.validateForPlayback()
+                let current = VoiceHardwareRoute.current()
+                switch baseline.action(comparedTo:current,engineRunning:engine.isRunning,alreadyRestarted:self.restartedSameFormat) {
+                case .keepRunning:
+                    self.logger.log("Voice 路由核对", "\(reason)；硬件/格式未变且引擎运行，保留当前图")
+                case .restartSameFormat:
+                    // Configuration notifications stop an engine, even when its final route matches again.
+                    self.restartedSameFormat = true
+                    try AudioRuntimeValidation.validate(engine.inputNode.outputFormat(forBus:0))
+                    try AudioRuntimeValidation.validate(engine.outputNode.inputFormat(forBus:0))
+                    try self.session.validateForPlayback()
+                    engine.prepare(); try engine.start()
+                    guard engine.isRunning else { throw LabError.audioUnavailable }
+                    if let settings = self.fixedMusicSettings, let file = self.musicFile,
+                        self.musicPosition<Double(file.length)/file.processingFormat.sampleRate {
+                        self.seekMusic(.init(startOffset:self.musicPosition,playbackRate:settings.playbackRate,volume:self.musicVolume))
+                    }
+                    self.logger.log("Voice 图恢复", "\(reason)；同硬件格式重启一次，参数保留；实际音频连续性需回听")
+                case .stop:
+                    throw LabError.message("麦克风/输出设备或采样格式已改变，请重新开始 Voice Lab")
+                }
+            } catch { self.abort(error) }
+        }
     }
     private func validVolume(_ volume: Float) throws -> Float {
         guard volume.isFinite, (0...1).contains(volume) else { throw LabError.invalidFormat }; return volume
@@ -231,6 +283,7 @@ import Combine
     func stop(saveRecording: Bool = true) {
         guard isActive || writer != nil else { return }
         token = UUID(); task?.cancel(); task = nil; timer?.invalidate(); timer = nil
+        hardwareTask?.cancel(); hardwareTask = nil
         stopGraph(stopHardware: true)
         let recordingWriter = writer; writer = nil
         var savedAsset: AudioAsset?
@@ -270,6 +323,7 @@ import Combine
             musicNode?.stop(); engine?.stop()
         }
         inputTapInstalled = false; recordingTapNode = nil
+        builtRoute = nil
         engine = nil; voiceMixer = nil; musicNode = nil; musicPitch = nil; musicFile = nil; monitorMixer = nil
         // writer retains its context until the remaining ring has been drained.
         context = nil; inputLevel = 0; outputLevel = 0
@@ -278,6 +332,7 @@ import Combine
     private func cleanup(stopHardware: Bool) { stopGraph(stopHardware: stopHardware); writer?.discard(); writer = nil; releaseSession() }
     private func abort(_ error: Error, stopHardware: Bool = true) {
         token = UUID(); task?.cancel(); task = nil; timer?.invalidate(); timer = nil
+        hardwareTask?.cancel(); hardwareTask = nil
         cleanup(stopHardware: stopHardware); state = .failed; errorMessage = userFacingAudioError(error)
         status = "已安全停止，请检查诊断后重试"; logger.log("Voice Lab 失败", diagnosticError(error))
     }
@@ -286,7 +341,7 @@ import Combine
         switch event {
         case .mediaLost, .mediaReset: abort(LabError.audioUnavailable, stopHardware: false)
         case .interruptionBegan, .environmentUnavailable: abort(LabError.audioUnavailable)
-        case .routeChanged: if state == .running { abort(LabError.message("音频路由已改变，请重新开始 Voice Lab")) }
+        case .routeChanged: checkHardwareSoon("session route reason=\(session.lastRouteChangeReason)", generation:token)
         default: break
         }
     }

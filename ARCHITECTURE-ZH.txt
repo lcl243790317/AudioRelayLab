@@ -152,3 +152,20 @@ Confirmed：单文件在运行时通过 AVAudioFile 和 PCM 验证。
 Tested：CI 真正编码 MP3/M4A/AAC/WAV/AIFF/AIFC/CAF/FLAC、Bundle WAV；
 不代表所有容器子编码，也不代表 18.1.1 真机。额外格式仅按实际运行解码裁决。
 系统 picker/provider 和实际 hardware graph、收录/自然度必须真机测，见两份协议。
+
+12. 1.2.1 修复当前四项真机反馈
+MainView 改 AudioDocumentPicker（原生 UIDocumentPicker，UTType.item，asCopy=true），
+由独立 delegate 单次转交/取消，不使用默认 audio UTI 过滤；后续仍保留 scope、
+协调复制和真实 PCM 验证。JSON 等非音频可点击但验证失败会明确提示。
+默认测试音固定 UUID 与 test-tone.wav，仅缺失或无法解码才复制/生成。合并旧
+source=bundled 的 UUID 副本，旧 bundled metadata 路径解析到 canonical，保留历史。
+正式两套播放器对非1x先 RateAdjustedAudio 离线渲染源起点、源 duration 与 rate。
+AVAudioPlayer.enableRate=false/rate=1；正式 Engine TimePitch.rate=1。不同 rate
+只影响真实准备 PCM，未来 deviceTime/hostTime + delay 完全不缩放；preview
+与即时 Mixer 的 rate 仍直接使用原生节点。取消清理临时 CAF，渲染输出上限512MB。
+Voice 配置后每100ms采样实际硬件，连续稳定后才构建；通知延迟100ms合并核对。
+VoiceHardwareRoute 比较真实设备UID、sampleRate与声道，UID只在内存，不写日志。
+同硬件且 engine running 忽略正常配置通知；同硬件但 engine stopped 最多重启
+一次，保留参数并重新排音乐，日志注明音频连续性需回听；真正更换/失效则终止。
+图配置通知转交普通 MainActor Task 后处理，避免在内部回调中直接释放 engine。
+这些代码回归不等于 iOS18.1.1 已验证，旧首次 C 通话崩溃边界继续保留。

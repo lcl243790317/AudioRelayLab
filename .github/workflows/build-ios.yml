@@ -81,6 +81,16 @@ jobs:
           PY
           )"
           SIMULATOR_ARCH="$(uname -m)"
+          # Grant only the test app's microphone permission on this disposable simulator.
+          if python3 - "$SIMULATOR_UDID" <<'PY'
+          import json,sys
+          devices=json.load(open('build-simulators.json'))['devices']
+          sys.exit(0 if any(d['udid']==sys.argv[1] and d['state']=='Booted' for group in devices.values() for d in group) else 1)
+          PY
+          then :; else xcrun simctl boot "$SIMULATOR_UDID"; fi
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          xcrun simctl install "$SIMULATOR_UDID" build/simulator/Build/Products/Debug-iphonesimulator/AudioRelayLab.app
+          xcrun simctl privacy "$SIMULATOR_UDID" grant microphone com.audiorelaylab.AudioRelayLab
           printf 'XCTest iPhone Simulator UDID: %s; architecture: %s\n' "$SIMULATOR_UDID" "$SIMULATOR_ARCH" | tee build-test-destination.log
           xcodebuild \
             -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \

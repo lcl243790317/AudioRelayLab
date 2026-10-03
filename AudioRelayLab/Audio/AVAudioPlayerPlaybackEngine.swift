@@ -14,6 +14,8 @@ import AVFAudio
     private var previousTime: TimeInterval = 0
     private var startOffset: TimeInterval = 0
     private var playbackRate: Float = 1
+    var nativeRate: Float? { player?.rate }
+    var nativePlaybackTime: TimeInterval? { player?.currentTime }
     var volume: Float = 0.5 { didSet { if volume.isFinite { player?.volume = min(1, max(0, volume)) } } }
 
     init(logger: DiagnosticsLogger, validateEnvironment: @escaping () throws -> Void) {
@@ -51,7 +53,14 @@ import AVFAudio
             _ = try AudioPlaybackSettings(startOffset: startOffset, playbackRate: playbackRate, volume: volume).validated(duration: totalDuration)
             let playbackURL: URL
             let cropped = requestedDuration.map { $0 < totalDuration - startOffset } ?? false
-            if let requestedDuration, cropped {
+            if playbackRate != 1 {
+                logger.log("倍速准备", "先渲染源起点/倍速；未来等待用 1x 设备时钟，不缩放延迟")
+                let work = Task.detached(priority: .userInitiated) {
+                    try RateAdjustedAudio.copy(of:url,startOffset:startOffset,rate:playbackRate,duration:requestedDuration)
+                }
+                playbackURL = try await withTaskCancellationHandler(operation: { try await work.value },onCancel:{ work.cancel() })
+                processedURL = playbackURL
+            } else if let requestedDuration, cropped {
                 let work = Task.detached(priority: .userInitiated) { try AudioProcessor.trimmedCopy(of: url, duration: requestedDuration, startOffset: startOffset) }
                 playbackURL = try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
                 processedURL = playbackURL
@@ -61,13 +70,13 @@ import AVFAudio
             let newPlayer = try AVAudioPlayer(contentsOf: playbackURL)
             newPlayer.delegate = self
             newPlayer.volume = volume
-            newPlayer.enableRate = true
-            newPlayer.rate = playbackRate
-            newPlayer.currentTime = cropped ? 0 : startOffset
+            newPlayer.enableRate = false
+            newPlayer.rate = 1
+            newPlayer.currentTime = cropped || playbackRate != 1 ? 0 : startOffset
             previousTime = newPlayer.currentTime
             player = newPlayer
             guard newPlayer.prepareToPlay(), newPlayer.duration.isFinite, newPlayer.duration > 0 else { throw LabError.audioUnavailable }
-            logger.log("播放器准备", "prepareToPlay 成功；源起点=\(startOffset)s；rate=\(newPlayer.rate)；currentTime=\(newPlayer.currentTime)；实际时长=\(newPlayer.duration)s；实际播放器音量=\(newPlayer.volume)。")
+            logger.log("播放器准备", "prepareToPlay 成功；源起点=\(startOffset)s；源倍速=\(playbackRate)，实际 player.rate=\(newPlayer.rate)；currentTime=\(newPlayer.currentTime)；实际时长=\(newPlayer.duration)s；实际播放器音量=\(newPlayer.volume)。")
             setState(.prepared)
         } catch {
             teardown()

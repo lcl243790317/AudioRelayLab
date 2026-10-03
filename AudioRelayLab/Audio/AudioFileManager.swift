@@ -44,6 +44,7 @@ final class AudioAccessLease: @unchecked Sendable {
 }
 
 enum AudioFileManager {
+    static let defaultTestID = UUID(uuid: (0,0,0,0,0,0,0x40,0,0x80,0,0,0,0,0,0,1))
     static func audioDirectory() throws -> URL {
         let folder = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true).appendingPathComponent("Audio", isDirectory: true)
@@ -55,7 +56,8 @@ enum AudioFileManager {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\\") else {
             throw LabError.message("记录中的音频文件路径无效，请重新导入音频")
         }
-        return try audioDirectory().appendingPathComponent(metadata.sandboxFileName)
+        // Old bundled UUID copies resolve to the single canonical file after migration.
+        return try audioDirectory().appendingPathComponent(metadata.source == .bundled ? "test-tone.wav" : metadata.sandboxFileName)
     }
     static func inspect(url: URL, displayName: String? = nil, id: UUID = UUID(), source: AudioSource = .imported,
                         presetName: String? = nil) throws -> AudioFileMetadata {
@@ -115,22 +117,42 @@ enum AudioFileManager {
         }
     }
     static func generateTestAudio() throws -> AudioFileMetadata {
-        let url = try audioDirectory().appendingPathComponent("test-tone.wav")
+        try defaultTestAudio(resource: nil)
+    }
+    private static func defaultTestAudio(resource: URL?) throws -> AudioAsset {
+        let directory = try audioDirectory()
+        let url = directory.appendingPathComponent("test-tone.wav")
+        if (try? inspect(url: url)) == nil {
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            if let resource { try FileManager.default.copyItem(at: resource, to: url) }
+            else { try createTestAudio(at: url) }
+        }
+        let asset = try inspect(url: url, displayName: "内置测试音（440 / 660 / 880 Hz）.wav", id: defaultTestID, source: .bundled)
+        let sidecar = url.appendingPathExtension("metadata.json")
+        let existing = (try? Data(contentsOf: sidecar)).flatMap { try? JSONDecoder().decode(AudioAsset.self, from: $0) }
+        if existing?.id != defaultTestID || existing?.source != .bundled { try register(asset) }
+        // Only generated bundle copies are removed. Imported audio and recordings stay intact.
+        for sidecar in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            where sidecar.lastPathComponent.hasSuffix(".metadata.json") {
+            guard let old = try? JSONDecoder().decode(AudioAsset.self, from: Data(contentsOf: sidecar)),
+                old.source == .bundled, old.sandboxFileName != "test-tone.wav",
+                !old.sandboxFileName.contains("/"), !old.sandboxFileName.contains("\\"),
+                UUID(uuidString: URL(fileURLWithPath: old.sandboxFileName).deletingPathExtension().lastPathComponent) != nil else { continue }
+            let oldURL = directory.appendingPathComponent(old.sandboxFileName)
+            if FileManager.default.fileExists(atPath: oldURL.path) { try FileManager.default.removeItem(at: oldURL) }
+            try FileManager.default.removeItem(at: sidecar)
+        }
+        return asset
+    }
+    private static func createTestAudio(at url: URL) throws {
         // 3 × (1 + .3 + 1 + .3 + 1 + .3) = 11.7 秒。
         let sampleRate = 44_100.0
         guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,
             channels: 1, interleaved: false) else { throw LabError.message("无法创建测试音频格式") }
         try writeTestAudio(url: url, format: format, sampleRate: sampleRate)
-        let metadata = try inspect(url: url, displayName: "测试音频（440 / 660 / 880 Hz）.wav", source: .bundled)
-        try register(metadata)
-        return metadata
     }
     static func loadBundledAudio() throws -> AudioAsset {
-        guard let source = Bundle.main.url(forResource: "BundledTest", withExtension: "wav") else {
-            // Older project checkouts may not yet have generated the resource.
-            return try generateTestAudio()
-        }
-        return try copyIntoLibrary(source, displayName: "内置测试音（440 / 660 / 880 Hz）.wav", source: .bundled)
+        try defaultTestAudio(resource: Bundle.main.url(forResource: "BundledTest", withExtension: "wav"))
     }
     static func register(_ asset: AudioAsset) throws {
         let url = try self.url(for: asset)

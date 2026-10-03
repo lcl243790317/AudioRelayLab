@@ -10,7 +10,6 @@ struct MainView: View {
     @State private var showResult = false
     @State private var showTechnicalDetails = false
     @State private var customDelay = false
-    @State private var showAllImportFiles = false
 
     init(coordinator: ExperimentCoordinator) {
         self.coordinator = coordinator
@@ -37,16 +36,15 @@ struct MainView: View {
             }
             .navigationTitle("AudioRelayLab")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $importing,
-                allowedContentTypes: showAllImportFiles ? [.item] : [.audio] + ["mp3","m4a","aac","wav","aif","aiff","aifc","caf","flac"].compactMap { UTType(filenameExtension: $0) },
-                allowsMultipleSelection: false) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first { coordinator.importAudio(url) }
-                case .failure(let error):
-                    coordinator.logger.log("文件选择失败", diagnosticError(error))
-                    coordinator.errorMessage = "音频文件选择失败，请重试。"
-                }
+            .sheet(isPresented: $importing) {
+                AudioDocumentPicker(onSelection: { url in
+                    // Acquire the scope and hand off the copied URL before dismissing the picker.
+                    coordinator.importAudio(url)
+                    importing = false
+                }, onCancel: {
+                    coordinator.logger.log("文件选择", "用户取消选择，当前音频保留")
+                    importing = false
+                })
             }
             .sheet(isPresented: $showResult) {
                 if let experiment = coordinator.currentExperiment {
@@ -117,8 +115,7 @@ struct MainView: View {
             }
             Button("导入音频") { importing = true }
                 .disabled(coordinator.controlsLocked)
-            Toggle("显示所有文件（仍验证真实音频）", isOn: $showAllImportFiles).disabled(coordinator.controlsLocked)
-            Text("文件提供器若将音频标为未知类型，可开启此选项。导入成功以真实解码为准；云端文件请先下载到本机。")
+            Text("请选择 MP3、M4A、WAV 等音频。所有文件均可点选，非音频会显示明确错误；云端文件需等待下载。")
                 .font(.caption).foregroundStyle(.secondary)
             Button("使用测试音频") { coordinator.useTestAudio() }
                 .disabled(coordinator.isRunning || voice.isActive)

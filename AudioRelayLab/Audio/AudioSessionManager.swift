@@ -16,6 +16,7 @@ enum AudioSessionEvent {
     @Published private(set) var interruptionMessage: String?
     @Published private(set) var availabilityMessage = "未激活音频会话"
     var onEvent: ((AudioSessionEvent) -> Void)?
+    private(set) var lastRouteChangeReason: UInt = 0
     private let session = AVAudioSession.sharedInstance()
     private let logger: DiagnosticsLogger
     private var observers: [NSObjectProtocol] = []
@@ -188,6 +189,7 @@ enum AudioSessionEvent {
             } else { logger.log("音频中断", "收到未知中断类型，不执行自动恢复。") }
         case AVAudioSession.routeChangeNotification:
             let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue ?? 0
+            lastRouteChangeReason = reason
             let previous = notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
             logger.log("路由变化", "原因=\(reason)（\(routeReason(reason))）\n先前路由：\(previous.map { AudioRouteSnapshot($0).summary } ?? "系统未提供")\n当前路由：\(AudioRouteSnapshot(session.currentRoute).summary)")
             capture("route change")

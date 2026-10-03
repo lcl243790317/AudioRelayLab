@@ -1,4 +1,4 @@
-AudioRelayLab 1.2.0 / build 3 — 构建与验证说明
+AudioRelayLab 1.2.1 / build 4 — 构建与验证说明
 
 1. 在现有工程上迭代
 仓库：https://github.com/lcl243790317/AudioRelayLab
@@ -105,3 +105,11 @@ Artifact 添加研究、Voice 真机协议、依赖版本及完整第三方许�
 原生输出动态处理器配置与取消状态；原生 AVAudioEngine 离线渲染实际处理后
 Voice + Music + TimePitch + Master + DynamicsProcessor，验证音量独立、起点和 rate。合成 PCM 不代表真人声音质量或实际麦克风。
 具体最终测试数/工具链/IPA SHA 以 BUILD-STATUS 和 dist/build-evidence.json 为准。
+
+9. 1.2.1 真机问题回归
+DeviceBugRegressionTests 检查原生 picker delegate→真实 MP3 导入、取消、默认测试音
+ID/文件/修改时间复用及旧副本合并；0.5/1/2x 真实离线 PCM 时长与非零能量；
+两套真实播放器 2x 内容在 0.8 秒 deadline 前/后的时间线；实际生产 Voice/Mixer
+启动与 CAF 保存（可运行的 Simulator IO），另注入同类通知检查未变路由不误停。
+CI 仅给临时 iPhone Simulator 的本 App 授予麦克风权限；不改变用户设备权限。
+Simulator 录音可能为零输入，不能证明真人音色、声学延迟或 18.1.1 Files 点击。

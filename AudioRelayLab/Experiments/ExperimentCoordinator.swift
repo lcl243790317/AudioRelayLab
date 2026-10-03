@@ -64,9 +64,15 @@ import UniformTypeIdentifiers
         if let data = UserDefaults.standard.data(forKey: "selectedAudio") {
             do {
                 let saved = try JSONDecoder().decode(AudioFileMetadata.self, from: data)
+                if saved.source == .bundled {
+                    let bundled = try AudioFileManager.loadBundledAudio()
+                    audio = bundled
+                    try rememberAudio(bundled)
+                } else {
                 let url = try AudioFileManager.url(for: saved)
                 if FileManager.default.fileExists(atPath: url.path) {
                     audio = try AudioFileManager.inspect(url: url, displayName: saved.fileName, id: saved.id, source: saved.source, presetName: saved.presetName)
+                }
                 }
             } catch { logger.log("音频恢复失败", diagnosticError(error)) }
         }

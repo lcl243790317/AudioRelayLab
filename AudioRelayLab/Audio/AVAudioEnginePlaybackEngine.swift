@@ -27,6 +27,11 @@ import Darwin
     private var startOffset: TimeInterval = 0
     private var playbackRate: Float = 1
     private var timePitch: AVAudioUnitTimePitch?
+    var nativeRate: Float? { timePitch?.rate }
+    var nativePlaybackTime: TimeInterval? {
+        guard let time=currentTimeline(), time.isSampleTimeValid, time.sampleRate>0 else { return nil }
+        return Double(time.sampleTime)/time.sampleRate
+    }
 
     init(logger: DiagnosticsLogger, validateEnvironment: @escaping () throws -> Void) {
         self.logger = logger
@@ -63,24 +68,35 @@ import Darwin
         setState(.preparing)
         do {
             try validateEnvironment()
-            let playbackURL: URL
+            var playbackURL: URL
             if voiceOptimized {
                 let work = Task.detached(priority: .userInitiated) { try AudioProcessor.optimizedCopy(of: url) }
                 playbackURL = try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
                 processedURL = playbackURL
                 logger.log("语音优化", "已创建独立单声道副本；原文件未修改。")
             } else { playbackURL = url }
+            if playbackRate != 1 {
+                let sourceURL = playbackURL
+                let work = Task.detached(priority:.userInitiated) {
+                    try RateAdjustedAudio.copy(of:sourceURL,startOffset:startOffset,rate:playbackRate,duration:requestedDuration)
+                }
+                playbackURL = try await withTaskCancellationHandler(operation:{ try await work.value },onCancel:{ work.cancel() })
+                if let previous = processedURL { try? FileManager.default.removeItem(at:previous) }
+                processedURL = playbackURL
+                logger.log("倍速准备", "Engine 先渲染源起点/倍速，正式 graph 的 TimePitch.rate=1，hostTime 等待不缩放")
+            }
             try Task.checkCancellation()
             try validateEnvironment()
             let newFile = try AVAudioFile(forReading: playbackURL)
             try AudioRuntimeValidation.validate(newFile.processingFormat)
             guard newFile.length > 0 else { throw LabError.invalidFormat }
-            _ = try AudioPlaybackSettings(startOffset: startOffset, playbackRate: playbackRate, volume: volume)
+            let nativeOffset = playbackRate == 1 ? startOffset : 0
+            _ = try AudioPlaybackSettings(startOffset: nativeOffset, playbackRate: 1, volume: volume)
                 .validated(duration: Double(newFile.length) / newFile.processingFormat.sampleRate)
-            initialFrame = try AudioPlaybackSettings.frame(startOffset, sampleRate: newFile.processingFormat.sampleRate, length: newFile.length)
+            initialFrame = try AudioPlaybackSettings.frame(nativeOffset, sampleRate: newFile.processingFormat.sampleRate, length: newFile.length)
             resumeFrame = initialFrame
             let frames: AVAudioFramePosition
-            if let requestedDuration {
+            if let requestedDuration, playbackRate == 1 {
                 guard requestedDuration.isFinite, (0.1...600).contains(requestedDuration) else { throw LabError.invalidFormat }
                 frames = min(newFile.length - initialFrame, AVAudioFramePosition((requestedDuration * newFile.processingFormat.sampleRate).rounded(.down)))
             } else { frames = newFile.length - initialFrame }
@@ -110,7 +126,7 @@ import Darwin
         engine = newEngine
         node = newNode
         let rateNode = AVAudioUnitTimePitch()
-        rateNode.rate = playbackRate
+        rateNode.rate = 1
         newEngine.attach(rateNode)
         timePitch = rateNode
         if voiceOptimized {

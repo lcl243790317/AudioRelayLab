@@ -68,3 +68,5 @@ Vendor 目录保留源码版权和完整许可证；PATCHES.md 记录唯一 seed
 音频导入使用 Apple 的 [NSFileCoordinator](https://developer.apple.com/documentation/foundation/nsfilecoordinator) 与 [安全作用域 URL](https://developer.apple.com/documentation/foundation/nsurl/startaccessingsecurityscopedresource())，在 picker completion 获得临时访问权限、协调读取并复制至沙盒，后续只读本地文件。权限释放由 lease 生命周期管理。格式最终通过 AVAudioFile 的真实 PCM 读取判断。
 
 当前编译、合成 PCM 的实际 DSP 测试和 CAF 写入证据见 BUILD-STATUS-ZH.txt；iOS 18.1.1 真人音色、监听质量、声学反馈、HFP 和微信收录结果必须按 VOICE-LAB-TEST-PROTOCOL-ZH.md 填写。
+
+1.2.1 事件处理依据：Apple [categoryChange](https://developer.apple.com/documentation/avfaudio/avaudiosession/routechangereason/categorychange) 表示会话类别变化，不自动代表输入输出失效；[Engine configuration notification](https://developer.apple.com/documentation/avfaudio/avaudioengineconfigurationchangenotification) 可能因硬件采样率/声道变化停止并反初始化图，节点仍保留连接。实现必须核对实际路由/格式、转交普通线程后处理，不能把每条通知无条件失败或在内部通知回调直接销毁图。

@@ -1,10 +1,10 @@
-# AudioRelayLab 音频接力实验室 1.2.0
+# AudioRelayLab 音频接力实验室 1.2.1
 
 现有 iPhone 项目的增量版本，最低 iOS 17.0，功能边界为 iOS 18.1.1；保留 SwiftUI、两套播放器、实验历史、诊断、XcodeGen 和原有 Git 历史。
 
-Audio 页选择 Bundle 测试音或外部文件，系统授权 URL 经协调读取、真实 PCM 验证、UUID 沙盒复制后进入统一音频库。导入中的“取消导入”和“内置测试音”可恢复控制；旧任务不能覆盖新选择。选音频后立即显示格式、时长、采样率、声道和大小。拖动起点，±10/±1/±0.1 秒精调，设 0.5～2x 倍速，从此处试听或试听 5 秒，再点击“应用这个播放设置”。编辑位置、preview playhead 与正式 applied 设置独立。
+Audio 页选择 Bundle 测试音或外部文件，系统授权 URL 经协调读取、真实 PCM 验证、UUID 沙盒复制后进入统一音频库。导入中的“取消导入”和“内置测试音”可恢复控制；旧任务不能覆盖新选择。1.2.1 原生 UIDocumentPicker 以复制模式显示全部文件，真实 PCM 验证决定是否接受；默认测试音固定 ID/test-tone.wav，升级合并旧重复副本，历史仍能解析。选音频后立即显示格式、时长、采样率、声道和大小。拖动起点，±10/±1/±0.1 秒精调，设 0.5～2x 倍速，从此处试听或试听 5 秒，再点击“应用这个播放设置”。编辑位置、preview playhead 与正式 applied 设置独立。
 
-主实验继续以 AVAudioPlayer 为稳定路径，AVAudioEngine 为高级路径；两者共用起点、倍速、音量及可选源音频时长。预计实际时长 = 剩余/速度。先“准备实验”，再“开始实验”，倒计时由音频系统未来调度执行。A/C/D/E 可新建，旧 B 仅兼容历史。
+主实验继续以 AVAudioPlayer 为稳定路径，AVAudioEngine 为高级路径；两者共用起点、倍速、音量及可选源音频时长。1.2.1 正式倍速先用原生 TimePitch 离线生成 PCM，再用 1x player/graph 调度；等待秒数与内容速度独立。准备后的 PCM 限 512 MB，超限可缩短源时长或调整起点。预计实际时长 = 剩余/速度。先“准备实验”，再“开始实验”，倒计时由音频系统未来调度执行。A/C/D/E 可新建，旧 B 仅兼容历史。
 
 Voice Lab 提供真实麦克风、独立 pitch/formant、EQ/动态/去齿音/dry-wet/gain、15 个预设和效果强度。Mixer 加入当前音乐及独立 Voice/Music/Master，音乐可在运行中独立 seek/变速。处理后录音和混合录音保存本地单声道 Float PCM CAF，可试听、应用到主音频、分享、删除。原生输出动态处理器提供余量保护；真人自然度和瞬态质量需要回听。
 
@@ -33,3 +33,5 @@ Windows 做编辑与静态检查，GitHub Actions/macOS 执行真实 Simulator D
 - [Voice Lab / Mixer 真机协议](VOICE-LAB-TEST-PROTOCOL-ZH.md)
 
 依赖 Signalsmith Stretch 1.3.2 与固定提交的 Signalsmith Linear，均 MIT，完整许可证进入 App resources。预设不是神经网络身份转换。诊断和历史可导出 TXT/JSON/CSV；本轮按需求加入文件 URL/名称/目标路径审计，分享前检查个人路径，设备 UID/私人路由名称仍不自动记录。
+
+1.2.1 同硬件/格式的 category/override 通知不再直接判失败；启动前等待稳定路由，停止的同格式图最多重启一次。设备或格式真正改变仍安全结束，避免复用无效图。实际 Files 点击、5秒等待和 iOS 18.1.1 麦克风效果仍须按真机协议复测。
