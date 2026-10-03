@@ -15,7 +15,8 @@ struct AudioFileMetadata: Codable, Identifiable {
     var formatDescription: String = "音频"
     var presetName: String? = nil
     var aiConversion: AIConversionMetadata? = nil
-    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName, aiConversion }
+    var addedAt: Date? = nil
+    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName, aiConversion, addedAt }
 }
 
 extension AudioFileMetadata {
@@ -32,6 +33,7 @@ extension AudioFileMetadata {
         formatDescription = (try? c.decode(String.self, forKey: .formatDescription)) ?? URL(fileURLWithPath: sandboxFileName).pathExtension.uppercased()
         presetName = try? c.decode(String.self, forKey: .presetName)
         aiConversion = try? c.decode(AIConversionMetadata.self, forKey: .aiConversion)
+        addedAt = try? c.decode(Date.self, forKey: .addedAt)
     }
 }
 
@@ -77,7 +79,7 @@ enum AudioFileManager {
             sandboxFileName: url.lastPathComponent, duration: Double(file.length) / format.sampleRate,
             sampleRate: format.sampleRate, channelCount: format.channelCount,
             byteCount: (attributes[.size] as? NSNumber)?.int64Value ?? 0, source: source,
-            formatDescription: "\(url.pathExtension.uppercased()) / \(format.channelCount)ch PCM 解码", presetName: presetName)
+            formatDescription: "\(url.pathExtension.uppercased()) / \(format.channelCount)ch PCM 解码", presetName: presetName, addedAt: (attributes[.creationDate] as? Date) ?? (attributes[.modificationDate] as? Date) ?? Date())
     }
     static func importFile(from source: URL) throws -> AudioFileMetadata {
         try importFile(lease: AudioAccessLease(source))
@@ -158,16 +160,34 @@ enum AudioFileManager {
     }
     static func register(_ asset: AudioAsset) throws {
         let url = try self.url(for: asset)
-        try JSONEncoder().encode(asset).write(to: url.appendingPathExtension("metadata.json"), options: .atomic)
+        let sidecar = url.appendingPathExtension("metadata.json")
+        var stored = asset
+        // Re-registering metadata must never move an existing recording to the top.
+        if let data = try? Data(contentsOf: sidecar),
+           let existing = try? JSONDecoder().decode(AudioAsset.self, from: data) {
+            stored.addedAt = existing.addedAt ?? legacyAddedAt(url)
+        } else if stored.addedAt == nil { stored.addedAt = legacyAddedAt(url) }
+        try JSONEncoder().encode(stored).write(to: sidecar, options: .atomic)
     }
     static func listLocalAudio() throws -> [AudioAsset] {
         try FileManager.default.contentsOfDirectory(at: audioDirectory(), includingPropertiesForKeys: nil)
             .filter { $0.lastPathComponent.hasSuffix(".metadata.json") }
             .compactMap { url in
-                guard let asset = try? JSONDecoder().decode(AudioAsset.self, from: Data(contentsOf: url)),
+                guard var asset = try? JSONDecoder().decode(AudioAsset.self, from: Data(contentsOf: url)),
                     let local = try? self.url(for: asset), FileManager.default.fileExists(atPath: local.path) else { return nil }
+                asset.addedAt = asset.addedAt ?? legacyAddedAt(local)
                 return asset
-            }.sorted { $0.fileName.localizedStandardCompare($1.fileName) == .orderedAscending }
+            }.sorted(by: newestFirst)
+    }
+    static func newestFirst(_ lhs: AudioAsset, _ rhs: AudioAsset) -> Bool {
+        if (lhs.source == .bundled) != (rhs.source == .bundled) { return rhs.source == .bundled }
+        let left = lhs.addedAt ?? .distantPast, right = rhs.addedAt ?? .distantPast
+        if left != right { return left > right }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+    private static func legacyAddedAt(_ url: URL) -> Date? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
+        return (attributes[.creationDate] as? Date) ?? (attributes[.modificationDate] as? Date)
     }
     static func removeAudio(_ asset: AudioAsset) throws {
         let local = try url(for: asset)

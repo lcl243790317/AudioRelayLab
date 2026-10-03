@@ -28,7 +28,13 @@ struct MainView: View {
                     failureSection
                 }
                 PaperCard {
-                    DisclosureGroup("高级实验设置") { settingsSection; sessionSection }
+                    DisclosureGroup("高级实验设置") {
+                        Button("使用测试音频") { coordinator.useTestAudio() }.disabled(coordinator.controlsLocked)
+                        Button("仅准备音频") { coordinator.prepare() }.disabled(coordinator.controlsLocked || coordinator.audio == nil)
+                        settingsSection; sessionSection
+                        Button("填写并保存实验结果") { coordinator.checkpoint(); showResult = true }
+                            .disabled(coordinator.currentExperiment == nil || coordinator.controlsLocked)
+                    }
                 }
             }
             .navigationTitle("AudioRelayLab")
@@ -122,7 +128,7 @@ struct MainView: View {
             }
             HStack {
                 Button("导入音频") { importing = true }.buttonStyle(PaperButtonStyle(primary:true))
-                Button("使用测试音频") { coordinator.useTestAudio() }
+
             }.disabled(coordinator.controlsLocked)
             PaperCaption("支持 WAV、MP3、M4A、AAC、AIFF、AIFC、CAF、FLAC；其他类型在文件选择器中显示为灰色。")
             if coordinator.isImporting {
@@ -219,9 +225,9 @@ struct MainView: View {
             Label(coordinator.state.title, systemImage: stateIcon).font(.headline)
             if coordinator.busy { ProgressView("正在准备或读取音频…") }
             if coordinator.state == .prepared {
-                Text("音频已准备。点击“开始实验”后才计算延迟并提交未来播放请求。")
+                Text("音频已准备。点击“开始延迟播放”后才计算延迟并提交未来播放请求。")
                     .font(.callout)
-                Button("开始实验") { coordinator.startPrepared() }
+                Button("开始延迟播放") { coordinator.startPrepared() }
                     .buttonStyle(PaperButtonStyle(primary:true))
             } else if coordinator.state == .waiting {
                 Text(coordinator.remaining > 0 && coordinator.remaining.isFinite ? "\(Int(ceil(min(60, coordinator.remaining))))" : "等待状态观察")
@@ -230,7 +236,7 @@ struct MainView: View {
                 Text("若测试微信语音消息，请切换到微信并在播放前按住录音。")
                     .font(.callout)
             } else if !coordinator.controlsLocked {
-                Button(coordinator.state == .failed ? "稍后重试：重新准备" : "准备实验") { coordinator.prepare() }
+                Button(coordinator.state == .failed ? "重试延迟播放" : "开始延迟播放") { coordinator.start() }
                     .buttonStyle(PaperButtonStyle(primary:true))
                     .disabled(coordinator.audio == nil)
             }
@@ -238,8 +244,6 @@ struct MainView: View {
                 coordinator.stop()
             }
                 .disabled(!coordinator.isRunning && !coordinator.busy)
-            Button("填写并保存实验结果") { coordinator.checkpoint(); showResult = true }
-                .disabled(coordinator.currentExperiment == nil || coordinator.controlsLocked)
             PaperCaption("倒计时按真实时间运行，不受播放倍速影响。")
         }
     }

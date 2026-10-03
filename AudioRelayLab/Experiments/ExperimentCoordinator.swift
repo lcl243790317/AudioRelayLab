@@ -84,6 +84,7 @@ import UniformTypeIdentifiers
                 if FileManager.default.fileExists(atPath: url.path) {
                     var restored = try AudioFileManager.inspect(url: url, displayName: saved.fileName, id: saved.id, source: saved.source, presetName: saved.presetName)
                     restored.aiConversion = saved.aiConversion
+                    restored.addedAt = saved.addedAt ?? restored.addedAt
                     audio = restored
                 }
                 }
@@ -170,6 +171,7 @@ import UniformTypeIdentifiers
         var checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
             id: asset.id, source: asset.source, presetName: asset.presetName)
         checked.aiConversion = asset.aiConversion
+        checked.addedAt = asset.addedAt ?? checked.addedAt
         preview.reset()
         try rememberAudio(checked)
         checkpoint()
@@ -196,6 +198,10 @@ import UniformTypeIdentifiers
     func audition(fiveSeconds: Bool = false) {
         guard !controlsLocked, let audio else { return }
         preview.play(asset: audio, settings: editing, fiveSeconds: fiveSeconds)
+    }
+    func audition(_ asset: AudioAsset) {
+        guard !controlsLocked, !aiVoice.connecting else { return }
+        preview.play(asset: asset, settings: AudioPlaybackSettings(), fiveSeconds: false)
     }
     private func rememberAudio(_ metadata: AudioFileMetadata) throws {
         UserDefaults.standard.set(try JSONEncoder().encode(metadata), forKey: "selectedAudio")

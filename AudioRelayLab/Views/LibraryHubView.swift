@@ -60,8 +60,8 @@ struct LocalAudioLibraryView: View {
                         Text(asset.libraryName).font(.headline).lineLimit(3)
                         PaperCaption("\(AudioPlaybackSettings.time(asset.duration)) · \(asset.formatDescription)")
                         HStack {
-                            Button("回听") { coordinator.selectLocal(asset); coordinator.audition() }
-                            Button("应用") { coordinator.selectLocal(asset) }
+                            Button("回听") { coordinator.audition(asset) }
+                            Button("使用") { coordinator.selectLocal(asset) }
                             Button("分享") { if let url = try? AudioFileManager.url(for:asset) { share = ShareItem(url:url) } }
                         }.disabled(locked)
                         if let conversion = asset.aiConversion {
@@ -77,10 +77,12 @@ struct LocalAudioLibraryView: View {
                         .listRowBackground(PaperTheme.paper)
                 }
             } footer: {
-                Text("向左划动一行可删除。内置测试音始终保留；删除音频不会清空实验历史。")
+                Text("最新加入的声音在前。向左划动一行可删除。内置测试音始终保留；删除音频不会清空实验历史。")
             }
             if let error = coordinator.errorMessage { Text(error).foregroundStyle(.orange) }
         }.paperList()
+            .buttonStyle(.borderless)
+            .onAppear { coordinator.refreshLibrary() }
             .navigationTitle(recordingsOnly ? "录音与 AI 声音" : "本地音频库")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("停止回听") { coordinator.preview.stop() } }

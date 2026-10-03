@@ -1,4 +1,4 @@
-AudioRelayLab 1.5.0 / build 8 — 本轮验证状态
+AudioRelayLab 1.5.1 / build 9 — 本轮验证状态
 
 项目根目录：D:\Codex projectless\Wechat delay playback app
 仓库：https://github.com/lcl243790317/AudioRelayLab
@@ -87,37 +87,9 @@ https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
 Simulator 麦克风可能为零输入，不证明真人声音或 18.1.1 硬件行为。
 选择器回调测试不等于真实 Files/iCloud/第三方 Provider 的屏幕点选测试。
 
-本轮真实 CI 证据：
-- 源码提交：5fe13b5373d1410f47f81553b380f132e5e40c39
-- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37144884794
-- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
-- 实际 iPhone Simulator XCTest：158 项，0 失败，TEST SUCCEEDED。
-- Python 自检：30 项通过。
-- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
-- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1008021 字节。
-- SHA-256：b276625fc21fd16843761acfa235969165c020a278067d26d2de8460312a353c
-- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
-- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
-- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
-- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
-- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
-
-本地最终交付（下载后再次 verify_ipa，未伪造签名）：
-- Artifact：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37144884794/artifacts/11281763647
-- Artifact ID：11281763647；外层 ZIP SHA-256：713ba4c12151fdaec08248afcb7c9c5d45b72044cec82170b5df2828960a11d7
-- IPA 实际路径：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-unsigned.ipa
-- IPA：1.5.0 / build 8；1008021 字节；SHA-256：b276625fc21fd16843761acfa235969165c020a278067d26d2de8460312a353c
-- 完整 Artifact 解压目录：D:\Codex projectless\Wechat delay playback app\dist\ci-run-37144884794
-- 外层 Artifact ZIP：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-1.5.0-iOS-Build.zip
-- 真实生成的 AudioRelayLab.xcodeproj 已复制到项目根目录，仍以 project.yml 为工程配置依据。
-- 所有源码修改已提交；本机与远端 main 同步。构建后的证据文档单独提交，不改变已编译源码。
-- 本轮三项反馈对应的测试数量与结果以上方实际证据为准。
-- 已核对 Bundle 测试 WAV、第三方 MIT notices、环境/测试日志哈希和真实 xcresult。
-
-- 追加 12 项 AudioRangeAndDurationTests 全部通过：选段样本/终点、两引擎三种速度、旧字段默认、试听自然结束、60 秒混音、22.05/44.1/48 kHz 编码、录满 60 秒精确自动保存及末 20 ms 音频保留。
-- 上传重采样采用分块输入/输出与正常预充，按请求读取并保留转换器尾部；降低长录音编码的峰值内存。
-- 五张本轮实际 iPhone Simulator 截图已检查：日间三页、夜间音频页/手机实时页；月亮/太阳按钮与双圆点可见，纸张、文字和导航按主题切换。
-- 明确版本的 IPA 副本：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-1.5.0-unsigned.ipa；与 canonical IPA 哈希一致。
+待本轮真实 CI 更新：
+- 1.5.1 / build 9：两个音频库按加入时间倒序；AI 直接选库、独立试听、简单/高级入口与一键延迟播放。
+- 当前新源码尚待真实 Simulator/XCTest 与 iPhoneOS Release；旧 1.5.0 成果不代表本轮通过。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。
