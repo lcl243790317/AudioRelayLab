@@ -54,15 +54,15 @@ final class LibraryVoiceFeedbackTests: XCTestCase {
         let coordinator = ExperimentCoordinator()
         try coordinator.selectAudio(asset); coordinator.prepare()
         coordinator.deleteAudio(asset)
-        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:asset)))
+        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:asset).path))
         coordinator.stop(); coordinator.useTestAudio()
         try coordinator.beginMixing()
         coordinator.deleteAudio(asset)
-        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:asset)))
+        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:asset).path))
         coordinator.endMixing()
         let builtin = try XCTUnwrap(coordinator.audio)
         coordinator.deleteAudio(builtin)
-        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:builtin)))
+        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:builtin).path))
         XCTAssertEqual(coordinator.audio?.id,builtin.id)
     }
 }
