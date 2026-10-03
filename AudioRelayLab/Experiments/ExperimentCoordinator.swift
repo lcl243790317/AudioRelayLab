@@ -136,7 +136,10 @@ import UIKit
                 var localEngine: (any PlaybackEngineProtocol)?
                 defer { if self.machine.generation == token { self.prepareTask = nil } }
                 do {
-                    try self.session.ensureCanActivate()
+                    try Task.checkCancellation()
+                    guard self.machine.generation == token, self.machine.state == .preparing,
+                        self.scenePhase != .background else { throw CancellationError() }
+                    try self.session.beginManualAttempt()
                     if settings.profile.usesInput {
                         let granted = await withCheckedContinuation { continuation in
                             AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
@@ -147,6 +150,8 @@ import UIKit
                     guard self.machine.generation == token, self.machine.state == .preparing,
                         self.scenePhase != .background else { throw CancellationError() }
                     try self.session.configure(profile: settings.profile, speakerOverride: settings.speakerOverride)
+                    try Task.checkCancellation()
+                    guard self.machine.generation == token, self.machine.state == .preparing else { throw CancellationError() }
                     self.capture("session activated")
                     let validate: () throws -> Void = { [weak session = self.session] in
                         guard let session else { throw LabError.audioUnavailable }
@@ -173,7 +178,8 @@ import UIKit
                 } catch {
                     localEngine?.onStateChange = nil
                     localEngine?.teardown()
-                    guard self.machine.generation == token, self.machine.isActive else { return }
+                    guard self.machine.generation == token else { return }
+                    guard self.machine.isActive else { self.session.deactivate(); return }
                     if error is CancellationError { self.stop() }
                     else { self.fail(error, token: token) }
                 }

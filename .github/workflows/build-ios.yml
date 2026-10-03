@@ -78,11 +78,12 @@ jobs:
           raise SystemExit('没有可用的 iPhone Simulator，不能宣称 XCTest 通过。')
           PY
           )"
-          printf 'XCTest iPhone Simulator UDID: %s\n' "$SIMULATOR_UDID" | tee build-test-destination.log
+          SIMULATOR_ARCH="$(uname -m)"
+          printf 'XCTest iPhone Simulator UDID: %s; architecture: %s\n' "$SIMULATOR_UDID" "$SIMULATOR_ARCH" | tee build-test-destination.log
           xcodebuild \
             -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
             -configuration Debug -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=$SIMULATOR_ARCH" \
             -destination-timeout 180 -parallel-testing-enabled NO \
             -derivedDataPath build/simulator-tests \
             -resultBundlePath build/unit-tests.xcresult \
@@ -104,6 +105,10 @@ jobs:
           set -euo pipefail
           bash scripts/package-ipa.sh 2>&1 | tee build-package.log
           shasum -a 256 dist/AudioRelayLab-unsigned.ipa | tee dist/SHA256SUMS.txt
+      - name: 核对真实构建证据并更新 Artifact 状态报告
+        run: |
+          set -euo pipefail
+          python3 scripts/record-ci-result.py 2>&1 | tee build-evidence.log
       - name: 上传构建与诊断文件
         if: always()
         uses: actions/upload-artifact@v7.0.1
@@ -114,6 +119,7 @@ jobs:
           path: |
             dist/AudioRelayLab-unsigned.ipa
             dist/ipa-manifest.json
+            dist/build-evidence.json
             dist/SHA256SUMS.txt
             AudioRelayLab.xcodeproj/
             build-*.log

@@ -21,7 +21,7 @@ JSON schemaVersion=2；损坏单条隔离、缺失字段修复提示、未知值
 
 已证明：
 - Windows 静态检查通过。
-- 5 项 Python IPA 校验器测试通过。
+- Python IPA 校验器测试通过；最终脚本测试数量以本轮 CI 日志为准。
 - 此前 1.0.0 曾真实 Simulator / iPhoneOS 构建成功；
   https://github.com/lcl243790317/AudioRelayLab/actions/runs/37072473308
   这不是当前 1.1.0 源码的编译证据。

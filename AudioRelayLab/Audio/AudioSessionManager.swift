@@ -24,6 +24,7 @@ enum AudioSessionEvent {
     private var interrupted = false
     private var mediaAvailable = true
     private var configuredProfile: AudioSessionProfile?
+    private var operationGeneration = UUID()
 
     init(logger: DiagnosticsLogger) {
         self.logger = logger
@@ -55,9 +56,12 @@ enum AudioSessionEvent {
         guard profile.isSelectable else { throw LabError.message("此配置仅用于旧历史，不能开始新实验") }
         do { try ensureCanActivate() }
         catch { availabilityMessage = userFacingAudioError(error); logger.log("激活前置拒绝", diagnosticError(error)); throw error }
+        let operation = UUID()
+        operationGeneration = operation
         capture("setCategory 前")
         do {
             try session.setCategory(profile.category, mode: .default, options: profile.options)
+            try validateOperation(operation)
             logger.log("音频会话", "setCategory 成功；配置=\(profile.rawValue) \(profile.title)")
             capture("setCategory 后")
             capture("setActive 前")
@@ -66,12 +70,13 @@ enum AudioSessionEvent {
             try session.setActive(true)
             ownsActivation = true
             configuredProfile = profile
-            interrupted = false
+            try validateOperation(operation)
             logger.log("音频会话", "setActive(true) 成功")
             capture("setActive 后")
             if profile.usesInput {
                 do {
                     try session.overrideOutputAudioPort(speakerOverride ? .speaker : .none)
+                    try validateOperation(operation)
                     logger.log("扬声器覆盖", "overrideOutputAudioPort(\(speakerOverride ? "speaker" : "none")) 成功")
                 } catch {
                     logger.log("扬声器覆盖失败", diagnosticError(error))
@@ -91,12 +96,14 @@ enum AudioSessionEvent {
     }
     func reactivate() throws {
         try ensureCanActivate()
+        let operation = UUID()
+        operationGeneration = operation
         capture("恢复 setActive 前")
         do {
             logger.log("音频会话", "恢复请求 setActive(true)")
             try session.setActive(true)
             ownsActivation = true
-            interrupted = false
+            try validateOperation(operation)
             try validateForPlayback()
             availabilityMessage = "音频会话恢复激活成功"
             capture("恢复 setActive 后")
@@ -109,20 +116,37 @@ enum AudioSessionEvent {
         }
     }
     func deactivate() {
+        operationGeneration = UUID()
         guard ownsActivation else { return }
+        // 先释放本地所有权，防止 setActive(false) 同步通知再次进入清理。
+        ownsActivation = false
+        configuredProfile = nil
         capture("停用 setActive 前")
         do {
             try session.setActive(false, options: .notifyOthersOnDeactivation)
             logger.log("音频会话", "setActive(false, notifyOthersOnDeactivation) 成功")
         } catch { logger.log("停用会话失败", diagnosticError(error)) }
-        ownsActivation = false
-        configuredProfile = nil
         if !environment.hasActiveCall { availabilityMessage = "未激活；可重新准备实验" }
         capture("停用 setActive 后")
     }
     func ensureCanActivate() throws {
+        guard mediaAvailable, !interrupted else { throw LabError.audioUnavailable }
+        try environment.ensureNoKnownCall()
+    }
+    func beginManualAttempt() throws {
         guard mediaAvailable else { throw LabError.audioUnavailable }
         try environment.ensureNoKnownCall()
+        // 系统不保证每个 began 都有 ended。用户明确重试时由 setActive 重新裁决。
+        if interrupted {
+            operationGeneration = UUID()
+            interrupted = false
+            interruptionMessage = nil
+            logger.log("手动重试", "用户重新准备，清除旧中断缓存；仍需系统批准激活，不自动恢复。")
+        }
+    }
+    private func validateOperation(_ operation: UUID) throws {
+        guard operationGeneration == operation else { throw LabError.audioUnavailable }
+        try ensureCanActivate()
     }
     func validateForPlayback() throws {
         try ensureCanActivate()
@@ -161,6 +185,7 @@ enum AudioSessionEvent {
             logger.log("音频中断", "type=\(typeValue)，options=\(optionsValue)，shouldResume=\(shouldResume)；通知前缓存路由：\(snapshot.currentRoute.summary)")
             capture("interruption")
             if typeValue == AVAudioSession.InterruptionType.began.rawValue {
+                operationGeneration = UUID()
                 interrupted = true
                 interruptionMessage = "音频会话被系统或其他高优先级音频中断"
                 availabilityMessage = "音频会话已被中断"
@@ -177,6 +202,7 @@ enum AudioSessionEvent {
             capture("route change")
             onEvent?(.routeChanged)
         case AVAudioSession.mediaServicesWereLostNotification:
+            operationGeneration = UUID()
             mediaAvailable = false
             ownsActivation = false
             availabilityMessage = "系统音频服务暂时不可用"
@@ -184,6 +210,7 @@ enum AudioSessionEvent {
             capture("media services lost")
             onEvent?(.mediaLost)
         case AVAudioSession.mediaServicesWereResetNotification:
+            operationGeneration = UUID()
             mediaAvailable = true
             ownsActivation = false
             interrupted = false

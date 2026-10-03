@@ -8,7 +8,7 @@ AudioRelayLab-unsigned.ipa 是未签名构建，不能直接作为已签名 App 
 证书、P12 密码、描述文件只在自己的签名环境中使用，不上传到 GitHub 或 CI。
 默认 Bundle ID：com.audiorelaylab.AudioRelayLab。
 若签名工具修改 Bundle ID，最终 Bundle ID、描述文件、application-identifier 等签名 entitlements 必须匹配。
-第一版没有额外 entitlement 文件，没有推送、iCloud、App Groups 等能力。
+当前构建没有额外 entitlement 文件，没有推送、iCloud、App Groups 等能力。
 后台音频通过 Info.plist 的 UIBackgroundModes = [audio] 配置。
 签名工具应保留该配置，并生成与自己证书和描述文件相符的签名 entitlements。
 

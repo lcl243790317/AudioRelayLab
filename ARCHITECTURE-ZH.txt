@@ -15,7 +15,7 @@ playing / interrupted / failed / completed / cancelled / stopped。
 状态机对重复准备、重复开始、终态后的过期回调等做合法性判断。
 prepare() 只准备；startPrepared() 才提交未来调度；start() 保留快捷准备并调度接口。
 参数和 settings 在本轮开始固定，准备或运行时 UI 锁定。
-任务取消与 experiment token / engine generation 必须在权限返回、异步准备返回、
+任务取消与 experiment token / engine generation 必须在任务首次执行、权限返回、异步准备返回、
 状态通知和完成回调处重新校验，stop 后旧回调不得重启播放或覆盖新实验。
 
 正常路径：idle → preparing → prepared → waiting → playing → completed。
@@ -56,6 +56,8 @@ D 记录 availableInputs / currentRoute.inputs / outputs / port type，
 同时显示 HFP 已允许与实际路由是否使用 HFP，不能假设蓝牙已连接。
 
 setCategory、setMode、setActive、overrideOutputAudioPort 和引擎启动可失败。
+会话操作也有失效 UUID：每个系统 API 返回后重新检查，中断、取消或媒体重置
+使正在执行的配置失效；迟到的激活成功会走清理，不继续创建引擎或覆盖中断状态。
 用户界面显示友好错误和稍后重试；技术详情保存 error domain / code / 安全消息 /
 有意义的 OSStatus / fourCC，使用公开错误枚举而非魔术数字。
 自动日志不 dump userInfo，不输出完整路径、设备 UID 或私人蓝牙设备名称。
@@ -79,6 +81,8 @@ scheduleSegment → 未来 AVAudioTime(hostTime:) 的 play(at:)。
 interruption begin / end 保存通知时间、选项、会话 / 路由 / engine 状态。
 用户停止优先；恢复必须系统建议、状态可恢复、无已知通话占用，并有有限次数预算。
 一次恢复失败就进入安全终态，不反复 setActive，不无限循环。
+系统不保证每次 interruption began 都有 ended；只有用户明确重新准备时，
+在媒体服务和公开通话门禁允许后重置旧中断缓存，并由新 setActive 最终裁决。
 Engine 恢复会重建或重新排队，日志说明这是新尝试，不代表原调度连续执行。
 路由变化检查当前实际路由与格式，切断无效输出，避免继续使用旧图。
 media services lost / reset 废弃本轮对象，下次手动准备重建，不自动恢复旧实验。
