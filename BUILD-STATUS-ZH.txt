@@ -5,6 +5,17 @@ AudioRelayLab 1.5.1 / build 9 — 本轮验证状态
 Bundle ID：com.audiorelaylab.AudioRelayLab；仅 iPhone；最低 iOS 17.0。
 正式功能使用 iOS 18.1.1 已有公开 API；没有重新创建仓库或改写既有历史。
 
+1.5.1 本轮交付：
+- 本地音频库和录音与 AI 声音共用加入时间倒序；旧元数据回退到音频文件创建/修改时间，内置测试音在最后。
+- AI 从库直接选择人声；回听不替换当前播放选择；成品直接分享或用于延迟播放。
+- 四种 AI 转换方式和手机详细调音放入高级入口；首页一键开始延迟播放，保留高级手动准备。
+- 页面职责拆分；录音、混音、取消、连接恢复、删除保护及历史兼容继续保留。
+- 当前正式音色没有添加未验收声线；社区 RVC 结果是本地候选试听，见 REFINEMENT-RESEARCH-ZH.md。
+- 编译源码 5b4da891c4b6d8a04677e83db419e5bcf93d953b：162 XCTest，30 Python，Swift 警告 0；5 张实际日/夜截图已检查。
+- 本地 IPA：dist/AudioRelayLab-1.5.1-unsigned.ipa；1.5.1/build 9；1029839 字节；SHA-256 d093634b97617be24a6c5c44fdec1d94ef3dacaccf41203419183cb81482b2ab。
+- 完整构建快照：dist/ci-run-37151910477；ZIP 哈希 f1d1c19d1e94a57db72d7894d9724fdc00462cf0af28cf40a0a4ec5537c93b92。
+- 下方 1.5.0/1.4.0 部分保留为历史；1.5.1 真机排序、库选择与连续 AI 操作尚待用户复测。
+
 1.5.0 本轮三项增量：
 - 首页总时长下提供两个圆点选择起止范围，可分别微调 0.1 秒/1 秒；试听使用编辑区间；应用后影响两套播放器、Mixer 音乐和 AI 输入裁剪。
 - AI 原声录制按写入帧精确截断为最多 60 秒并自动保存；手机编码、上传、服务端输入/输出和 AI 人声混音统一支持 0.3–60 秒。
@@ -87,9 +98,20 @@ https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
 Simulator 麦克风可能为零输入，不证明真人声音或 18.1.1 硬件行为。
 选择器回调测试不等于真实 Files/iCloud/第三方 Provider 的屏幕点选测试。
 
-待本轮真实 CI 更新：
-- 1.5.1 / build 9：两个音频库按加入时间倒序；AI 直接选库、独立试听、简单/高级入口与一键延迟播放。
-- 当前新源码尚待真实 Simulator/XCTest 与 iPhoneOS Release；旧 1.5.0 成果不代表本轮通过。
+本轮真实 CI 证据：
+- 源码提交：5b4da891c4b6d8a04677e83db419e5bcf93d953b
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37151910477
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：162 项，0 失败，TEST SUCCEEDED。
+- Python 自检：30 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1029839 字节。
+- SHA-256：d093634b97617be24a6c5c44fdec1d94ef3dacaccf41203419183cb81482b2ab
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。

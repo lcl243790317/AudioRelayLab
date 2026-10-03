@@ -1,0 +1,143 @@
+{
+  "rvcRepository": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+  "rvcRevision": "81eed5e8f68b6bed1789f682fe78cdd324495afc",
+  "rvcLicense": "MIT repository license",
+  "seedRevision": "51383efd921027683c89e5348211d93ff12ac2a8",
+  "sampleOrigin": "Seed-VC examples/source/source_s3.wav and source_s4.wav; public demo speech, private local evaluation; original performer rights not independently established",
+  "candidateStatus": "Private auditions only; no verified training-data authorization or user quality acceptance; not registered in production",
+  "files": [
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "hubert_base/config.json",
+      "sha256": "0346950779dfb7f9316fa74ed846e2b8a22a08eedfdc5387b73f327cb1a4a7cf",
+      "bytes": 1492
+    },
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "hubert_base/preprocessor_config.json",
+      "sha256": "7c1976a680fb7acc757cd36fb08eef878fa36c70b4c9d2d595df9c608bbbbf0e",
+      "bytes": 225
+    },
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "hubert_base/pytorch_model.bin",
+      "sha256": "cc8c20f4b90a520757260197a3ff2505705a7adbd20ad9eeaa4e1a9b38442ef5",
+      "bytes": 189206711
+    },
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "rmvpe.pt",
+      "sha256": "6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193",
+      "bytes": 181184272
+    },
+    {
+      "repository": "chaye741/RVC-Voice-Models",
+      "revision": "acfd9f836ca1fc862a594bc303cfccee8d565e94",
+      "path": "weights/女声-雅琳御姐.pth",
+      "sha256": "c162802b00ee29ef5f2ed3595fa200495fe11e8e336fc5ce1cc4a320aca05541",
+      "bytes": 57581999
+    },
+    {
+      "repository": "chaye741/RVC-Voice-Models",
+      "revision": "acfd9f836ca1fc862a594bc303cfccee8d565e94",
+      "path": "indices/女声-雅琳御姐.index",
+      "sha256": "e03bcab3631db4a2ed9c512b488f00ac8574c8df960a4bf19a715b6e43b55ffd",
+      "bytes": 202482419
+    },
+    {
+      "repository": "lowo/RVC-weights",
+      "revision": "8ff8d75d1cb5bf96116ac2eb63ebe8ff62d98f7c",
+      "path": "!!For_yaorao 御姐.zip",
+      "sha256": "8bdf8e4909de1f7d35a069ae3b22f48534835736bed50386486c56a9577ed50c",
+      "bytes": 255918878
+    },
+    {
+      "localName": "yalin.pth",
+      "sha256": "c162802b00ee29ef5f2ed3595fa200495fe11e8e336fc5ce1cc4a320aca05541",
+      "bytes": 57581999
+    },
+    {
+      "localName": "yalin.index",
+      "sha256": "e03bcab3631db4a2ed9c512b488f00ac8574c8df960a4bf19a715b6e43b55ffd",
+      "bytes": 202482419
+    },
+    {
+      "localName": "yaorao.pth",
+      "sha256": "6600d312787cb4bcbece2f20e2eacf63aa700d4826e45583777d5556a612ddd0",
+      "bytes": 55217797
+    }
+  ],
+  "extraDependencies": {
+    "faiss-cpu": "1.10.0",
+    "praat-parselmouth": "0.4.7",
+    "av": "15.1.0",
+    "local-attention": "1.11.2",
+    "torchfcpe": "0.0.4",
+    "ffmpeg-python": "0.2.0",
+    "future": "1.0.0"
+  },
+  "borrowedEnvironment": "Existing Seed-VC .venv packages are read via .pth; torch 2.5.1+cu124, numpy 1.26.4, transformers 4.46.3",
+  "rvcSourceZipSHA256": "c0427564fbeb584d1a4805a5e71b5897132a41b9029a0fa9f417497a6df13e43",
+  "auditionDownloads": [
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "hubert_base/config.json",
+      "sha256": "0346950779dfb7f9316fa74ed846e2b8a22a08eedfdc5387b73f327cb1a4a7cf",
+      "bytes": 1492,
+      "localName": "Retrieval-based-Voice-Conversion-WebUI-81eed5e8f68b6bed1789f682fe78cdd324495afc/assets/hubert_base/config.json"
+    },
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "hubert_base/preprocessor_config.json",
+      "sha256": "7c1976a680fb7acc757cd36fb08eef878fa36c70b4c9d2d595df9c608bbbbf0e",
+      "bytes": 225,
+      "localName": "Retrieval-based-Voice-Conversion-WebUI-81eed5e8f68b6bed1789f682fe78cdd324495afc/assets/hubert_base/preprocessor_config.json"
+    },
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "hubert_base/pytorch_model.bin",
+      "sha256": "cc8c20f4b90a520757260197a3ff2505705a7adbd20ad9eeaa4e1a9b38442ef5",
+      "bytes": 189206711,
+      "localName": "Retrieval-based-Voice-Conversion-WebUI-81eed5e8f68b6bed1789f682fe78cdd324495afc/assets/hubert_base/pytorch_model.bin"
+    },
+    {
+      "repository": "lj1995/VoiceConversionWebUI",
+      "revision": "e6d0c1a17da07c33557852f9dfa2bd44cc75737d",
+      "path": "rmvpe.pt",
+      "sha256": "6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193",
+      "bytes": 181184272,
+      "localName": "Retrieval-based-Voice-Conversion-WebUI-81eed5e8f68b6bed1789f682fe78cdd324495afc/assets/rmvpe/rmvpe.pt"
+    },
+    {
+      "repository": "chaye741/RVC-Voice-Models",
+      "revision": "acfd9f836ca1fc862a594bc303cfccee8d565e94",
+      "path": "weights/女声-雅琳御姐.pth",
+      "sha256": "c162802b00ee29ef5f2ed3595fa200495fe11e8e336fc5ce1cc4a320aca05541",
+      "bytes": 57581999,
+      "localName": "yalin.pth"
+    },
+    {
+      "repository": "chaye741/RVC-Voice-Models",
+      "revision": "acfd9f836ca1fc862a594bc303cfccee8d565e94",
+      "path": "indices/女声-雅琳御姐.index",
+      "sha256": "e03bcab3631db4a2ed9c512b488f00ac8574c8df960a4bf19a715b6e43b55ffd",
+      "bytes": 202482419,
+      "localName": "yalin.index"
+    },
+    {
+      "repository": "lowo/RVC-weights",
+      "revision": "8ff8d75d1cb5bf96116ac2eb63ebe8ff62d98f7c",
+      "path": "!!For_yaorao 御姐.zip",
+      "sha256": "8bdf8e4909de1f7d35a069ae3b22f48534835736bed50386486c56a9577ed50c",
+      "bytes": 255918878,
+      "localName": "yaorao.zip"
+    }
+  ]
+}
