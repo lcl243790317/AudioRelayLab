@@ -5,5 +5,52 @@
   "attribution": "Alibaba Inc. / QwenAudio CosyVoice",
   "path": "asset/zero_shot_prompt.wav",
   "license": "Apache-2.0 repository license",
-  "usage": "Private local reference; no paid tuner preset copied"
+  "usage": "Private local reference; no paid tuner preset copied",
+  "additionalReferences": [
+    {
+      "id": "female-cn",
+      "name": "清雅女声 · 中文",
+      "repository": "Plachtaa/seed-vc",
+      "revision": "51383efd921027683c89e5348211d93ff12ac2a8",
+      "path": "examples/reference/s3p1.wav",
+      "sha256": "0cc05439406e44eeaa7be15742aa71e2ca8b9c43adbcd496ea1672d9283aa9b0",
+      "license": "GPL-3.0 repository; published demo reference, private evaluation"
+    },
+    {
+      "id": "female-neutral",
+      "name": "柔和女声 · 跨语种",
+      "repository": "Plachtaa/seed-vc",
+      "revision": "51383efd921027683c89e5348211d93ff12ac2a8",
+      "path": "examples/reference/s1p1.wav",
+      "sha256": "be291f04e9c239218082552e9e7c0dba9bad5ce6306d2c9d2104195840214b5a",
+      "license": "GPL-3.0 repository; published demo reference, private evaluation"
+    },
+    {
+      "id": "female-bright",
+      "name": "明亮女声 · 跨语种",
+      "repository": "Plachtaa/seed-vc",
+      "revision": "51383efd921027683c89e5348211d93ff12ac2a8",
+      "path": "examples/reference/s2p1.wav",
+      "sha256": "308a38a5ac0a133a7d4742a95494d9670042fd9a233e60448f8370a9eba98a98",
+      "license": "GPL-3.0 repository; published demo reference, private evaluation"
+    },
+    {
+      "id": "male-theatrical",
+      "name": "戏剧男声 · 中文",
+      "repository": "Plachtaa/seed-vc",
+      "revision": "51383efd921027683c89e5348211d93ff12ac2a8",
+      "path": "examples/reference/s4p1.wav",
+      "sha256": "53892ece071342958403bc5643f84169a30b89cc0fc79eb69508bfa11dd85e68",
+      "license": "GPL-3.0 repository; published demo reference, private evaluation"
+    },
+    {
+      "id": "neutral-openvoice",
+      "name": "中性音色 · 跨语种",
+      "repository": "myshell-ai/OpenVoice",
+      "revision": "74a1d147b17a8c3092dd5430504bd83ef6c7eb23",
+      "path": "resources/example_reference.mp3",
+      "sha256": "d0f5806f6e034e660c46a0b2fe4c597f0a1670859743c14e27a8823a7d169263",
+      "license": "MIT repository; published demo reference, private evaluation"
+    }
+  ]
 }

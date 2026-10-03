@@ -7,6 +7,9 @@ void *VLCreate(double sampleRate);
 void VLDestroy(void *context);
 void VLParameters(void *context, float pitch, float formant, float highpass, float lowmid,
                   float presence, float air, float compression, float deesser, float wet, float gain, float robot);
+void VLAdvancedParameters(void *context, float inputGainDB, float gateThresholdDB, float gateDepth,
+                          float compressorThresholdDB, float compressorRatio, float attackMS, float releaseMS,
+                          float presenceHz, float presenceQ, float deesserHz, float consonantProtection, float formantBaseHz);
 void VLProcess(void *context, const float *input, float *output, unsigned frames);
 void VLInput(void *context, const AudioBufferList *input, unsigned frames);
 void VLRender(void *context, AudioBufferList *output, unsigned frames);

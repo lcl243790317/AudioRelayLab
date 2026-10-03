@@ -105,7 +105,7 @@ struct MainView: View {
                 HStack(spacing:16) {
                     Image(systemName:"music.note").font(.title).frame(width:58,height:58).background(PaperTheme.background)
                     VStack(alignment:.leading,spacing:6) {
-                        Text(audio.fileName).font(.headline).lineLimit(2)
+                        Text(audio.libraryName).font(.headline).lineLimit(2)
                         PaperCaption(AudioPlaybackSettings.time(audio.duration)+" · "+audio.formatDescription)
                     }
                 }
@@ -129,11 +129,7 @@ struct MainView: View {
                 Button("取消导入") { coordinator.cancelImport() }
             }
             if !coordinator.library.isEmpty {
-                DisclosureGroup("本地音频库（\(coordinator.library.count)）") {
-                    ForEach(coordinator.library) { asset in
-                        Button(asset.fileName) { coordinator.selectLocal(asset) }.disabled(coordinator.isRunning || voice.isActive)
-                    }
-                }
+                NavigationLink("本地音频库（\(coordinator.library.count)）") { LocalAudioLibraryView(coordinator:coordinator) }
             }
         }
     }

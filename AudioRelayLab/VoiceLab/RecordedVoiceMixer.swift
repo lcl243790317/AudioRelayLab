@@ -22,7 +22,9 @@ enum RecordedVoiceMixer {
         defer { voice.stop(); music.stop(); engine.stop(); engine.disableManualRenderingMode() }
         voice.scheduleFile(voiceFile,at:nil); music.scheduleFile(musicFile,at:nil)
         try engine.start(); voice.play(); music.play()
-        let destination = try AudioFileManager.audioDirectory().appendingPathComponent("\(UUID()).wav")
+        let id = UUID()
+        let name = AudioNaming.generated(kind:"混音",label:"AI人声与音乐",fileExtension:"wav",id:id)
+        let destination = try AudioFileManager.audioDirectory().appendingPathComponent(name)
         do {
           // Close/finalize the WAV header before opening it for inspection.
           do {
@@ -47,7 +49,7 @@ enum RecordedVoiceMixer {
                 }
             }
           }
-            let asset = try AudioFileManager.inspect(url:destination,displayName:"AI 人声与音乐混合.wav",source:.mixedRecording)
+            let asset = try AudioFileManager.inspect(url:destination,displayName:name,id:id,source:.mixedRecording)
             try AudioFileManager.register(asset)
             return asset
         } catch { try? FileManager.default.removeItem(at:destination); throw error }

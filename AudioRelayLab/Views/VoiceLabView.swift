@@ -44,6 +44,28 @@ struct VoiceLabView: View {
                     Picker("音色",selection:$ai.selectedVoice) {
                         ForEach(ai.voices) { Text($0.name).tag($0.id) }
                     }.disabled(ai.busy || voice.isActive)
+                    Picker("表达与转换方式",selection:$ai.mode) {
+                        ForEach(ai.availableModes) { Text($0.title).tag($0) }
+                    }.disabled(ai.busy || voice.isActive)
+                    PaperCaption(ai.mode.explanation)
+                    DisclosureGroup("AI 微调") {
+                        Toggle("自定义参数",isOn:$ai.customSettings).disabled(ai.busy || voice.isActive)
+                        if ai.customSettings {
+                            Text("生成步数 \(Int(ai.diffusionSteps))").font(.subheadline)
+                            Slider(value:$ai.diffusionSteps,in:20...80,step:1)
+                            if ai.mode.isV2 {
+                                Text("咬字清晰度 \(Int(ai.clarity*100))%").font(.subheadline)
+                                Slider(value:$ai.clarity,in:0...1,step:0.05)
+                                Text("目标音色相似度 \(Int(ai.similarity*100))%").font(.subheadline)
+                                Slider(value:$ai.similarity,in:0...1,step:0.05)
+                            }
+                            if ai.mode == .preserveProsody {
+                                Text(String(format:"目标音高微调 %+.1f 半音",ai.pitchShift)).font(.subheadline)
+                                Slider(value:$ai.pitchShift,in:-6...6,step:0.5)
+                            }
+                        }
+                        PaperCaption("关闭自定义即采用电脑已调校参数。切换模型首次生成会重新加载，步数越高等待越久。")
+                    }.disabled(ai.busy || voice.isActive)
                     DisclosureGroup("音色来源与电脑连接") {
                         if let selected = ai.voices.first(where:{$0.id == ai.selectedVoice}) {
                             PaperCaption(selected.referenceOrigin)
@@ -51,10 +73,10 @@ struct VoiceLabView: View {
                         Button("查看连接设置") { showConnection = true }.disabled(ai.busy)
                     }
                 }
-                PaperCaption("保留原话、停顿和语调走势，转换为参考音色；自然度取决于两段录音。")
+                PaperCaption("建议先测试自然说话；要精确保留口气可选严格保留语调。自然度取决于原声与参考音色。")
             }
             PaperCard("一段纯人声") {
-                Text(ai.input?.fileName ?? "尚未录制或选择人声").font(.headline).lineLimit(2)
+                Text(ai.input?.libraryName ?? "尚未录制或选择人声").font(.headline).lineLimit(2)
                 if voice.isActive {
                     ProgressView("正在录原声",value:Double(min(1,max(0,voice.inputLevel))))
                     PaperCaption(voice.status)
@@ -87,7 +109,7 @@ struct VoiceLabView: View {
                 if let error = voice.errorMessage { Text(error).font(.callout).foregroundStyle(.orange) }
                 if let result = ai.result {
                     Divider()
-                    Text(result.fileName).font(.headline)
+                    Text(result.libraryName).font(.headline)
                     HStack {
                         Button("回听") { coordinator.selectLocal(result); coordinator.audition() }
                         Button("应用到音频页") { coordinator.selectLocal(result) }
@@ -142,6 +164,24 @@ struct VoiceLabView: View {
                     presetSlider("机器人效果",value:$voice.preset.robot,range:0...1,step:0.01,unit:"%")
                     presetSlider("音色输出增益",value:$voice.preset.outputGain,range:0...2,step:0.01,unit:"倍")
                     PaperCaption("调节即时生效；总输出仍有削波保护。混合比例为 0% 时保留原声，效果强度为 0% 时关闭调音。")
+                }
+                DisclosureGroup("咬字 · 共振峰细节") {
+                    presetSlider("辅音保护",value:$voice.preset.consonantProtection,range:0...1,step:0.01,unit:"%")
+                    presetSlider("清晰度中心频率",value:$voice.preset.presenceHz,range:800...6000,step:50,unit:"Hz")
+                    presetSlider("清晰度带宽 Q",value:$voice.preset.presenceQ,range:0.3...3,step:0.05,unit:"Q")
+                    presetSlider("齿音检测频率",value:$voice.preset.deesserHz,range:3000...10000,step:100,unit:"Hz")
+                    presetSlider("共振峰分析基频",value:$voice.preset.formantBaseHz,range:0...400,step:5,unit:"Hz")
+                    PaperCaption("辅音保护减少 s、sh、t 等声音的涂抹感。分析基频为 0 时自动检测，也可填入校准测得的原声基频。")
+                }
+                DisclosureGroup("麦克风 · 噪声与压缩细节") {
+                    presetSlider("输入增益",value:$voice.preset.inputGainDB,range:-18...18,step:0.5,unit:"dB")
+                    presetSlider("噪声门阈值",value:$voice.preset.gateThresholdDB,range:-80 ... -20,step:1,unit:"dB")
+                    presetSlider("噪声门衰减",value:$voice.preset.gateDepth,range:0...1,step:0.01,unit:"%")
+                    presetSlider("压缩阈值",value:$voice.preset.compressorThresholdDB,range:-40...0,step:1,unit:"dB")
+                    presetSlider("压缩比",value:$voice.preset.compressorRatio,range:1...10,step:0.1,unit:":1")
+                    presetSlider("压缩启动",value:$voice.preset.attackMS,range:1...80,step:1,unit:"ms")
+                    presetSlider("压缩释放",value:$voice.preset.releaseMS,range:20...500,step:5,unit:"ms")
+                    PaperCaption("轻声被吞掉时先降低噪声门阈值或衰减；音量忽大忽小时再调压缩。女声先校准音高，避免一次升得过高。")
                 }
                 Button("恢复当前预设参数") {
                     voice.preset = VoicePreset.all.first(where:{$0.id == voice.preset.id}) ?? VoicePreset.all[0]
@@ -215,6 +255,7 @@ struct VoiceLabView: View {
                 let target:Double = ["female":210,"mature":185,"girl":240,"loli":270,"sweet":225][voice.preset.id]
                     ?? min(400,max(65,pitch*pow(2,Double(voice.preset.pitch)/12)))
                 voice.preset.pitch = try VoiceCalibration.pitchShift(source:pitch,target:target)
+                voice.preset.formantBaseHz = Float(min(400,max(0,pitch)))
                 voice.strength = 1; voice.updateParameters()
                 calibration = String(format:"原声约 %.0f Hz → 目标 %.0f Hz；已应用 %+.1f 半音。",pitch,target,voice.preset.pitch)
             } catch { calibration = userFacingAudioError(error) }
@@ -222,10 +263,12 @@ struct VoiceLabView: View {
     }
     private func mix(_ result:AudioAsset) {
         guard let music = coordinator.library.first(where:{$0.id == backgroundID}) else { return }
+        do { try coordinator.beginMixing() }
+        catch { mixStatus = userFacingAudioError(error); return }
         mixing = true; coordinator.preview.stop()
         let volumes = AudioMixParameters(voice:voice.voiceVolume,music:voice.musicVolume,master:voice.masterVolume)
         Task {
-            defer { mixing = false }
+            defer { mixing = false; coordinator.endMixing() }
             do {
                 let voiceURL = try AudioFileManager.url(for:result), musicURL = try AudioFileManager.url(for:music)
                 _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:.init(),volumes:volumes) }.value

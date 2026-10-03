@@ -29,6 +29,7 @@ import UniformTypeIdentifiers
     @Published private(set) var remaining: Double = 0
     @Published private(set) var diagnosticState = "尚未创建播放器"
     @Published private(set) var isImporting = false
+    @Published private(set) var isMixing = false
     @Published var errorMessage: String?
     @Published private(set) var technicalDetails: String?
     private var machine = ExperimentStateMachine()
@@ -102,10 +103,15 @@ import UniformTypeIdentifiers
     }
     var isRunning: Bool { machine.isActive }
     var busy: Bool { isImporting || state == .preparing }
-    var controlsLocked: Bool { isImporting || machine.isActive || voiceLab.isActive || aiVoice.busy }
+    var controlsLocked: Bool { isImporting || isMixing || machine.isActive || voiceLab.isActive || aiVoice.busy }
+    func beginMixing() throws {
+        guard !controlsLocked else { throw LabError.audioUnavailable }
+        isMixing = true
+    }
+    func endMixing() { isMixing = false }
 
     func importAudio(_ url: URL) {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { report(LabError.audioUnavailable, message: "请先结束当前实验或变声再选择音频。"); return }
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !isMixing else { report(LabError.audioUnavailable, message: "请先结束当前实验、变声或混音再选择音频。"); return }
         cancelImport()
         preview.reset()
         let lease = AudioAccessLease(url)
@@ -129,7 +135,7 @@ import UniformTypeIdentifiers
         }
     }
     func useTestAudio() {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { return }
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !isMixing else { return }
         cancelImport()
         do {
             let metadata = try AudioFileManager.loadBundledAudio()
@@ -144,8 +150,23 @@ import UniformTypeIdentifiers
         do { library = try AudioFileManager.listLocalAudio() }
         catch { logger.log("音频库读取失败", diagnosticError(error)) }
     }
+    func deleteAudio(_ asset: AudioAsset) {
+        guard !controlsLocked, !aiVoice.connecting, asset.source != .bundled else { return }
+        preview.reset()
+        do {
+            try AudioFileManager.removeAudio(asset)
+            aiVoice.forgetAsset(asset.id)
+            if audio?.id == asset.id { useTestAudio() }
+            refreshLibrary()
+            try voiceLab.removeRecord(for: asset.id)
+            logger.log("音频删除", "asset=\(asset.id)，来源=\(asset.source.rawValue)；实验历史保留。")
+        } catch {
+            refreshLibrary()
+            report(error, message:"删除音频未完成，请检查诊断后重试。")
+        }
+    }
     func selectAudio(_ asset: AudioAsset) throws {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { throw LabError.message("请先结束正式实验或变声") }
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !isMixing else { throw LabError.message("请先结束正式实验、变声或混音") }
         var checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
             id: asset.id, source: asset.source, presetName: asset.presetName)
         checked.aiConversion = asset.aiConversion
@@ -159,7 +180,7 @@ import UniformTypeIdentifiers
         refreshLibrary()
     }
     func selectLocal(_ asset: AudioAsset) {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { return }
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !isMixing else { return }
         cancelImport()
         do { try selectAudio(asset) }
         catch { report(error, message: "本地音频无法读取，请重新导入。") }

@@ -14,20 +14,38 @@ struct VoicePreset: Codable, Identifiable, Hashable {
     var wet: Float = 1
     var outputGain: Float = 0.85
     var robot: Float = 0
-    enum CodingKeys: String, CodingKey { case id,name,pitch,formant,highpass,lowmid,presence,air,compression,deesser,wet,outputGain,robot }
+    var inputGainDB: Float = 0
+    var gateThresholdDB: Float = -65
+    var gateDepth: Float = 0.6
+    var compressorThresholdDB: Float = -18
+    var compressorRatio: Float = 3
+    var attackMS: Float = 10
+    var releaseMS: Float = 120
+    var presenceHz: Float = 2500
+    var presenceQ: Float = 0.75
+    var deesserHz: Float = 6500
+    var consonantProtection: Float = 0.6
+    var formantBaseHz: Float = 0
+    enum CodingKeys: String, CodingKey { case id,name,pitch,formant,highpass,lowmid,presence,air,compression,deesser,wet,outputGain,robot,
+        inputGainDB,gateThresholdDB,gateDepth,compressorThresholdDB,compressorRatio,attackMS,releaseMS,presenceHz,presenceQ,deesserHz,consonantProtection,formantBaseHz }
     func validate() throws {
-        let values = [pitch,formant,highpass,lowmid,presence,air,compression,deesser,wet,outputGain,robot]
+        let values = [pitch,formant,highpass,lowmid,presence,air,compression,deesser,wet,outputGain,robot,
+            inputGainDB,gateThresholdDB,gateDepth,compressorThresholdDB,compressorRatio,attackMS,releaseMS,presenceHz,presenceQ,deesserHz,consonantProtection,formantBaseHz]
         guard values.allSatisfy(\.isFinite), (-12...12).contains(pitch), (-8...8).contains(formant),
             (20...500).contains(highpass), [lowmid,presence,air].allSatisfy({ (-12...12).contains($0) }),
-            [compression,deesser,wet,robot].allSatisfy({ (0...1).contains($0) }), (0...2).contains(outputGain) else { throw LabError.invalidFormat }
+            [compression,deesser,wet,robot,gateDepth,consonantProtection].allSatisfy({ (0...1).contains($0) }), (0...2).contains(outputGain),
+            (-18...18).contains(inputGainDB), (-80 ... -20).contains(gateThresholdDB), (-40...0).contains(compressorThresholdDB),
+            (1...10).contains(compressorRatio), (1...80).contains(attackMS), (20...500).contains(releaseMS),
+            (800...6000).contains(presenceHz), (0.3...3).contains(presenceQ), (3000...10000).contains(deesserHz),
+            (0...400).contains(formantBaseHz) else { throw LabError.invalidFormat }
     }
     static let all: [VoicePreset] = [
         .init(id:"original",name:"原声",pitch:0,formant:0,highpass:20,lowmid:0,presence:0,compression:0,deesser:0,wet:0,outputGain:1),
-        .init(id:"female",name:"自然女声",pitch:7,formant:2.8,highpass:100,lowmid:-3,presence:1.2,air:0.8,compression:0.3,deesser:0.5),
-        .init(id:"girl",name:"少女声",pitch:9,formant:3.5,highpass:110,lowmid:-3,presence:1.5,air:1,compression:0.3,deesser:0.5),
-        .init(id:"loli",name:"萝莉音",pitch:11,formant:4,highpass:130,lowmid:-4,presence:1.5,air:0.8,compression:0.35,deesser:0.55),
-        .init(id:"sweet",name:"甜美女声",pitch:7.5,formant:3,highpass:100,lowmid:-2.5,presence:1,air:1.2,compression:0.3,deesser:0.5),
-        .init(id:"mature",name:"成熟女声",pitch:5,formant:2.2,highpass:85,lowmid:-2,presence:0.8,air:0.5,compression:0.35,deesser:0.45),
+        .init(id:"female",name:"自然女声",pitch:4.5,formant:2.2,highpass:85,lowmid:-2,presence:1.2,air:0.5,compression:0.25,deesser:0.3),
+        .init(id:"girl",name:"少女声",pitch:6,formant:2.8,highpass:95,lowmid:-2.5,presence:1.5,air:0.8,compression:0.25,deesser:0.35),
+        .init(id:"loli",name:"萝莉音",pitch:8,formant:3.5,highpass:105,lowmid:-3,presence:1.5,air:0.5,compression:0.3,deesser:0.4),
+        .init(id:"sweet",name:"甜美女声",pitch:5.5,formant:2.5,highpass:90,lowmid:-2,presence:1,air:0.8,compression:0.25,deesser:0.3),
+        .init(id:"mature",name:"成熟女声",pitch:3.5,formant:1.8,highpass:75,lowmid:-1.5,presence:0.8,air:0.3,compression:0.3,deesser:0.3),
         .init(id:"boy",name:"正太音",pitch:3.5,formant:1.4,highpass:100,lowmid:-1,presence:1.5,air:0.5),
         .init(id:"male",name:"自然男声",pitch:-2.5,formant:-1.5,highpass:65,lowmid:1,presence:1),
         .init(id:"young",name:"青年男声",pitch:-1,formant:-0.8,highpass:75,lowmid:-1,presence:2),
@@ -65,7 +83,11 @@ extension VoicePreset {
         self.init(id:(try? c.decode(String.self,forKey:.id)) ?? "legacy",name:(try? c.decode(String.self,forKey:.name)) ?? "旧音色",
             pitch:number(.pitch,0),formant:number(.formant,0),highpass:number(.highpass,80),lowmid:number(.lowmid,0),
             presence:number(.presence,0),air:number(.air,0),compression:number(.compression,0.4),deesser:number(.deesser,0.35),
-            wet:number(.wet,1),outputGain:number(.outputGain,0.85),robot:number(.robot,0))
+            wet:number(.wet,1),outputGain:number(.outputGain,0.85),robot:number(.robot,0),
+            inputGainDB:number(.inputGainDB,0),gateThresholdDB:number(.gateThresholdDB,-65),gateDepth:number(.gateDepth,0.6),
+            compressorThresholdDB:number(.compressorThresholdDB,-18),compressorRatio:number(.compressorRatio,3),
+            attackMS:number(.attackMS,10),releaseMS:number(.releaseMS,120),presenceHz:number(.presenceHz,2500),presenceQ:number(.presenceQ,0.75),
+            deesserHz:number(.deesserHz,6500),consonantProtection:number(.consonantProtection,0.6),formantBaseHz:number(.formantBaseHz,0))
         try validate()
     }
 }

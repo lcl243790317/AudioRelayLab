@@ -131,6 +131,13 @@ enum AIRequestAudio {
     @Published var key = AIConnectionKey.load()
     @Published private(set) var voices:[AIVoice] = []
     @Published var selectedVoice = ""
+    @Published var mode = AIConversionMode.naturalSpeech
+    @Published private(set) var availableModes: [AIConversionMode] = [.preserveProsody]
+    @Published var customSettings = false
+    @Published var diffusionSteps: Double = 40
+    @Published var clarity: Double = 0.9
+    @Published var similarity: Double = 0.65
+    @Published var pitchShift: Double = 0
     @Published var input:AudioAsset?
     @Published private(set) var result:AudioAsset?
     @Published private(set) var busy = false
@@ -161,8 +168,13 @@ enum AIRequestAudio {
         input = asset; result = nil; errorMessage = nil
         status = asset == nil ? "正在准备录制新原声" : "原声已就绪，可以生成 AI 声音"
     }
+    func forgetAsset(_ id: UUID) {
+        guard !busy else { return }
+        if input?.id == id { input = nil }
+        if result?.id == id { result = nil }
+    }
     private struct VoicesResponse:Decodable { let voices:[AIVoice] }
-    private struct Health:Decodable { let engine:String; let modelState:String; let protocolVersion:Int? }
+    private struct Health:Decodable { let engine:String; let modelState:String; let protocolVersion:Int?; let conversionModes:[String]? }
     private struct Job:Decodable {
         let id:String; let state:String; let message:String
         let metadata:AIConversionMetadata?
@@ -209,6 +221,9 @@ enum AIRequestAudio {
                 }
                 UserDefaults.standard.set(self.address,forKey:"aiAddress")
                 self.voices = voices
+                self.availableModes = health.conversionModes?.compactMap(AIConversionMode.init(rawValue:)) ?? [.preserveProsody]
+                guard !self.availableModes.isEmpty else { throw LabError.message("电脑服务没有兼容的转换方式，请更新电脑服务") }
+                if !self.availableModes.contains(self.mode) { self.mode = self.availableModes[0] }
                 if !voices.contains(where:{$0.id == self.selectedVoice}) { self.selectedVoice = voices[0].id }
                 self.status = "电脑已连接 · 首次生成可能需要下载模型"
                 self.logger?.log("AI 已连接", "引擎=\(health.engine)，模型状态=\(health.modelState)，音色数=\(voices.count)，协议=\(health.protocolVersion ?? 1)")
@@ -221,11 +236,25 @@ enum AIRequestAudio {
         }
     }
     func convert(start:Double=0, limit:Double?=nil) {
-        guard !busy, !connecting, let input, voices.contains(where:{$0.id == selectedVoice}) else { return }
+        guard !busy, !connecting, let input, voices.contains(where:{$0.id == selectedVoice}), availableModes.contains(mode) else { return }
         beforeConvert?()
         let token = UUID(); generation = token; busy = true; result = nil; errorMessage = nil
         logger?.log("AI 准备", "来源=\(input.source.rawValue)，时长=\(input.duration)，起点=\(start)，限制=\(limit.map { String($0) } ?? "完整")")
         let profile = selectedVoice
+        let conversionMode = mode
+        var options: [URLQueryItem] = [.init(name:"voice",value:profile),.init(name:"mode",value:conversionMode.rawValue)]
+        if customSettings {
+            guard diffusionSteps.isFinite, (20...80).contains(diffusionSteps), clarity.isFinite, (0...1).contains(clarity),
+                similarity.isFinite, (0...1).contains(similarity), pitchShift.isFinite, (-6...6).contains(pitchShift) else {
+                busy = false; errorMessage = "AI 微调参数超出范围"; return
+            }
+            options.append(.init(name:"steps",value:String(Int(diffusionSteps))))
+            if conversionMode.isV2 {
+                options.append(.init(name:"intelligibility",value:String(clarity)))
+                options.append(.init(name:"similarity",value:String(similarity)))
+            }
+            if conversionMode == .preserveProsody { options.append(.init(name:"pitchShift",value:String(pitchShift))) }
+        }
         task = Task { [weak self] in
             guard let self else { return }
             var temporary:URL?
@@ -242,7 +271,7 @@ enum AIRequestAudio {
                 try Task.checkCancellation()
                 var submitURL = base.appendingPathComponent("v1/jobs")
                 guard var components = URLComponents(url:submitURL,resolvingAgainstBaseURL:false) else { throw LabError.invalidFormat }
-                components.queryItems = [.init(name:"voice",value:profile)]
+                components.queryItems = options
                 guard let withQuery = components.url, let temporary else { throw LabError.invalidFormat }
                 submitURL = withQuery
                 var upload = URLRequest(url:submitURL)
@@ -258,7 +287,7 @@ enum AIRequestAudio {
                     return
                 }
                 self.remoteID = submitted.id
-                self.logger?.log("AI 已提交", "任务=\(submitted.id)，音色=\(profile)")
+                self.logger?.log("AI 已提交", "任务=\(submitted.id)，音色=\(profile)，模式=\(conversionMode.rawValue)，参数=\(self.customSettings ? "自定义" : "推荐")")
                 try Task.checkCancellation()
                 var previousState = ""
                 for _ in 0..<1800 {
@@ -281,10 +310,12 @@ enum AIRequestAudio {
                             audio.count <= 16*1024*1024 else { throw LabError.message("转换文件校验失败") }
                         try Task.checkCancellation()
                         guard self.generation == token else { return }
-                        let local = try AudioFileManager.audioDirectory().appendingPathComponent("\(UUID()).wav")
+                        let id = UUID()
+                        let name = AudioNaming.generated(kind:"AI成品",label:metadata.voiceName+"-"+metadata.modeTitle,fileExtension:"wav",id:id)
+                        let local = try AudioFileManager.audioDirectory().appendingPathComponent(name)
                         do {
                             try audio.write(to:local,options:.atomic)
-                            var asset = try AudioFileManager.inspect(url:local,displayName:"AI \(metadata.voiceName).wav",source:.aiConverted,presetName:metadata.voiceName)
+                            var asset = try AudioFileManager.inspect(url:local,displayName:name,id:id,source:.aiConverted,presetName:metadata.voiceName)
                             guard asset.duration >= 0.3, asset.duration <= 40 else { throw LabError.invalidFormat }
                             asset.aiConversion = metadata
                             try AudioFileManager.register(asset)
@@ -331,4 +362,8 @@ struct AIConversionMetadata: Codable {
     let referenceOrigin:String
     let conversionSeconds:Double
     let settings:[String:Double]
+    var conversionMode: String? = nil
+    var modeTitle: String {
+        AIConversionMode(rawValue:conversionMode ?? "preserveProsody")?.title ?? "旧版转换"
+    }
 }

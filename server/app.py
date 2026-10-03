@@ -17,6 +17,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from conversion_profiles import MODES, conversion_settings
 
 ROOT = Path(__file__).resolve().parent
 MAX_BYTES = 16 * 1024 * 1024
@@ -78,10 +79,11 @@ class Service:
     def public_profile(self, profile):
         return {k:profile[k] for k in ("id", "name", "referenceOrigin")}
 
-    def submit(self, data, voice):
+    def submit(self, data, voice, mode="preserveProsody", overrides=None):
         if voice not in self.profiles:
             raise ValueError("请选择服务器提供的音色")
         duration = validate_wav(data)
+        settings = conversion_settings(self.profiles[voice], mode, overrides)
         with self.lock:
             if self.queue.full():
                 raise ValueError("服务器队列已满，请稍后重试")
@@ -97,12 +99,13 @@ class Service:
             source = folder / "source.wav"
             source.write_bytes(data)
             job = {"id":key, "state":"queued", "message":"等待电脑转换", "voiceID":voice,
-                   "inputDuration":duration, "created":time.time(), "cancel":threading.Event(),
+                   "inputDuration":duration, "conversionMode":mode, "conversionSettings":settings,
+                   "created":time.time(), "cancel":threading.Event(),
                    "folder":folder, "workerDone":False}
             self.jobs[key] = job
             self.queue.put_nowait(key)
             self.persist(key)
-            event("submitted", job=key, voice=voice, duration=duration)
+            event("submitted", job=key, voice=voice, mode=mode, duration=duration)
             return self.snapshot(key)
 
     def snapshot(self, key):
@@ -158,20 +161,27 @@ class Service:
                     self.model_state = "ready"
                 if job["cancel"].is_set():
                     continue
-                self.update(key, state="converting", message="正在生成目标音色，保留原话与语调")
                 profile = self.profiles[job["voiceID"]]
                 before = time.perf_counter()
-                settings = {k:profile[k] for k in ("steps", "intelligibility", "similarity", "topP", "temperature", "repetitionPenalty")}
+                settings = job["conversionSettings"]
+                prepare = getattr(self.backend, "prepare", None)
+                if prepare is not None:
+                    self.model_state = "loading"
+                    self.update(key, state="loading", message="正在加载所选 AI 模型；切换模型需要稍等")
+                    prepare(settings, job["cancel"])
+                    self.model_state = "ready"
+                self.update(key, state="converting", message="正在生成目标音色，保留原话")
                 metadata = self.backend.convert(job["folder"] / "source.wav", profile["referencePath"],
                                                 job["folder"] / "output.wav", settings, job["cancel"])
                 metadata.update(conversionSeconds=time.perf_counter()-before,
-                                voiceID=profile["id"], voiceName=profile["name"], referenceOrigin=profile["referenceOrigin"])
+                                voiceID=profile["id"], voiceName=profile["name"], referenceOrigin=profile["referenceOrigin"],
+                                conversionMode=job["conversionMode"])
                 if not job["cancel"].is_set():
                     self.update(key, state="complete", message="转换完成", metadata=metadata)
             except InterruptedError:
                 self.update(key, state="cancelled", message="已取消")
             except Exception as error:
-                if self.backend is None:
+                if self.backend is None or getattr(self.backend, "models", True) is None:
                     self.model_state = "failed"
                 if not job["cancel"].is_set():
                     self.update(key, state="failed", message="电脑 AI 推理失败，可直接重试。错误类型：" + type(error).__name__)
@@ -209,8 +219,8 @@ def make_handler(service):
             parts = parsed.path.strip("/").split("/")
             try:
                 if self.command == "GET" and parsed.path == "/v1/health":
-                    self.respond(200, {"engine":"Seed-VC F0 / RMVPE", "modelState":service.model_state,
-                                       "protocolVersion":2, "conversionMode":"preserveProsody",
+                    self.respond(200, {"engine":getattr(service.backend,"engine","Seed-VC V1 / V2 / F0"), "modelState":service.model_state,
+                                       "protocolVersion":3, "conversionMode":"preserveProsody", "conversionModes":list(MODES),
                                        "processID":os.getpid(),
                                        "maxSeconds":MAX_SECONDS, "device":str(service.backend.device) if service.backend else "pending"})
                 elif self.command == "GET" and parsed.path == "/v1/voices":
@@ -222,8 +232,13 @@ def make_handler(service):
                     data = self.rfile.read(length)
                     if len(data) != length:
                         raise ValueError("录音上传未完成")
-                    voice = parse_qs(parsed.query).get("voice", [""])[0]
-                    self.respond(202, service.submit(data, voice))
+                    query = parse_qs(parsed.query, keep_blank_values=True)
+                    if any(len(v) != 1 for v in query.values()) or set(query)-{"voice","mode","steps","intelligibility","similarity","pitchShift"}:
+                        raise ValueError("AI 请求包含未知或重复参数")
+                    voice = query.get("voice", [""])[0]
+                    mode = query.get("mode", ["preserveProsody"])[0]
+                    overrides = {k:v[0] for k,v in query.items() if k not in ("voice","mode")}
+                    self.respond(202, service.submit(data, voice, mode, overrides))
                 elif len(parts) in (3,4) and parts[:2] == ["v1","jobs"]:
                     key = parts[2]
                     if str(uuid.UUID(key)) != key:

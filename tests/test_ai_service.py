@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1] / "server"))
 from app import Service, make_handler, validate_wav
+from conversion_profiles import MODES, conversion_settings
 
 def pcm(seconds=1):
     data = io.BytesIO()
@@ -72,8 +73,9 @@ class AIServiceTests(unittest.TestCase):
     def test_health_supports_preserving_original_prosody(self):
         with self.request("/v1/health") as response:
             data = json.load(response)
-        self.assertEqual(data["protocolVersion"],2)
+        self.assertEqual(data["protocolVersion"],3)
         self.assertEqual(data["conversionMode"],"preserveProsody")
+        self.assertEqual(data["conversionModes"],list(MODES))
 
     def test_consecutive_jobs_complete_and_persist_separate_results(self):
         keys = []
@@ -145,5 +147,37 @@ class AIServiceTests(unittest.TestCase):
         profiles[0]["reference"] = "../connection.json"
         config.write_text(json.dumps(profiles))
         with self.assertRaises(ValueError): Service(self.root,ContractBackend)
+
+    def test_all_modes_are_submitted_and_audited_independently(self):
+        for mode in MODES:
+            with self.request("/v1/jobs?voice=female&mode="+mode,"POST",pcm()) as response:
+                key=json.load(response)["id"]
+            self.service.queue.join()
+            job=self.service.snapshot(key)
+            self.assertEqual(job["state"],"complete")
+            self.assertEqual(job["metadata"]["conversionMode"],mode)
+            self.assertEqual(job["conversionSettings"]["mode"],mode)
+            self.assertEqual(job["conversionSettings"]["steps"],50 if mode=="timbrePriority" else (40 if mode=="preserveProsody" else 36))
+
+    def test_custom_settings_reach_the_backend_and_reject_unsupported_keys(self):
+        path="/v1/jobs?voice=female&mode=balancedV2&steps=48&intelligibility=1&similarity=0.55"
+        with self.request(path,"POST",pcm()) as response:key=json.load(response)["id"]
+        self.service.queue.join()
+        settings=self.service.snapshot(key)["metadata"]["settings"]
+        self.assertEqual(settings["steps"],48)
+        self.assertEqual(settings["intelligibility"],1)
+        self.assertEqual(settings["similarity"],0.55)
+        for query in ("mode=unknown","mode=naturalSpeech&similarity=1","mode=balancedV2&steps=nan",
+                      "mode=balancedV2&steps=40.5","mode=preserveProsody&pitchShift=7",
+                      "mode=timbrePriority&temperature=5","mode=naturalSpeech&steps=40&steps=41"):
+            with self.assertRaises(urllib.error.HTTPError) as caught:self.request("/v1/jobs?voice=female&"+query,"POST",pcm())
+            self.assertEqual(caught.exception.code,400)
+
+    def test_recommended_quality_settings_and_custom_profiles_validate(self):
+        settings=conversion_settings({},"timbrePriority")
+        self.assertEqual(settings["steps"],50)
+        self.assertEqual(settings["intelligibility"],1)
+        with self.assertRaises(ValueError):conversion_settings({"modes":{"timbrePriority":{"temperature":float("nan")}}},"timbrePriority")
+        with self.assertRaises(ValueError):conversion_settings({"modes":{"naturalSpeech":{"extra":1}}},"naturalSpeech")
 
 if __name__ == "__main__": unittest.main()

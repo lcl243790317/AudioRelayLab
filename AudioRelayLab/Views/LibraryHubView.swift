@@ -2,11 +2,16 @@ import SwiftUI
 
 struct LibraryHubView: View {
     @ObservedObject var coordinator:ExperimentCoordinator
+    private var version: String { Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "" }
     var body: some View {
         NavigationStack {
             PaperScreen {
                 PaperHeader(title:"声音手记",subtitle:"保存声音，也保存每次尝试。",symbol:"folder")
                 PaperCard {
+                    NavigationLink { LocalAudioLibraryView(coordinator:coordinator) } label: {
+                        Label("本地音频库",systemImage:"music.note.list")
+                    }
+                    Divider()
                     NavigationLink { VoiceRecordLibraryView(coordinator:coordinator) } label: {
                         Label("录音与 AI 声音",systemImage:"waveform")
                     }
@@ -19,7 +24,7 @@ struct LibraryHubView: View {
                         Label("诊断与日志",systemImage:"doc.text")
                     }
                 }
-                PaperCaption("AudioRelayLab · 1.3.0\n手机实时处理与电脑 AI 转换，可在同一套播放实验中回听。")
+                PaperCaption("AudioRelayLab · \(version)\n手机实时处理与电脑 AI 转换，可在同一套播放实验中回听。")
             }.navigationTitle("资料").navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -27,43 +32,57 @@ struct LibraryHubView: View {
 
 struct VoiceRecordLibraryView: View {
     @ObservedObject var coordinator:ExperimentCoordinator
-    @ObservedObject var voice:VoiceProcessingEngine
+    var body: some View { LocalAudioLibraryView(coordinator:coordinator,recordingsOnly:true) }
+}
+
+struct LocalAudioLibraryView: View {
+    @ObservedObject var coordinator:ExperimentCoordinator
+    var recordingsOnly = false
     @State private var share:ShareItem?
-    init(coordinator:ExperimentCoordinator) { self.coordinator = coordinator; voice = coordinator.voiceLab }
     private var assets:[AudioAsset] {
-        coordinator.library.filter { [AudioSource.voiceLabRecording,.mixedRecording,.aiConverted].contains($0.source) }
+        recordingsOnly ? coordinator.library.filter { [.voiceLabRecording,.mixedRecording,.aiConverted].contains($0.source) } : coordinator.library
     }
+    private var locked: Bool { coordinator.controlsLocked || coordinator.aiVoice.connecting }
     var body: some View {
-        PaperScreen {
-            if assets.isEmpty { PaperCard { Text("录制或生成声音后，会保存在这里。") } }
-            ForEach(assets) { asset in
-                PaperCard {
-                    Text(asset.fileName).font(.headline).lineLimit(2)
-                    PaperCaption("\(AudioPlaybackSettings.time(asset.duration)) · \(asset.formatDescription)")
-                    HStack {
-                        Button("回听") { coordinator.selectLocal(asset); coordinator.audition() }
-                        Button("应用到音频页") { coordinator.selectLocal(asset) }
-                    }.disabled(coordinator.controlsLocked)
-                    DisclosureGroup("分享与管理") {
-                        Button("分享音频") {
-                            if let url = try? AudioFileManager.url(for:asset) { share = ShareItem(url:url) }
+        List {
+            Section {
+                if assets.isEmpty { Text("录制、生成或导入声音后，会保存在这里。") }
+                ForEach(assets) { asset in
+                    VStack(alignment:.leading,spacing:12) {
+                        HStack {
+                            Text(asset.sourceTitle).font(.caption).foregroundStyle(PaperTheme.accent)
+                            Spacer()
+                            if coordinator.audio?.id == asset.id {
+                                Label("当前",systemImage:"checkmark.circle.fill").font(.caption).foregroundStyle(PaperTheme.accent)
+                            }
                         }
+                        Text(asset.libraryName).font(.headline).lineLimit(3)
+                        PaperCaption("\(AudioPlaybackSettings.time(asset.duration)) · \(asset.formatDescription)")
+                        HStack {
+                            Button("回听") { coordinator.selectLocal(asset); coordinator.audition() }
+                            Button("应用") { coordinator.selectLocal(asset) }
+                            Button("分享") { if let url = try? AudioFileManager.url(for:asset) { share = ShareItem(url:url) } }
+                        }.disabled(locked)
                         if let conversion = asset.aiConversion {
-                            PaperCaption("\(conversion.engine) · \(conversion.voiceName)\n\(conversion.referenceOrigin)")
+                            PaperCaption("\(conversion.voiceName) · \(conversion.modeTitle)")
                         }
-                        Button("删除",role:.destructive) {
-                            coordinator.preview.stop()
-                            if coordinator.audio?.id == asset.id { coordinator.useTestAudio() }
-                            if let record = voice.recordings.first(where:{$0.asset.id == asset.id}) { voice.delete(record) }
-                            else { try? AudioFileManager.removeAudio(asset) }
-                            coordinator.refreshLibrary()
-                        }.disabled(coordinator.controlsLocked)
-                    }
+                    }.padding(.vertical,8)
+                        .swipeActions(edge:.trailing,allowsFullSwipe:false) {
+                            if asset.source != .bundled && !locked {
+                                Button("删除",role:.destructive) { coordinator.deleteAudio(asset) }
+                                    .labelStyle(.titleAndIcon)
+                            }
+                        }
+                        .listRowBackground(PaperTheme.paper)
                 }
+            } footer: {
+                Text("向左划动一行可删除。内置测试音始终保留；删除音频不会清空实验历史。")
             }
-            Button("停止回听") { coordinator.preview.stop() }
-        }.navigationTitle("录音与 AI 声音").navigationBarTitleDisplayMode(.inline)
-            .buttonStyle(PaperButtonStyle())
+            if let error = coordinator.errorMessage { Text(error).foregroundStyle(.orange) }
+        }.paperList()
+            .navigationTitle(recordingsOnly ? "录音与 AI 声音" : "本地音频库")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("停止回听") { coordinator.preview.stop() } }
             .sheet(item:$share) { ShareSheet(url:$0.url) }
     }
 }

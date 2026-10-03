@@ -18,6 +18,9 @@ final class VoiceDSPContext: @unchecked Sendable {
         VLParameters(pointer, preset.pitch * strength, preset.formant * strength, preset.highpass,
                      preset.lowmid, preset.presence, preset.air, preset.compression, preset.deesser,
                      preset.wet * strength, preset.outputGain, preset.robot * strength)
+        VLAdvancedParameters(pointer, preset.inputGainDB, preset.gateThresholdDB, preset.gateDepth,
+            preset.compressorThresholdDB, preset.compressorRatio, preset.attackMS, preset.releaseMS,
+            preset.presenceHz, preset.presenceQ, preset.deesserHz, preset.consonantProtection, preset.formantBaseHz)
     }
 }
 

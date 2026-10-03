@@ -10,16 +10,20 @@ private final class AIHTTPTestState: @unchecked Sendable {
     var connectionFailure: URLError.Code?
     var uploadFailure: URLError.Code?
     var submissions = 0
+    var modern = false
+    var lastQuery: [String:String] = [:]
     func reset(audio:Data) {
         lock.lock(); defer { lock.unlock() }
-        self.audio = audio; submissions = 0; connectionFailure = nil; uploadFailure = nil
+        self.audio = audio; submissions = 0; connectionFailure = nil; uploadFailure = nil; modern = false; lastQuery = [:]
     }
     func respond(_ request:URLRequest) throws -> (Data,[String:String]) {
         lock.lock(); defer { lock.unlock() }
         let path = request.url?.path ?? ""
         if path == "/v1/health" {
             if let failure = connectionFailure { connectionFailure = nil; throw URLError(failure) }
-            return (Data("{\"engine\":\"contract-double\",\"modelState\":\"ready\",\"protocolVersion\":2}".utf8),[:])
+            var health: [String:Any] = ["engine":"contract-double","modelState":"ready","protocolVersion":modern ? 3 : 2]
+            if modern { health["conversionModes"] = AIConversionMode.allCases.map(\.rawValue) }
+            return (try JSONSerialization.data(withJSONObject:health),[:])
         }
         if path == "/v1/voices" {
             return (Data("{\"voices\":[{\"id\":\"female\",\"name\":\"测试\",\"referenceOrigin\":\"contract-double\"}]}".utf8),[:])
@@ -29,10 +33,14 @@ private final class AIHTTPTestState: @unchecked Sendable {
         if request.httpMethod == "POST" {
             if let failure = uploadFailure { uploadFailure = nil; throw URLError(failure) }
             submissions += 1
+            if let url = request.url, let query = URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems {
+                lastQuery = Dictionary(uniqueKeysWithValues:query.map { ($0.name,$0.value ?? "") })
+            }
         }
-        let metadata = AIConversionMetadata(engine:"contract-double",sourceRevision:"test",device:"test",
+        var metadata = AIConversionMetadata(engine:"contract-double",sourceRevision:"test",device:"test",
             sampleRate:22050,duration:0.5,sha256:hash,voiceID:"female",voiceName:"测试",
             referenceOrigin:"contract-double",conversionSeconds:0.1,settings:["convertStyle":0])
+        if modern { metadata.conversionMode = lastQuery["mode"] }
         let metadataObject = try JSONSerialization.jsonObject(with:JSONEncoder().encode(metadata))
         let data = try JSONSerialization.data(withJSONObject:["id":"job-\(submissions)",
             "state":request.httpMethod == "POST" ? "queued" : "complete", "message":"完成", "metadata":metadataObject])
@@ -91,6 +99,29 @@ final class AIConnectionRegressionTests: XCTestCase {
             XCTAssertFalse(message.contains("音频环境")); XCTAssertFalse(message.isEmpty)
         }
         XCTAssertTrue(AIConnectionError.message(URLError(.cannotConnectToHost)).contains("server/run.ps1"))
+    }
+    @MainActor func testModernModesCustomSettingsAndUniqueResultNamesSurviveConsecutiveConversions() async throws {
+        try await exercise { ai,_,input in
+            AIHTTPTestProtocol.state.modern = true
+            ai.connect(); try await self.settle(ai)
+            XCTAssertEqual(Set(ai.availableModes),Set(AIConversionMode.allCases))
+            ai.selectInput(input); ai.mode = .balancedV2; ai.customSettings = true
+            ai.diffusionSteps = 48; ai.clarity = 1; ai.similarity = 0.55
+            ai.convert(limit:0.5); try await self.settle(ai)
+            let first = try XCTUnwrap(ai.result)
+            XCTAssertEqual(AIHTTPTestProtocol.state.lastQuery["mode"],"balancedV2")
+            XCTAssertEqual(AIHTTPTestProtocol.state.lastQuery["steps"],"48")
+            XCTAssertEqual(AIHTTPTestProtocol.state.lastQuery["intelligibility"],"1.0")
+            XCTAssertEqual(first.aiConversion?.conversionMode,"balancedV2")
+            XCTAssertEqual(first.fileName,try AudioFileManager.url(for:first).lastPathComponent)
+            ai.mode = .timbrePriority; ai.customSettings = false
+            ai.convert(limit:0.5); try await self.settle(ai)
+            let second = try XCTUnwrap(ai.result)
+            XCTAssertNotEqual(first.fileName,second.fileName)
+            XCTAssertEqual(second.aiConversion?.conversionMode,"timbrePriority")
+            XCTAssertNil(AIHTTPTestProtocol.state.lastQuery["steps"])
+            XCTAssertTrue(second.fileName.hasPrefix("AI成品_"))
+        }
     }
     @MainActor func testFailedConnectionIsLoggedAndCanReconnectWithoutRelaunch() async throws {
         try await exercise { ai,logger,_ in

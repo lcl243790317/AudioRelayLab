@@ -288,12 +288,19 @@ import Combine
         stopGraph(stopHardware: true)
         let recordingWriter = writer; writer = nil
         var savedAsset: AudioAsset?
+        var savedURL: URL?
         do {
             if let recordingWriter, saveRecording {
-                let url = try recordingWriter.finish()
+                let recorded = try recordingWriter.finish()
                 let mixed = mode == .mixedRecording
                 let presetLabel = mode == .rawRecording ? "AI 原声" : (Set(parameterEvents.map { $0.preset.name }).count > 1 ? "多预设" : preset.name)
-                let asset = try AudioFileManager.inspect(url: url, displayName: "\(mixed ? "混合录音" : "处理后人声") \(presetLabel).caf",
+                let id = UUID()
+                let name = AudioNaming.generated(kind: mode == .rawRecording ? "原声" : (mixed ? "混音" : "手机变声"),
+                    label: mode == .rawRecording ? nil : presetLabel, fileExtension: "caf", date: startedAt ?? Date(), id: id)
+                let url = try AudioFileManager.audioDirectory().appendingPathComponent(name)
+                try FileManager.default.moveItem(at: recorded, to: url)
+                savedURL = url
+                let asset = try AudioFileManager.inspect(url: url, displayName: name, id: id,
                     source: mixed ? .mixedRecording : .voiceLabRecording, presetName: presetLabel)
                 try AudioFileManager.register(asset)
                 savedAsset = asset
@@ -310,7 +317,7 @@ import Combine
             state = .idle; status = "已停止，音频资源已释放"
         } catch {
             if let savedAsset { try? AudioFileManager.removeAudio(savedAsset) }
-            else { recordingWriter?.discard() }
+            else { if let savedURL { try? FileManager.default.removeItem(at:savedURL) }; recordingWriter?.discard() }
             state = .failed; errorMessage = userFacingAudioError(error); logger.log("录音保存失败", diagnosticError(error))
         }
         recordURL = nil; startedAt = nil; recordPreset = nil; parameterEvents = []
@@ -346,13 +353,12 @@ import Combine
         default: break
         }
     }
-    func delete(_ record: VoiceLabRecord) {
-        guard !isActive else { return }
-        do {
-            try AudioFileManager.removeAudio(record.asset)
-            recordings.removeAll { $0.id == record.id }
-            let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(recordings).write(to: Self.recordsURL(), options: .atomic)
-        } catch { errorMessage = "录音删除失败"; logger.log("录音删除失败", diagnosticError(error)) }
+    func removeRecord(for assetID: UUID) throws {
+        guard !isActive else { throw LabError.audioUnavailable }
+        guard recordings.contains(where: { $0.asset.id == assetID }) else { return }
+        let updated = recordings.filter { $0.asset.id != assetID }
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(updated).write(to: Self.recordsURL(), options: .atomic)
+        recordings = updated
     }
 }

@@ -1,6 +1,6 @@
-# 1.3.0 自然度优先增量
+# 1.4.0 当前实现
 
-本轮采用电脑 Seed-VC v2 + 官方中文参考录音，已在本机显卡生成实际 WAV 并通过真实 HTTP 服务下载验证。完整来源、参数、样本、局限与安装见 [AI-VOICE-GUIDE-ZH.md](AI-VOICE-GUIDE-ZH.md)。以下为已有 DSP 研究历史，其参数不等价于神经模型。
+电脑采用 Seed-VC Speech / F0 / V2；四种正式方式均保留源内容特征，关闭表达重写。具体用途、参数、独立参考及实际证据见 [AI-VOICE-GUIDE-ZH.md](AI-VOICE-GUIDE-ZH.md)。
 
 # Voice Lab 技术研究与实现
 
@@ -12,17 +12,18 @@
 
 [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) 的官方 API 支持 pitch、formant、延迟查询及分摊频谱计算。选用固定版本源码，独立设置 pitch/formant 并启用 pitch compensation。它的包络修正也有局限，不能当作精准的人声身份转换。
 
-本项目实际固定的头文件在 `setFormantBase(0)` 时自动估计基频；这个行为由固定源码确认，不能仅凭网页示例推断所有版本。没有使用神经网络、云端 voice cloning 或额外模型。
+本项目实际固定的头文件在 `setFormantBase(0)` 时自动估计基频；这个行为由固定源码确认，不能仅凭网页示例推断所有版本。该手机 DSP 路径不使用神经网络；电脑 AI 使用独立模型。新增可设共振峰分析基频，Hz 除以采样率后传入库的归一化频率 API。
 
-辅助处理由本项目 C++ 实现：高通清除低频、低中频清理、presence/air 整形、包络压缩、软噪声门与高频能量去齿音。它们是轻量近似滤波，不是精密多段母带处理。机器人预设另加 45 Hz 环形调制，允许明显人工效果。
+辅助处理由本项目 C++ 实现：高通清除低频、低中频清理、presence/air 整形、包络压缩、软噪声门与高频能量去齿音。1.4.0 改用 RBJ 二阶高通、低/高棚、可调频率和 Q 的参数均衡；压缩有阈值、比率、软拐点、启动/释放，软门有阈值/衰减/保持，去齿音仅衰减高频。机器人预设另加 45 Hz 环形调制，允许明显人工效果。
 
 Apple 的 [AVAudioSourceNode](https://developer.apple.com/documentation/avfaudio/avaudiosourcenode) 用于输出处理后的 PCM；[AVAudioUnitEffect](https://developer.apple.com/documentation/avfaudio/avaudiouniteffect/init(audiocomponentdescription:)) 包装公开 DynamicsProcessor。输出设置 -3 dB 阈值、0.1 dB headroom、1 ms attack、50 ms release。DSP 自身限制 ±0.98；音乐与人声相加后由动态处理器保护，不宣称零瞬态峰值保证。
 
 ## 实际 graph 与线程
 
 ```text
-inputNode tap → 下混单声道 → 高通 → Signalsmith pitch/formant
- → EQ → 压缩/软门/去齿音 → 可选环形调制 → 对齐的 dry/wet → gain
+inputNode tap → 下混单声道 → 输入增益/二阶高通/软门 → Signalsmith pitch/formant
+ → 对齐的无声辅音高频保护 → 参数 EQ → 高频去齿音/软拐点压缩
+ → 可选环形调制 → 对齐的 dry/wet → gain → 平滑限幅
  → SPSC PCM ring → AVAudioSourceNode → Voice Mixer ─┐
 音乐 AVAudioPlayerNode → TimePitch → Music volume ──┤
                     mainMixer / Master → DynamicsProcessor
@@ -34,7 +35,7 @@ inputNode tap → 下混单声道 → 高通 → Signalsmith pitch/formant
 
 频谱块选不小于采样率 × 40 ms 的 2 次幂、hop 为块长 / 4，启用 split computation。界面显示库报告的 DSP 延迟，以及 session input/output latency；总端到端延迟还含 ring、IO 和动态处理器，必须测量，不能直接把三个显示值相加称为实测值。频域方法可能有瞬态涂抹、齿音或低音失真；极端预设应逐人调弱。
 
-实时监听默认需耳机；扬声器需主动启用并从低 Master 开始。录制默认静音现场监听，保存处理后 PCM。后台开关开启时允许真实音频继续，关闭则切后台时停止并保存录音；中断、路由、图配置、媒体服务变化仍安全结束并丢弃未完整录音，提示手动重启。新启动重新验证硬件格式，不复用旧图。
+实时监听默认需耳机；扬声器需主动启用并从低 Master 开始。录制默认静音现场监听，保存处理后 PCM。后台开关开启时允许真实音频继续，关闭则切后台时停止并保存录音；真正的路由/硬件失效、中断和媒体服务变化安全结束；类别通知核对实际格式，同格式配置重启有次数限制。新启动重新验证硬件格式，不复用旧图。
 
 ## 15 个预设
 
@@ -43,11 +44,11 @@ Pitch / formant 单位为半音；三项 EQ 为 dB。完整动态、去齿音、
 | 预设 | Pitch | Formant | 高通 Hz | Low-mid / Presence / Air |
 |---|---:|---:|---:|---|
 | 原声 | 0 | 0 | 20 | 0 / 0 / 0，wet=0 |
-| 自然女声 | 3 | 1.8 | 100 | -2.5 / 1.5 / 1 |
-| 少女声 | 4.5 | 2.5 | 110 | -3 / 2 / 1.5 |
-| 萝莉音 | 6 | 3.2 | 130 | -4 / 2 / 1 |
-| 甜美女声 | 2.5 | 2.2 | 80 | -1.5 / 1 / 2 |
-| 成熟女声 | 1 | 0.8 | 70 | 0 / 1 / 0.5 |
+| 自然女声 | 4.5 | 2.2 | 85 | -2 / 1.2 / 0.5 |
+| 少女声 | 6 | 2.8 | 95 | -2.5 / 1.5 / 0.8 |
+| 萝莉音 | 8 | 3.5 | 105 | -3 / 1.5 / 0.5 |
+| 甜美女声 | 5.5 | 2.5 | 90 | -2 / 1 / 0.8 |
+| 成熟女声 | 3.5 | 1.8 | 75 | -1.5 / 0.8 / 0.3 |
 | 正太音 | 3.5 | 1.4 | 100 | -1 / 1.5 / 0.5 |
 | 自然男声 | -2.5 | -1.5 | 65 | 1 / 1 / 0 |
 | 青年男声 | -1 | -0.8 | 75 | -1 / 2 / 0 |
@@ -74,3 +75,5 @@ Vendor 目录保留源码版权和完整许可证；PATCHES.md 记录唯一 seed
 当前编译、合成 PCM 的实际 DSP 测试和 CAF 写入证据见 BUILD-STATUS-ZH.txt；iOS 18.1.1 真人音色、监听质量、声学反馈、HFP 和微信收录结果必须按 VOICE-LAB-TEST-PROTOCOL-ZH.md 填写。
 
 1.2.1 事件处理依据：Apple [categoryChange](https://developer.apple.com/documentation/avfaudio/avaudiosession/routechangereason/categorychange) 表示会话类别变化，不自动代表输入输出失效；[Engine configuration notification](https://developer.apple.com/documentation/avfaudio/avaudioengineconfigurationchangenotification) 可能因硬件采样率/声道变化停止并反初始化图，节点仍保留连接。实现必须核对实际路由/格式、转交普通线程后处理，不能把每条通知无条件失败或在内部通知回调直接销毁图。
+
+1.4.0 辅音保护：约 12 kHz 的预分配 512 点历史做有界自相关，判断有声/无声。对齐到 pitch/formant 延迟后，只混回无声辅音的高频细节，避免把原声元音音高一起混回。每块 <=512 帧，分析、滤波、门和压缩均不分配动态缓冲。新增 12 个参数有范围校验、原子更新、录音事件审计和旧数据解码默认值。实际信号测试验证门/压缩/选择性均衡/辅音与元音，结果见当前 CI。
