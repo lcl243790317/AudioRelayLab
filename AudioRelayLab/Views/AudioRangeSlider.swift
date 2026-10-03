@@ -26,12 +26,24 @@ struct AudioRangeSlider: View {
             ZStack(alignment:.leading) {
                 Capsule().fill(PaperTheme.line).frame(height:6).padding(.horizontal,22)
                 Capsule().fill(PaperTheme.accent).frame(width:max(0,upper-lower),height:6).offset(x:lower)
-                thumb(isStart:true,width:width).offset(x:lower-22)
-                thumb(isStart:false,width:width).offset(x:upper-22)
-            }.frame(height:48).coordinateSpace(name:"audio-range-track")
+                thumb(isStart:true).offset(x:lower-22)
+                thumb(isStart:false).offset(x:upper-22)
+            }.frame(height:48).contentShape(Rectangle()).coordinateSpace(name:"audio-range-track")
+                .gesture(DragGesture(minimumDistance:0,coordinateSpace:.named("audio-range-track"))
+                    .onChanged { value in
+                        guard enabled else { return }
+                        if !activeStart && !activeEnd {
+                            // Choose by distance so a short range cannot hide the first handle's hit target.
+                            activeStart = abs(Double(value.startLocation.x)-lower) <= abs(Double(value.startLocation.x)-upper)
+                            activeEnd = !activeStart
+                        }
+                        let seconds=(Double(value.location.x)-22)/width*duration
+                        if activeStart { start=AudioRangeSelection.start(seconds,end:end,duration:duration) }
+                        else { end=AudioRangeSelection.end(seconds,start:start,duration:duration) }
+                    }.onEnded { _ in activeStart=false; activeEnd=false })
         }.frame(height:48).opacity(enabled ? 1 : 0.4)
     }
-    private func thumb(isStart: Bool, width: Double) -> some View {
+    private func thumb(isStart: Bool) -> some View {
         let active = isStart ? activeStart : activeEnd
         return Circle().fill(PaperTheme.paper)
             .overlay(Circle().stroke(PaperTheme.accent,lineWidth:active ? 4 : 2))
@@ -39,13 +51,6 @@ struct AudioRangeSlider: View {
             .shadow(color:.black.opacity(0.18),radius:3,y:2)
             .scaleEffect(active && !reduceMotion ? 1.15 : 1)
             .frame(width:44,height:48).contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance:0,coordinateSpace:.named("audio-range-track"))
-                .onChanged { value in
-                    guard enabled else { return }
-                    let seconds=(value.location.x-22)/width*duration
-                    if isStart { activeStart=true; start=AudioRangeSelection.start(seconds,end:end,duration:duration) }
-                    else { activeEnd=true; end=AudioRangeSelection.end(seconds,start:start,duration:duration) }
-                }.onEnded { _ in activeStart=false; activeEnd=false })
             .accessibilityElement().accessibilityLabel(isStart ? "音频开始位置" : "音频结束位置")
             .accessibilityValue(AudioPlaybackSettings.time(isStart ? start : end))
             .accessibilityAdjustableAction { direction in

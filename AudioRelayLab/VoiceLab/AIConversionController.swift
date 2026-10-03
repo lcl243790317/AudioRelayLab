@@ -89,41 +89,64 @@ enum AIRequestAudio {
             throw LabError.message("请选择 0.3–60 秒的纯人声；长文件可在音频页设置起止区间")
         }
         file.framePosition = try AudioPlaybackSettings.frame(start,sampleRate:format.sampleRate,length:file.length)
-        let frames = AVAudioFrameCount(seconds*format.sampleRate)
-        guard let decoded = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:frames),
+        let first = file.framePosition
+        let sourceFrames = min(file.length-first,AVAudioFramePosition((seconds*format.sampleRate).rounded(.down)))
+        let last = first+sourceFrames
+        let expected = AVAudioFramePosition((Double(sourceFrames)*22050/format.sampleRate).rounded(.down))
+        guard expected > 0,
+            let decoded = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:8192),
             let monoFormat = AVAudioFormat(standardFormatWithSampleRate:format.sampleRate,channels:1),
-            let mono = AVAudioPCMBuffer(pcmFormat:monoFormat,frameCapacity:frames),
+            let mono = AVAudioPCMBuffer(pcmFormat:monoFormat,frameCapacity:8192),
             let targetFormat = AVAudioFormat(standardFormatWithSampleRate:22050,channels:1),
             let converter = AVAudioConverter(from:monoFormat,to:targetFormat),
-            let output = AVAudioPCMBuffer(pcmFormat:targetFormat,frameCapacity:AVAudioFrameCount(seconds*22050)+32) else {
+            let output = AVAudioPCMBuffer(pcmFormat:targetFormat,frameCapacity:8192) else {
             throw LabError.invalidFormat
         }
-        try file.read(into:decoded,frameCount:frames)
-        mono.frameLength = decoded.frameLength
-        guard let input = decoded.floatChannelData, let channel = mono.floatChannelData?[0] else { throw LabError.invalidFormat }
-        for i in 0..<Int(decoded.frameLength) {
-            var sample:Float = 0
-            for c in 0..<Int(format.channelCount) { sample += input[c][i]/Float(format.channelCount) }
-            guard sample.isFinite else { throw LabError.invalidFormat }
-            channel[i] = min(1,max(-1,sample))
-        }
-        converter.primeMethod = .none
-        var supplied = false, error:NSError?
-        let status = converter.convert(to:output,error:&error) { _,inputStatus in
-            if supplied { inputStatus.pointee = .endOfStream; return nil }
-            supplied = true; inputStatus.pointee = .haveData; return mono
-        }
-        if let error { throw error }
-        guard status != .error, output.frameLength > 0 else { throw LabError.invalidFormat }
-        output.frameLength = min(output.frameLength,AVAudioFrameCount(seconds*22050))
+        // Offline conversion uses normal priming and repeatedly drains the converter.
+        // Respect each input request; passing the whole minute once can lose a buffered tail.
+        converter.primeMethod = .normal
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("ai-input-\(UUID()).wav")
         do {
+          do {
             let writer = try AVAudioFile(forWriting:destination,settings:[AVFormatIDKey:kAudioFormatLinearPCM,
                 AVSampleRateKey:22050,AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,
                 AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
-            try writer.write(from:output)
+            var written:AVAudioFramePosition=0,emptyPasses=0
+            while written < expected {
+                try Task.checkCancellation()
+                var conversionError:NSError?,inputError:Error?
+                let status = converter.convert(to:output,error:&conversionError) { requested,inputStatus in
+                    guard file.framePosition < last else { inputStatus.pointee = .endOfStream; return nil }
+                    do {
+                        let count=AVAudioFrameCount(min(AVAudioFramePosition(min(requested,8192)),last-file.framePosition))
+                        guard count > 0 else { throw LabError.invalidFormat }
+                        try file.read(into:decoded,frameCount:count)
+                        mono.frameLength=decoded.frameLength
+                        guard decoded.frameLength > 0,let input=decoded.floatChannelData,
+                            let channel=mono.floatChannelData?[0] else { throw LabError.invalidFormat }
+                        for i in 0..<Int(decoded.frameLength) {
+                            var sample:Float=0
+                            for c in 0..<Int(format.channelCount) { sample+=input[c][i]/Float(format.channelCount) }
+                            guard sample.isFinite else { throw LabError.invalidFormat }
+                            channel[i]=min(1,max(-1,sample))
+                        }
+                        inputStatus.pointee = .haveData;return mono
+                    } catch { inputError=error;inputStatus.pointee = .endOfStream;return nil }
+                }
+                if let inputError { throw inputError }
+                if let conversionError { throw conversionError }
+                guard status != .error else { throw LabError.invalidFormat }
+                let keep=AVAudioFrameCount(min(AVAudioFramePosition(output.frameLength),expected-written))
+                if keep > 0 {
+                    output.frameLength=keep;try writer.write(from:output);written+=AVAudioFramePosition(keep);emptyPasses=0
+                } else { emptyPasses+=1 }
+                if status == .endOfStream { break }
+                guard emptyPasses < 8 else { throw LabError.message("人声重采样无法继续，请重新选择音频") }
+            }
+            guard written == expected else { throw LabError.message("人声重采样未完整结束，请重新选择音频") }
+          }
             return destination
-        } catch { try? FileManager.default.removeItem(at:destination); throw error }
+        } catch { try? FileManager.default.removeItem(at:destination);throw error }
     }
 }
 

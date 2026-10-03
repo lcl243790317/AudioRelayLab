@@ -6,20 +6,20 @@ final class AudioRangeAndDurationTests: XCTestCase {
     private func fixture() throws -> URL {
         try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
     }
-    private func tone(seconds:Double) throws -> URL {
+    private func tone(seconds:Double,sampleRate:Double = 22050) throws -> URL {
         let url=FileManager.default.temporaryDirectory.appendingPathComponent("long-\(UUID()).wav")
-        let format=try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:22050,channels:1))
+        let format=try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:sampleRate,channels:1))
         let buffer=try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:8192))
         let samples=try XCTUnwrap(buffer.floatChannelData?[0])
-        let total=Int64((seconds*22050).rounded())
+        let total=Int64((seconds*sampleRate).rounded())
         do {
             let writer=try AVAudioFile(forWriting:url,settings:[AVFormatIDKey:kAudioFormatLinearPCM,
-                AVSampleRateKey:22050,AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,
+                AVSampleRateKey:sampleRate,AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,
                 AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
             var written:Int64=0
             while written<total {
                 buffer.frameLength=UInt32(min(8192,total-written))
-                for i in 0..<Int(buffer.frameLength) { samples[i]=Float(0.2*sin(2*Double.pi*180*Double(written+Int64(i))/22050)) }
+                for i in 0..<Int(buffer.frameLength) { samples[i]=Float(0.2*sin(2*Double.pi*180*Double(written+Int64(i))/sampleRate)) }
                 try writer.write(from:buffer); written+=Int64(buffer.frameLength)
             }
         }
@@ -106,7 +106,8 @@ final class AudioRangeAndDurationTests: XCTestCase {
         XCTAssertEqual(preview.currentTime,0.7,accuracy:1/44100.0)
     }
     func testPhoneUploadEncodesSixtySecondsAndRejectsOverLimit() throws {
-        let source=try tone(seconds:60.1)
+      for rate in [22050.0,44100,48000] {
+        let source=try tone(seconds:60.1,sampleRate:rate)
         defer { try? FileManager.default.removeItem(at:source) }
         for seconds in [31.0,60] {
             let upload=try AIRequestAudio.make(url:source,limit:seconds)
@@ -116,6 +117,21 @@ final class AudioRangeAndDurationTests: XCTestCase {
             XCTAssertEqual(Double(file.length)/22050,seconds,accuracy:1/22050.0)
         }
         XCTAssertThrowsError(try AIRequestAudio.make(url:source))
+      }
+    }
+    func testResamplingRetainsAudibleLastTwentyMilliseconds() throws {
+        let source=try tone(seconds:0.4,sampleRate:48000)
+        defer { try? FileManager.default.removeItem(at:source) }
+        let url=try AIRequestAudio.make(url:source)
+        defer { try? FileManager.default.removeItem(at:url) }
+        let file=try AVAudioFile(forReading:url)
+        XCTAssertEqual(file.length,8820)
+        file.framePosition=8379
+        let buffer=try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:441))
+        try file.read(into:buffer)
+        let samples=try XCTUnwrap(buffer.floatChannelData?[0])
+        XCTAssertEqual(buffer.frameLength,441)
+        XCTAssertGreaterThan((0..<441).reduce(0.0) { $0+Double(samples[$1]*samples[$1]) }/441,0.01)
     }
     func testSixtySecondAIVoiceMixContinuesAfterSelectedMusicEnds() throws {
         let source=try tone(seconds:60)
