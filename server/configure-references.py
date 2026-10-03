@@ -23,5 +23,8 @@ if __name__ == "__main__":
     profiles = json.loads(config.read_text(encoding="utf-8-sig"))
     profiles[0].update(reference="cosyvoice-female-pcm.wav",
         referenceOrigin="QwenAudio / CosyVoice 官方中文示例（Apache-2.0 仓库；zero_shot_prompt.wav）")
+    # Local synthetic references repeated words in real conversion/ASR checks.
+    # Keep the artifacts for comparison, but exclude them from shipped defaults.
+    profiles = [p for p in profiles if p["id"] not in ("female-clear", "female-warm")]
     config.write_text(json.dumps(profiles,ensure_ascii=False,indent=2),encoding="utf-8")
-    print("官方中文女声参考已验证；清亮、温柔两个参考为本机中文合成语音。")
+    print("官方中文女声参考已验证；默认列表仅包含通过当前对比的自然女声。")

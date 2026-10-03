@@ -17,12 +17,14 @@
 | 音色 | 实际参考 | 用途 |
 |---|---|---|
 | 自然女声 | QwenAudio / CosyVoice 官方 `asset/zero_shot_prompt.wav`，中文，3.48 秒；仅转换 float WAV 为 PCM16 | 首选实际参考音色 |
-| 清亮女声 | 此 Windows 的 Microsoft Yaoyao 中文合成语音 | 可对比的备用参考 |
-| 温柔女声 | 此 Windows 的 Microsoft Huihui Desktop 中文合成语音，语速 -1 | 可对比的备用参考 |
+| 清亮女声（未启用） | 此 Windows 的 Microsoft Yaoyao 中文合成语音 | 检查出现重复词，已移出默认列表 |
+| 温柔女声（未启用） | 此 Windows 的 Microsoft Huihui Desktop 中文合成语音，语速 -1 | 检查出现重复词，已移出默认列表 |
 
 官方示例来源、固定提交、原文件 SHA-256 见 `server/reference-lock.json`，仓库 Apache-2.0 文本见 `server/COSYVOICE-LICENSE.txt`。后两个参考在本机生成，未放入 Git 或 IPA。它们并非中国收费调音师的私有音色。
 
 AI 使用 30 diffusion steps、intelligibility CFG 0.7、similarity CFG 0.7、top-p 0.9、temperature 0.85、repetition penalty 1.0、convert_style=True。它们是固定模型的推理参数，不是手机 DSP 的 pitch/formant 参数。App 每个结果保存实际引擎、模型源码版本、参考来源、参数、处理时间与 WAV 哈希。
+
+实际样本用本地 Whisper-small 做了中文识别对比。自然女声保留主要语句，但专有名称有识别误差；合成参考的两种结果出现明显重复词或漏词，因此只启用一个默认女声。识别结果、基频和幅度见 `dist/ai-samples/actual-audio-analysis.json`；识别正确不等价于听感自然。
 
 可在 `server/.private/references` 放置有使用权限的清晰参考，再在 `.private/voices.json` 增加/替换对应项，重启服务并让 App 重新读取音色。应选纯人声、无背景音乐、无明显混响的短参考；避免把 Windows 合成参考的自然度当作真人目标。
 

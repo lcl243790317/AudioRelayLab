@@ -24,6 +24,8 @@ enum RecordedVoiceMixer {
         try engine.start(); voice.play(); music.play()
         let destination = try AudioFileManager.audioDirectory().appendingPathComponent("\(UUID()).wav")
         do {
+          // Close/finalize the WAV header before opening it for inspection.
+          do {
             let writer = try AVAudioFile(forWriting:destination,settings:[AVFormatIDKey:kAudioFormatLinearPCM,
                 AVSampleRateKey:48000,AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,
                 AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
@@ -44,6 +46,7 @@ enum RecordedVoiceMixer {
                     guard status != .error, stalls <= 100 else { throw LabError.message("混音渲染无法继续") }
                 }
             }
+          }
             let asset = try AudioFileManager.inspect(url:destination,displayName:"AI 人声与音乐混合.wav",source:.mixedRecording)
             try AudioFileManager.register(asset)
             return asset
