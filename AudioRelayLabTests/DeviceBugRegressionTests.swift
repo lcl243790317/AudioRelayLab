@@ -133,12 +133,15 @@ final class DeviceBugRegressionTests: XCTestCase {
         XCTAssertEqual(voice.state,.idle,voice.errorMessage ?? voice.status)
         let record=try XCTUnwrap(voice.recordings.first)
         XCTAssertEqual(record.asset.source,.voiceLabRecording); XCTAssertGreaterThan(record.asset.duration,0.2)
-        voice.delete(record)
+        XCTAssertTrue(record.asset.fileName.hasPrefix("手机变声_"))
+        XCTAssertEqual(record.asset.fileName,try AudioFileManager.url(for:record.asset).lastPathComponent)
+        coordinator.deleteAudio(record.asset)
     }
     @MainActor func testThreeConsecutiveRawRecordingsSaveAndReleaseSession() async throws {
         let coordinator = ExperimentCoordinator(), voice = coordinator.voiceLab
         defer { voice.stop(saveRecording:false) }
         var ids:Set<UUID> = []
+        var names:Set<String> = []
         for _ in 0..<3 {
             voice.start(.rawRecording)
             try await awaitRunning(voice)
@@ -150,7 +153,11 @@ final class DeviceBugRegressionTests: XCTestCase {
             XCTAssertGreaterThan(record.asset.duration,0.3)
             XCTAssertTrue(ids.insert(record.id).inserted)
             XCTAssertEqual(coordinator.aiVoice.input?.id,record.asset.id)
-            voice.delete(record)
+            XCTAssertTrue(record.asset.fileName.hasPrefix("原声_"))
+            XCTAssertTrue(names.insert(record.asset.fileName).inserted)
+            XCTAssertEqual(record.asset.fileName,try AudioFileManager.url(for:record.asset).lastPathComponent)
+            coordinator.deleteAudio(record.asset)
+            XCTAssertNil(coordinator.aiVoice.input)
         }
     }
     @MainActor func testRealSimulatorMixerCapturesMusicThroughProductionGraph() async throws {
@@ -171,6 +178,7 @@ final class DeviceBugRegressionTests: XCTestCase {
         let samples=try XCTUnwrap(buffer.floatChannelData?[0])
         let peak=(0..<Int(buffer.frameLength)).reduce(Float(0)) { max($0,abs(samples[$1])) }
         XCTAssertGreaterThan(peak,0.005); XCTAssertEqual(record.asset.source,.mixedRecording)
-        voice.delete(record)
+        XCTAssertTrue(record.asset.fileName.hasPrefix("混音_"))
+        coordinator.deleteAudio(record.asset)
     }
 }
