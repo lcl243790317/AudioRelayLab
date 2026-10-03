@@ -11,6 +11,7 @@ import Combine
     @Published var musicVolume: Float = 0.04
     @Published var masterVolume: Float = 0.9
     @Published var allowSpeakerMonitoring = false
+    @Published var continuesInBackground = true
     @Published private(set) var inputLevel: Float = 0
     @Published private(set) var outputLevel: Float = 0
     @Published private(set) var status = "未启动麦克风"

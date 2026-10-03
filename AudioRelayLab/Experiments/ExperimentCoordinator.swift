@@ -338,7 +338,8 @@ import UniformTypeIdentifiers
         case .active: logger.log("生命周期", "Scene active / foreground"); capture("foreground"); refresh()
         case .inactive: logger.log("生命周期", "Scene inactive")
         case .background:
-            voiceLab.stop()
+            if !voiceLab.continuesInBackground { voiceLab.stop() }
+            else if voiceLab.isActive { logger.log("Voice 后台", "继续用户主动开启的真实音频；遇到系统中断或无效路由仍安全停止") }
             preview.stop()
             cancelImport()
             logger.log("生命周期", "Scene background")

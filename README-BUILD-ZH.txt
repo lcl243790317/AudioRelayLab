@@ -102,5 +102,6 @@ Artifact 添加研究、Voice 真机协议、依赖版本及完整第三方许�
 
 自动测试包括真实编码读取/复制/AVAudioPlayer 参数、frame seek、CAF 裁剪、
 预设 Codable/兼容、真实 PCM DSP 数值、dry/wet、切换、ring→CAF 写入/清理、
-原生输出动态处理器配置与取消状态。合成 PCM 不代表真人声音质量或实际麦克风。
+原生输出动态处理器配置与取消状态；原生 AVAudioEngine 离线渲染实际处理后
+Voice + Music + TimePitch + Master + DynamicsProcessor，验证音量独立、起点和 rate。合成 PCM 不代表真人声音质量或实际麦克风。
 具体最终测试数/工具链/IPA SHA 以 BUILD-STATUS 和 dist/build-evidence.json 为准。

@@ -142,7 +142,8 @@ Voice/Music/Master 与 preview/experiment 音量独立；音乐段从指定 fram
 运行中 seek 重新排队且不改变主实验 applied 设置。
 记录保存后检查实际 PCM/metadata，原子持久化 VoiceLabRecord；失败回滚音频/sidecar。
 preset、强度、音量和 musicSettings 变化按 parameterEvents 审计；旧字段安全默认。
-进入后台普通停止并保存；中断/路由/engine config/media change 安全终止未完整录音。
+Voice 后台开关开启时继续用户主动开始的真实输入/输出/录音，关闭则停止并保存；
+中断/路由/engine config/media change 安全终止未完整录音。
 媒体 reset 后不操作失效 graph；下一次手动开始重读格式并重建，不自动恢复抢占。
 停止录音不会额外 flush 频谱处理尾音，结束前建议留一小段静音，真机协议检查末字完整性。
 

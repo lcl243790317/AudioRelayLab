@@ -167,5 +167,5 @@ Confirmed 是单文件实际验证；Tested 是当前 CI 夹具；Runtime-valida
 十二、Voice Lab / Mixer
 按 VOICE-LAB-TEST-PROTOCOL-ZH.md 执行原声及 15 预设、实时监听、处理后录音、
 Voice+Music、耳机/扬声器、路由/中断、回流与微信语音消息实测。
-进入后台停止实时 Voice，跨 App 可先保存 CAF 再走主播放器 A 延迟收录。
+分别测 Voice 后台继续开/关，切微信时系统可能中断；也可保存 CAF 再走 A 延迟收录。
 末字后留约 0.3 秒静音再停止，核对 DSP 延迟尾部未切断，保存真实失败记录。

@@ -16,7 +16,13 @@ required = ["project.yml", ".github/workflows/build-ios.yml", "README-BUILD-ZH.t
             "AudioRelayLab/Experiments/ExperimentStateMachine.swift",
             "AudioRelayLab/Experiments/ExperimentParameters.swift",
             "AudioRelayLabTests/ExperimentStateMachineTests.swift",
-            "AudioRelayLabTests/ParameterTests.swift"]
+            "AudioRelayLabTests/ParameterTests.swift",
+            "VOICE-PROCESSING-RESEARCH-ZH.md", "VOICE-LAB-TEST-PROTOCOL-ZH.md",
+            "AudioRelayLab/VoiceLab/DSP/VoiceDSP.cpp",
+            "AudioRelayLab/VoiceLab/Vendor/LICENSE-stretch.txt",
+            "AudioRelayLab/VoiceLab/Vendor/LICENSE-linear.txt",
+            "AudioRelayLab/Resources/THIRD-PARTY-NOTICES.txt",
+            "AudioRelayLabTests/VoiceLabTests.swift"]
 for name in required:
     if not (root / name).is_file():
         errors.append(f"缺少文件：{name}")

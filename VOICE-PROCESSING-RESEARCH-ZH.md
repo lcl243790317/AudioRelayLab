@@ -30,7 +30,7 @@ inputNode tap → 下混单声道 → 高通 → Signalsmith pitch/formant
 
 频谱块选不小于采样率 × 40 ms 的 2 次幂、hop 为块长 / 4，启用 split computation。界面显示库报告的 DSP 延迟，以及 session input/output latency；总端到端延迟还含 ring、IO 和动态处理器，必须测量，不能直接把三个显示值相加称为实测值。频域方法可能有瞬态涂抹、齿音或低音失真；极端预设应逐人调弱。
 
-实时监听默认需耳机；扬声器需主动启用并从低 Master 开始。录制默认静音现场监听，保存处理后 PCM。进入后台保存普通停止的录音；中断、路由、图配置、媒体服务变化时安全结束并丢弃未完整录音，提示手动重启。新启动重新验证硬件格式，不复用旧图。
+实时监听默认需耳机；扬声器需主动启用并从低 Master 开始。录制默认静音现场监听，保存处理后 PCM。后台开关开启时允许真实音频继续，关闭则切后台时停止并保存录音；中断、路由、图配置、媒体服务变化仍安全结束并丢弃未完整录音，提示手动重启。新启动重新验证硬件格式，不复用旧图。
 
 ## 15 个预设
 
@@ -63,7 +63,7 @@ Pitch / formant 单位为半音；三项 EQ 为 dB。完整动态、去齿音、
 | Signalsmith Stretch | 1.3.2；a670068d9aeb64913331d5cc29337b19a457a7df | MIT |
 | [Signalsmith Linear](https://github.com/Signalsmith-Audio/linear) | de55e6a50ffcf6f8f43f649692d94691c7025151 | MIT |
 
-Vendor 目录保留源码版权和完整许可证，`DEPENDENCIES.json` 记录固定提交；App resource 的 `THIRD-PARTY-NOTICES.txt` 携带两份许可证。C++17，DSP 编译 -O3；使用库的内置 FFT，未启用需要另行链接的 xsimd / IPP / PFFFT，也没有声称当前实现使用 Accelerate 加速。Vendor 的其他平台实现不加入编译 target。
+Vendor 目录保留源码版权和完整许可证；PATCHES.md 记录唯一 seeded-constructor 显式转换补丁，seed 1234 不变。`DEPENDENCIES.json` 记录固定提交；App resource 的 `THIRD-PARTY-NOTICES.txt` 携带两份许可证。C++17，DSP 编译 -O3；使用库的内置 FFT，未启用需要另行链接的 xsimd / IPP / PFFFT，也没有声称当前实现使用 Accelerate 加速。Vendor 的其他平台实现不加入编译 target。
 
 音频导入使用 Apple 的 [NSFileCoordinator](https://developer.apple.com/documentation/foundation/nsfilecoordinator) 与 [安全作用域 URL](https://developer.apple.com/documentation/foundation/nsurl/startaccessingsecurityscopedresource())，在 picker completion 获得临时访问权限、协调读取并复制至沙盒，后续只读本地文件。权限释放由 lease 生命周期管理。格式最终通过 AVAudioFile 的真实 PCM 读取判断。
 

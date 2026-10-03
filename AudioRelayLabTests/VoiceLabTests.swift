@@ -78,6 +78,17 @@ final class VoiceLabTests: XCTestCase {
         let difference = zip(dry.dropFirst(44100),wet.dropFirst(44100)).reduce(0.0) { $0+Double(abs($1.0-$1.1)) }/44100
         XCTAssertGreaterThan(difference, 0.01)
     }
+    func testPitchChangesFundamentalWhileFormantOnlyPreservesIt() throws {
+        func fundamental(_ samples:[Float]) -> Double {
+            var crossings = 0
+            for i in 44101..<samples.count { if samples[i-1]<=0 && samples[i]>0 { crossings += 1 } }
+            return Double(crossings)
+        }
+        let pitch = VoicePreset(id:"pitch",name:"pitch",pitch:3,formant:0,highpass:20,lowmid:0,presence:0,compression:0,deesser:0,outputGain:1)
+        let formant = VoicePreset(id:"formant",name:"formant",pitch:0,formant:2.5,highpass:20,lowmid:0,presence:0,compression:0,deesser:0,outputGain:1)
+        XCTAssertEqual(fundamental(try render(pitch)),220*pow(2,3.0/12),accuracy:4)
+        XCTAssertEqual(fundamental(try render(formant)),220,accuracy:4)
+    }
     func testStrengthZeroMatchesOriginalDelayedSignal() throws {
         var original = VoicePreset.all[0]
         original.outputGain = VoicePreset.all[1].outputGain
@@ -138,6 +149,66 @@ final class VoiceLabTests: XCTestCase {
         let writer = try VoiceRecordingWriter(context:VoiceDSPContext(sampleRate:44100),sampleRate:44100)
         XCTAssertTrue(FileManager.default.fileExists(atPath:writer.url.path)); writer.discard()
         XCTAssertFalse(FileManager.default.fileExists(atPath:writer.url.path))
+    }
+    func testRecordingRejectsInvalidRateBeforeIntegerConversion() throws {
+        let dsp = try VoiceDSPContext(sampleRate:44100)
+        XCTAssertThrowsError(try VoiceRecordingWriter(context:dsp,sampleRate:.nan))
+        XCTAssertThrowsError(try VoiceRecordingWriter(context:dsp,sampleRate:.infinity))
+        XCTAssertThrowsError(try VoiceRecordingWriter(context:dsp,sampleRate:0))
+    }
+    private func nativeMixEnergy(_ mix:AudioMixParameters) throws -> Double {
+        try mix.validate()
+        let engine = AVAudioEngine(), voice = AVAudioPlayerNode(), music = AVAudioPlayerNode()
+        let pitch = AVAudioUnitTimePitch(), limiter = try VoiceOutputLimiter.make()
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:44100,channels:1))
+        let input = try render(VoicePreset.all[1])
+        let voiceBuffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:UInt32(input.count)))
+        voiceBuffer.frameLength = UInt32(input.count)
+        let voiceSamples = try XCTUnwrap(voiceBuffer.floatChannelData?[0])
+        for i in input.indices { voiceSamples[i] = input[i] }
+        let asset = try AudioFileManager.generateTestAudio()
+        let file = try AVAudioFile(forReading:AudioFileManager.url(for:asset))
+        let settings = AudioPlaybackSettings(startOffset:0.3,playbackRate:2,volume:mix.music)
+        let frame = try AudioPlaybackSettings.frame(settings.startOffset,sampleRate:file.processingFormat.sampleRate,length:file.length)
+        pitch.rate = settings.playbackRate
+        for node in [voice,music,pitch,limiter] as [AVAudioNode] { engine.attach(node) }
+        engine.connect(voice,to:engine.mainMixerNode,format:format)
+        engine.connect(music,to:pitch,format:file.processingFormat)
+        engine.connect(pitch,to:engine.mainMixerNode,format:file.processingFormat)
+        engine.connect(engine.mainMixerNode,to:limiter,format:format)
+        engine.connect(limiter,to:engine.outputNode,format:format)
+        voice.volume = mix.voice; music.volume = mix.music; engine.mainMixerNode.outputVolume = mix.master
+        try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:512)
+        try engine.start()
+        defer { voice.stop(); music.stop(); engine.stop(); engine.disableManualRenderingMode() }
+        voice.scheduleBuffer(voiceBuffer,at:nil)
+        music.scheduleSegment(file,startingFrame:frame,frameCount:AVAudioFrameCount(file.length-frame),at:nil)
+        voice.play(); music.play()
+        let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:512))
+        var energy = 0.0, count = 0
+        for _ in 0..<400 {
+            let status = try engine.renderOffline(512,to:output)
+            if status == .success {
+                let samples = try XCTUnwrap(output.floatChannelData?[0])
+                for i in 0..<Int(output.frameLength) {
+                    XCTAssertTrue(samples[i].isFinite)
+                    if count > 8192 { energy += Double(samples[i]*samples[i]) }
+                    count += 1
+                }
+                if count>=44100 { break }
+            } else if status == .error { XCTFail("原生 Mixer 离线渲染失败"); break }
+        }
+        XCTAssertGreaterThanOrEqual(count,44100)
+        XCTAssertEqual(pitch.rate,2); XCTAssertEqual(frame,13230)
+        return energy / Double(max(1,count-8193))
+    }
+    func testNativeMixerRendersVoiceMusicSeekRateAndIndependentVolumes() throws {
+        let voice = try nativeMixEnergy(.init(voice:1,music:0,master:0.9))
+        let music = try nativeMixEnergy(.init(voice:0,music:0.4,master:0.9))
+        let mixed = try nativeMixEnergy(.init(voice:1,music:0.4,master:0.9))
+        XCTAssertGreaterThan(voice,0.0001); XCTAssertGreaterThan(music,0.0001)
+        XCTAssertGreaterThan(mixed,voice*1.05)
+        XCTAssertLessThan(try nativeMixEnergy(.init(voice:1,music:1,master:0)),0.0000001)
     }
     func testPublicAppleOutputLimiterIsAvailableAndConfigurable() throws {
         let effect = try VoiceOutputLimiter.make()

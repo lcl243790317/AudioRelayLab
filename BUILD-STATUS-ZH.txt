@@ -16,7 +16,7 @@ Bundle ID：com.audiorelaylab.AudioRelayLab；仅 iPhone；最低 iOS 17.0。
 - 后台队列写 Float PCM CAF，处理后与混合录音回流主播放器、分享、删除。
 - Mixer 音乐起点/rate/运行中 seek；原生 DynamicsProcessor 输出保护。
 - 历史旧字段默认兼容；Voice 参数变化审计；日志和 CSV 增加源类型/格式/起点/rate。
-- 前置会话/硬件格式验证、UUID/cancel、route/interruption/media/lifecycle 安全停止并手动重启。
+- 前置会话/硬件格式验证、UUID/cancel；后台开关控制真实音频继续，中断/失效安全停止并手动重启。
 
 音频选择问题的证据：
 Git 原码的 controlsLocked=isImporting||machine.isActive 同时拦截外部与默认测试音；
@@ -38,7 +38,9 @@ https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
 这仅是音频导入/编辑阶段证据，不代替下方最终 Voice Lab 源码证据。
 
 待本轮真实 CI 更新：
-完整 Voice Lab/Mixer 版本等待真实 Xcode 类型检查、XCTest、arm64 Release、IPA 验证。
+Voice 检查点 2c3910d66b9ff1143699bdcd9c34436f4b440bf9 的 run 37093849549 已完成
+105 XCTest、15 Python、双平台编译和 IPA。新增后台开关/原生离线 Mixer 回归与
+显式修复第三方 seeded-constructor 精度警告后的最终版本等待以下真实证据。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。
@@ -51,7 +53,7 @@ https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
 - 8 类音频的完整真机链路，包括 AIF/AIFC/FLAC 和各编码变体。
 - 真人预设自然度、可懂度、监听端到端延迟、切换/音量/seek 瞬态、长时间掉帧与发热。
 - 麦克风权限、耳机/HFP、扬声器反馈、录音和混合 CAF、回流/分享/删除。
-- 中断、后台、媒体服务和路由变化；跨 App Voice 停止行为及保存后主播放器收录。
+- 中断、后台开关、媒体服务和路由变化；跨 App Voice 真实音频是否允许继续及保存后主播放器收录。
 - 新版 C 在真实电话/微信实时通话中准备不闪退、结束后可重新启动，仍为发布前阻断项。
 没有旧 crash report，不能宣称已定位唯一 C 崩溃栈或所有通话场景已稳定。
 

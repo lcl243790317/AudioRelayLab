@@ -36,7 +36,7 @@ struct SignalsmithStretch {
 	static constexpr size_t version[3] = {1, 3, 2};
 
 	SignalsmithStretch() : randomEngine(std::random_device{}()) {}
-	SignalsmithStretch(long seed) : randomEngine(seed) {}
+	SignalsmithStretch(long seed) : randomEngine(static_cast<typename RandomEngineImpl::result_type>(seed)) {}
 		
 	// The difference between the internal position (centre of a block) and the input samples you're supplying
 	int inputLatency() const {

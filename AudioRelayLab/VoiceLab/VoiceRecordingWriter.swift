@@ -34,6 +34,7 @@ final class VoiceRecordingWriter: @unchecked Sendable {
     private let maximumFrames: AVAudioFramePosition
     init(context: VoiceDSPContext, sampleRate: Double) throws {
         self.context = context
+        guard sampleRate.isFinite, (8_000...384_000).contains(sampleRate) else { throw LabError.invalidFormat }
         maximumFrames = AVAudioFramePosition(sampleRate * 600)
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192) else { throw LabError.invalidFormat }

@@ -63,6 +63,7 @@ struct VoiceLabView: View {
                 }
                 Section("试听 / 录制") {
                     Toggle("允许扬声器监听", isOn: $voice.allowSpeakerMonitoring).disabled(voice.isActive)
+                    Toggle("允许后台继续当前 Voice / Mixer", isOn: $voice.continuesInBackground).disabled(voice.isActive)
                     Text("默认需耳机才能实时监听。扬声器与麦克风同时运行可能反馈；启用时从低 Master 音量开始。录音默认关闭现场监听。")
                         .font(.caption).foregroundStyle(.secondary)
                     Button(mixer ? "开始人声 + 音乐输出" : "开始实时试听") {
@@ -74,7 +75,7 @@ struct VoiceLabView: View {
                     Button(voice.isRecording ? "■ 停止并保存录音" : "■ 停止", role: .destructive) { voice.stop(); coordinator.refreshLibrary() }
                         .disabled(!voice.isActive)
                     if voice.isRecording { Button("取消并丢弃这次录音", role: .destructive) { voice.stop(saveRecording: false) } }
-                    Text("进入后台、中断、路由或媒体服务变化时安全停止；需要用户检查诊断后重新开始，不自动抢占通话会话。")
+                    Text("后台继续仅用于你主动开启的真实输入、输出或录音；系统可能因其他 App 录音而中断。中断、路由或媒体服务变化时安全停止，需手动重启。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("已保存的录音") {
