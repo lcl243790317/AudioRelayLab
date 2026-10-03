@@ -26,11 +26,35 @@ JSON schemaVersion=2；损坏单条隔离、缺失字段修复提示、未知值
   https://github.com/lcl243790317/AudioRelayLab/actions/runs/37072473308
   这不是当前 1.1.0 源码的编译证据。
 
-待本轮真实 CI 更新：
-- 新增 XCTest：状态机、参数、历史迁移、真实 WAV/CAF 文件与错误诊断测试。
-- XcodeGen、Simulator Debug、iPhone Simulator XCTest、iPhoneOS Release。
-- 最终 IPA 文件大小、SHA-256、run/commit/artifact 和实际 Xcode/SDK/Swift 版本。
-只有 xcodebuild 返回 0 才记录该步骤成功；本段尚不宣称新版已编译。
+本轮真实 CI 证据：
+- 源码提交：ce6f685025a6c6dfbdc3694a18bbf3d35b30d5c8
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37082051199
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：69 项，0 失败，TEST SUCCEEDED。
+- Python 自检：15 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；407180 字节。
+- SHA-256：b9a2025b8aae87c465bbed23c6f59f7de70bef52abfe6da2867a37fa947fad57
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
+- 该工具提示共 4 条：项目未使用 AppIntents，Xcode 跳过对应元数据提取；保留并记录。
+- 69 项 XCTest 分布：历史兼容 18、状态机 13、参数 12、音频文件/格式/错误安全 15、Coordinator 7、会话通知门禁 4。
+- Coordinator 测试调用真实协调器；通知门禁使用人工发送通知。它们不证明真实通话或 HFP 音频行为。
+- Windows 与 CI 的 15 项 Python 测试包括 IPA 校验器 5 项和构建证据判定器 10 项；后者拒绝失败、漏跑或 manifest 不一致。
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
+
+本地最终交付（下载后再次 verify_ipa，未伪造签名）：
+- Artifact：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37082051199/artifacts/11258263510
+- Artifact ID：11258263510；外层 ZIP SHA-256：e6ad49a7e3cd38c615695c7ee7a9752c28881a63784a8c8711ebff4721655d42
+- IPA 实际路径：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-unsigned.ipa
+- IPA：1.1.0 / build 2；407180 字节；SHA-256：b9a2025b8aae87c465bbed23c6f59f7de70bef52abfe6da2867a37fa947fad57
+- 完整 Artifact 解压目录：D:\Codex projectless\Wechat delay playback app\dist\ci-run-37082051199
+- 外层 Artifact ZIP：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-1.1.0-iOS-Build.zip
+- 真实生成的 AudioRelayLab.xcodeproj 已复制到项目根目录，仍以 project.yml 为工程配置依据。
+- 所有源码修改已提交；本机与远端 main 同步。构建后的证据文档单独提交，不改变已编译源码。
+- 本轮有两次真实 CI：首轮 58 XCTest 通过；补齐最终修复后本次结果以上方证据为准。
 
 真机已有观察（来自用户，不是本轮独立复测）：
 - iPhone17,1 / iOS 18.1.1：A 的多次微信语音消息收录成功，曾与本人讲话共同收录。
@@ -55,5 +79,5 @@ Swift do/catch 只处理可抛出 Error，不能替代对 Objective-C 异常触�
 签名：
 当前工程未配置 Apple 证书/私钥/provisioning profile，也不读取或提交此类秘密。
 CI 保持 contents: read，通过正常授权连接器提交源码。
-本轮将输出 AudioRelayLab-unsigned.ipa，需要用户自己的有效证书重新签名安装。
+本轮已输出 AudioRelayLab-unsigned.ipa，需要用户自己的有效证书重新签名安装。
 无私有 API、hook、通话音频抓取、注入启用、系统音量修改、静音保活或隐藏后台技巧。

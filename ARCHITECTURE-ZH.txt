@@ -43,6 +43,7 @@ Swift do/catch 处理 NSError / throwing API；它不能安全恢复 AVAudioEngi
 官方依据：
 https://developer.apple.com/documentation/callkit/cxcallobserver
 https://developer.apple.com/documentation/swift/handling-cocoa-errors-in-swift
+https://developer.apple.com/library/archive/documentation/Audio/Conceptual/AudioSessionProgrammingGuide/HandlingAudioInterruptions/HandlingAudioInterruptions.html
 未获取 crash report 前，不能宣称所有通话 / 路由场景已彻底排除崩溃。
 
 4. 会话与错误处理
