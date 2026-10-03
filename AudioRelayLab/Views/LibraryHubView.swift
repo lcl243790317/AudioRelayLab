@@ -69,8 +69,8 @@ struct LocalAudioLibraryView: View {
                     }.padding(.vertical,8)
                         .swipeActions(edge:.trailing,allowsFullSwipe:false) {
                             if asset.source != .bundled && !locked {
-                                Button("删除",role:.destructive) { coordinator.deleteAudio(asset) }
-                                    .labelStyle(.titleAndIcon)
+                                Button("删除",systemImage:"trash",role:.destructive) { coordinator.deleteAudio(asset) }
+                                    .buttonStyle(.automatic)
                             }
                         }
                         .listRowBackground(PaperTheme.paper)
