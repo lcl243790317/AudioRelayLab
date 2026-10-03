@@ -47,7 +47,10 @@ enum AIConnectionKey {
             query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             status = SecItemAdd(query as CFDictionary,nil)
         }
-        guard status == errSecSuccess else { throw LabError.message("连接密钥无法保存到钥匙串") }
+        guard status == errSecSuccess else {
+            throw NSError(domain:NSOSStatusErrorDomain,code:Int(status),
+                userInfo:[NSLocalizedDescriptionKey:"连接密钥无法保存到钥匙串"])
+        }
     }
 }
 
@@ -134,6 +137,7 @@ enum AIRequestAudio {
     @Published private(set) var connecting = false
     @Published private(set) var status = "连接电脑后，录制或选择一段纯人声"
     @Published private(set) var errorMessage:String?
+    @Published private(set) var connectionWarning:String?
     var onResult:((AudioAsset)->Void)?
     var beforeConvert:(()->Void)?
     private var task:Task<Void,Never>?
@@ -142,8 +146,11 @@ enum AIRequestAudio {
     private var activeConnection:(URL,String)?
     private let client:URLSession
     private let logger:DiagnosticsLogger?
-    init(logger:DiagnosticsLogger? = nil, session:URLSession? = nil) {
+    private let saveKey:(String) throws -> Void
+    init(logger:DiagnosticsLogger? = nil, session:URLSession? = nil,
+         saveKey:@escaping (String) throws -> Void = AIConnectionKey.save) {
         self.logger = logger
+        self.saveKey = saveKey
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 60; config.timeoutIntervalForResource = 180
         client = session ?? URLSession(configuration:config)
@@ -178,7 +185,7 @@ enum AIRequestAudio {
     func connect() {
         guard !busy, !connecting else { return }
         let token = UUID(); generation = token
-        connecting = true; errorMessage = nil; status = "正在检查电脑连接"
+        connecting = true; errorMessage = nil; connectionWarning = nil; status = "正在检查电脑连接"
         logger?.log("AI 连接", "用户连接电脑；不记录地址、密钥或录音内容。")
         task = Task { [weak self] in
             guard let self else { return }
@@ -195,7 +202,11 @@ enum AIRequestAudio {
                 guard self.generation == token else { return }
                 let voices = try JSONDecoder().decode(VoicesResponse.self,from:data).voices
                 guard !voices.isEmpty else { throw LabError.message("电脑没有可用音色") }
-                try AIConnectionKey.save(key)
+                do { try self.saveKey(key) }
+                catch {
+                    self.connectionWarning = "电脑已连接。密钥无法保留，重新打开 App 后需再输入。"
+                    self.logger?.log("AI 密钥保存失败", diagnosticError(error))
+                }
                 UserDefaults.standard.set(self.address,forKey:"aiAddress")
                 self.voices = voices
                 if !voices.contains(where:{$0.id == self.selectedVoice}) { self.selectedVoice = voices[0].id }

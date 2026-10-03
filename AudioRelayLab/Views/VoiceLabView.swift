@@ -254,6 +254,7 @@ struct AIConnectionView: View {
                         .disabled(ai.connecting || ai.busy)
                     if ai.connecting { ProgressView("正在连接…") }
                     PaperCaption(ai.status)
+                    if let warning = ai.connectionWarning { Text(warning).font(.caption).foregroundStyle(.orange) }
                     if let error = ai.errorMessage { Text(error).foregroundStyle(.orange) }
                 }
                 PaperCaption("只有点击“生成 AI 声音”才发送所选录音到此电脑。音色参考和生成结果保留在你的设备。")

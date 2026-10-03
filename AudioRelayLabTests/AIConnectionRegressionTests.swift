@@ -60,7 +60,8 @@ private final class AIHTTPTestProtocol: URLProtocol, @unchecked Sendable {
 }
 
 final class AIConnectionRegressionTests: XCTestCase {
-    @MainActor private func exercise(_ body:(AIConversionController,DiagnosticsLogger,AudioAsset) async throws -> Void) async throws {
+    @MainActor private func exercise(saveKey:((String) throws -> Void)? = nil,
+        _ body:(AIConversionController,DiagnosticsLogger,AudioAsset) async throws -> Void) async throws {
         let originalKey = AIConnectionKey.load(), originalAddress = UserDefaults.standard.string(forKey:"aiAddress")
         let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
         let prepared = try AIRequestAudio.make(url:fixture,start:0.2,limit:0.5)
@@ -73,7 +74,8 @@ final class AIConnectionRegressionTests: XCTestCase {
         }
         AIHTTPTestProtocol.state.reset(audio:try Data(contentsOf:prepared))
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [AIHTTPTestProtocol.self]
-        let logger = DiagnosticsLogger(), ai = AIConversionController(logger:logger,session:URLSession(configuration:config))
+        let logger = DiagnosticsLogger(), ai = AIConversionController(logger:logger,session:URLSession(configuration:config),
+            saveKey:saveKey ?? AIConnectionKey.save)
         ai.address = "http://127.0.0.1:7867"; ai.key = "contract-test-key"
         var results:[AudioAsset] = []; ai.onResult = { results.append($0) }
         defer { ai.cancel(); for asset in results { try? AudioFileManager.removeAudio(asset) } }
@@ -98,6 +100,16 @@ final class AIConnectionRegressionTests: XCTestCase {
             XCTAssertTrue(logger.entries().contains { $0.category == "AI 连接失败" && $0.message.contains("NSURLErrorDomain") })
             ai.connect(); try await self.settle(ai)
             XCTAssertEqual(ai.voices.count,1); XCTAssertNil(ai.errorMessage)
+        }
+    }
+    @MainActor func testSecureStorageFailureWarnsButKeepsAuthenticatedConnectionUsable() async throws {
+        try await exercise(saveKey:{ _ in throw NSError(domain:NSOSStatusErrorDomain,code:-34018) }) { ai,logger,input in
+            ai.connect(); try await self.settle(ai)
+            XCTAssertEqual(ai.voices.count,1); XCTAssertNil(ai.errorMessage)
+            XCTAssertNotNil(ai.connectionWarning)
+            XCTAssertTrue(logger.entries().contains { $0.category == "AI 密钥保存失败" && $0.message.contains("-34018") })
+            ai.selectInput(input); ai.convert(start:0.2,limit:0.5); try await self.settle(ai)
+            XCTAssertNotNil(ai.result)
         }
     }
     @MainActor func testConsecutiveConversionsAndReconnectProduceFreshResults() async throws {
