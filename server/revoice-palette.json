@@ -1,0 +1,105 @@
+{
+  "round": "expanded-revoice-1.7B",
+  "status": "Auditions only; App unchanged",
+  "accepted": [
+    "serena-original",
+    "vivian-original"
+  ],
+  "rejectedPreviousCandidate": "designed",
+  "referenceText": "今天的天气不错，我们晚一点出去走走吧。你不用着急，我会在这里等你，把想说的话慢慢说完。",
+  "profiles": [
+    {
+      "id": "serena-original",
+      "label": "Serena · 认可原版",
+      "group": "已认可",
+      "kind": "accepted",
+      "sourcePrefix": "serena",
+      "description": "你已认可：自然、语气恰到好处。原试听音频直接保留。"
+    },
+    {
+      "id": "vivian-original",
+      "label": "Vivian · 认可原版",
+      "group": "已认可",
+      "kind": "accepted",
+      "sourcePrefix": "vivian",
+      "description": "你已认可：较慵懒、原始音量较大。原试听音频直接保留。"
+    },
+    {
+      "id": "ancient-dylan",
+      "label": "古风温润小生",
+      "group": "古风男声",
+      "kind": "custom",
+      "speaker": "Dylan",
+      "description": "Dylan 的古风演绎，年轻男声、温润文雅。",
+      "instruction": "用年轻成年男声自然说对白。音色清润温和，带儒雅的古装小生气质，语速从容，标准普通话，咬字清楚。像古装剧里的日常交谈，不唱戏，不用舞台朗诵腔，按原文说完整。",
+      "roleText": "山中落过一场小雨，院里的竹叶还沾着水。姑娘若不急着赶路，不妨坐下喝杯茶。"
+    },
+    {
+      "id": "scholar-design",
+      "label": "清润书生",
+      "group": "古风男声",
+      "kind": "designed",
+      "description": "新设计的清润男声，固定参考复用，比较多句的一致性。",
+      "designInstruction": "一位二十五岁左右的年轻成年男性，清润的中高男声，声线干净、略有明亮感，温和儒雅，有古装剧书生小生的气质。标准普通话，日常对白式的自然表达，轻松从容，语气温柔克制，咬字清楚。不是唱戏，不是商业播音，不压低嗓子，不用夸张气声。",
+      "roleText": "山中落过一场小雨，院里的竹叶还沾着水。姑娘若不急着赶路，不妨坐下喝杯茶。"
+    },
+    {
+      "id": "cute-serena",
+      "label": "可爱萝莉系 · Serena",
+      "group": "可爱系",
+      "kind": "custom",
+      "speaker": "Serena",
+      "description": "Serena 的萌系演绎，清脆轻快、元气亲切。",
+      "instruction": "用清脆、轻巧、甜美的动漫可爱女声自然说话，声音略高、语气轻快灵动，元气亲切。自然读出全部文字，保留口头词和重复，避免挤嗓夹声，不刻意拖长尾音，不用夸张的撒娇腔。",
+      "roleText": "你看，我把今天要做的事情都写好啦！先喝点水，再一起出门，好不好？"
+    },
+    {
+      "id": "cute-design",
+      "label": "清脆动漫可爱声",
+      "group": "可爱系",
+      "kind": "designed",
+      "description": "新设计的清脆可爱声，固定参考复用。",
+      "designInstruction": "清脆明亮的动漫少女系可爱声，音域偏高，音色细腻轻巧、甜美干净，活泼灵动又亲切。自然的普通话日常对话，咬字清晰。不要成熟厚重的胸腔音，不要尖锐刺耳或刻意夹嗓，不拖长每个字，不用播音腔。",
+      "roleText": "你看，我把今天要做的事情都写好啦！先喝点水，再一起出门，好不好？"
+    },
+    {
+      "id": "lazy-vivian",
+      "label": "懒洋洋 · Vivian",
+      "group": "慵懒系",
+      "kind": "custom",
+      "speaker": "Vivian",
+      "description": "Vivian 的慵懒演绎，午后闲聊感、低能量和松弛尾音。",
+      "instruction": "像午后靠在窗边闲聊的年轻女性，懒洋洋、松弛、温暖，低能量，语气慢半拍，尾音放松，语速稍慢但每个字清楚。自然说完整段话，不用播音腔，不过度拖音，不刻意撒娇，不打哈欠。",
+      "roleText": "嗯，今天就慢慢来吧。窗边有阳光，我想再坐一会儿。你要是饿了，我们就去找点吃的。"
+    },
+    {
+      "id": "lazy-design",
+      "label": "午后慵懒女声",
+      "group": "慵懒系",
+      "kind": "designed",
+      "description": "新设计的柔和松弛女声，固定参考复用。",
+      "designInstruction": "二十五岁左右的年轻成年女性，中音域，柔和温暖，音色轻柔、略带空气感。像午后坐在窗边放松聊天，低能量、懒洋洋，语速从容、尾音自然放松，普通话清楚，有生活感。不是成熟女播音员，不是沙哑烟嗓，不刻意撒娇，不夸张耳语，不打哈欠。",
+      "roleText": "嗯，今天就慢慢来吧。窗边有阳光，我想再坐一会儿。你要是饿了，我们就去找点吃的。"
+    },
+    {
+      "id": "cool-serena",
+      "label": "清冷淡然 · Serena",
+      "group": "其他风格",
+      "kind": "custom",
+      "speaker": "Serena",
+      "description": "Serena 的清冷演绎，克制平静、干净利落。",
+      "instruction": "用年轻女性清冷淡然的口吻说话。声音干净，语气平静克制，情绪不过度外露，咬字清楚，停顿自然。正常交谈，不压低声音，不用商业播音腔，不撒娇，完整说出原文。",
+      "roleText": "我已经把时间和地点发给你了。明天下午三点见，路上注意安全。"
+    },
+    {
+      "id": "magnetic-uncle",
+      "label": "磁性温厚男声",
+      "group": "其他风格",
+      "kind": "custom",
+      "speaker": "Uncle_Fu",
+      "description": "Uncle_Fu 的自然演绎，低沉饱满、温厚稳重。",
+      "instruction": "自然低沉、饱满、温厚的成年男声，语气稳重亲切，像面对面轻松聊天，略带磁性。声音松弛，咬字清楚，不用广告朗诵腔，不刻意压嗓，不夸张气声，完整说出原文。",
+      "roleText": "慢一点没关系，先把最重要的事情做好。有什么需要帮忙的，你直接告诉我。"
+    }
+  ]
+}

@@ -10,10 +10,12 @@ from revoice_contract import synthesis_arguments,text_for_synthesis,validate_inp
 
 class RevoiceContractTests(unittest.TestCase):
     def test_source_voice_and_timing_cannot_enter_custom_synthesis(self):
-        task=dict(text='嗯，我，我想先休息一下。',speaker='Serena',instruction='自然说话')
-        changed=dict(task,sourceAudio='another.wav',sourceF0=70,inputDuration=50,sourceSpeaker='male',rate=2)
-        self.assertEqual(synthesis_arguments('custom',task),synthesis_arguments('custom',changed))
-        self.assertEqual(set(synthesis_arguments('custom',changed)),{'text','language','non_streaming_mode','speaker','instruct'})
+        for speaker in ('Serena','Vivian','Dylan','Uncle_Fu'):
+            with self.subTest(speaker=speaker):
+                task=dict(text='嗯，我，我想先休息一下。',speaker=speaker,instruction='自然说话')
+                changed=dict(task,sourceAudio='another.wav',sourceF0=70,inputDuration=50,sourceSpeaker='male',rate=2)
+                self.assertEqual(synthesis_arguments('custom',task),synthesis_arguments('custom',changed))
+                self.assertEqual(set(synthesis_arguments('custom',changed)),{'text','language','non_streaming_mode','speaker','instruct'})
 
     def test_repetitions_and_spoken_words_are_not_rewritten(self):
         self.assertEqual(text_for_synthesis('嗯，嗯，我，我的 Wi-Fi 还没连上。'),'嗯，嗯，我，我的 Wi-Fi 还没连上。')

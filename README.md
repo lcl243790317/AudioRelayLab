@@ -5,7 +5,7 @@
 安装包：`dist/AudioRelayLab-1.5.1-unsigned.ipa`，需要使用自己的证书重新签名。162 项 XCTest / 30 项 Python 和真实 iPhoneOS Release 已通过，见 `BUILD-STATUS-ZH.txt`。新声线是独立候选试听，尚未加入正式服务。
 
 
-自然重新配音的首轮实现：原声只用于识别，文字交给 Qwen3-TTS 1.7B 重新说。三种候选已生成离线试听，39 项本地 Python 检查通过；声线未验收，App 仍为 1.5.1。见 [重新配音评估与复现](REVOICE-RESEARCH-ZH.md)。
+自然重新配音：原声只用于识别，文字交给 Qwen3-TTS 1.7B 重新说。用户已认可 Serena、Vivian，拒绝首轮普通设计女声；新增古风小生、可爱、慵懒等 8 组候选，独立试听后再接入 App，当前仍为 1.5.1。见 [扩展声线试听与复现](REVOICE-PALETTE-ZH.md) 和 [首轮流程验证](REVOICE-RESEARCH-ZH.md)。
 
 现有 iPhone 项目的增量版本，最低 iOS 17.0，功能边界为 iOS 18.1.1；保留 SwiftUI、两套播放器、实验历史、诊断、XcodeGen 和原有 Git 历史。
 

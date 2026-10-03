@@ -17,7 +17,7 @@ def text_for_synthesis(text):
 def synthesis_arguments(variant, task, reference_prompt=None):
     result = dict(text=text_for_synthesis(task['text']), language='Chinese', non_streaming_mode=True)
     if variant == 'custom':
-        if task.get('speaker') not in ('Serena','Vivian'):
+        if task.get('speaker') not in ('Serena','Vivian','Dylan','Uncle_Fu'):
             raise ValueError('Unsupported audition speaker')
         result.update(speaker=task['speaker'], instruct=task.get('instruction',''))
     elif variant == 'design':
