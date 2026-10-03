@@ -37,6 +37,8 @@ AI 使用 30 diffusion steps、intelligibility CFG 0.7、similarity CFG 0.7、to
 - 可回听文件在 `dist/ai-samples`：`male-source.wav`、三个 `female-*.wav`、`phone-api-result.wav`。机器与参数证据为 `actual-inference.json` 和 `actual-api.json`，日志在 `server/.logs`。
 - API 的认证、非法/截断 WAV、长度、音色白名单、参考路径、取消、下载哈希有独立契约测试；这些测试使用显式测试替身，与上面的真实 GPU 证据分开。
 
+最终单音色服务又完成一次实际转换，结果与协议证据保存为 `current-service-result.wav` / `.json`。Windows 启动器现在记录真实监听 Python 子进程的 PID 与启动时间 ticks；已验证停止后端口释放、重新启动后仅提供默认自然女声。
+
 目前输入验证使用合成男声，尚未验证你的真人原声与手机 Wi-Fi 连接。自然度、性别听感和是否暴露原声需要用实际原声回听，不能由编译成功或频率数值证明。「完美」「所有男声都听不出来」不作为未经验证的承诺。
 
 ## 手机本地模式与 UI

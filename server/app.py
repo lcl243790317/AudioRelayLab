@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import io
 import json
+import os
 import queue
 import secrets
 import threading
@@ -175,6 +176,7 @@ def make_handler(service):
             try:
                 if self.command == "GET" and parsed.path == "/v1/health":
                     self.respond(200, {"engine":"Seed-VC v2", "modelState":service.model_state,
+                                       "processID":os.getpid(),
                                        "maxSeconds":MAX_SECONDS, "device":str(service.backend.device) if service.backend else "pending"})
                 elif self.command == "GET" and parsed.path == "/v1/voices":
                     self.respond(200, {"voices":[service.public_profile(p) for p in service.profiles.values()]})
@@ -224,5 +226,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     service = Service()
     server = ThreadingHTTPServer((args.host,args.port), make_handler(service))
+    (ROOT / ".private/listener-pid.txt").write_text(str(os.getpid()),encoding="ascii")
     print("AudioRelayLab AI service ready; model loads on first job. Port", args.port, flush=True)
     server.serve_forever()
