@@ -79,13 +79,15 @@ struct AudioSessionSnapshot: Codable {
     let ioBufferDuration: Double
     let preferredIOBufferDuration: Double
     let outputVolume: Float
+    var inputLatency: Double = 0
+    var outputLatency: Double = 0
     let inputAvailable: Bool
     let currentRoute: AudioRouteSnapshot
     let availableInputs: [AudioPortSnapshot]
     enum CodingKeys: String, CodingKey {
         case date, category, mode, categoryOptions, isOtherAudioPlaying, secondaryAudioShouldBeSilencedHint,
             sampleRate, preferredSampleRate, ioBufferDuration, preferredIOBufferDuration, outputVolume,
-            inputAvailable, currentRoute, availableInputs
+            inputAvailable, currentRoute, availableInputs, inputLatency, outputLatency
     }
 
     init(session: AVAudioSession = .sharedInstance()) {
@@ -100,6 +102,8 @@ struct AudioSessionSnapshot: Codable {
         ioBufferDuration = session.ioBufferDuration
         preferredIOBufferDuration = session.preferredIOBufferDuration
         outputVolume = session.outputVolume
+        inputLatency = session.inputLatency
+        outputLatency = session.outputLatency
         inputAvailable = session.isInputAvailable
         currentRoute = AudioRouteSnapshot(session.currentRoute)
         availableInputs = session.availableInputs?.map(AudioPortSnapshot.init) ?? []
@@ -123,6 +127,8 @@ extension AudioSessionSnapshot {
         ioBufferDuration = (try? c.decode(Double.self, forKey: .ioBufferDuration)) ?? 0
         preferredIOBufferDuration = (try? c.decode(Double.self, forKey: .preferredIOBufferDuration)) ?? 0
         outputVolume = (try? c.decode(Float.self, forKey: .outputVolume)) ?? 0
+        inputLatency = (try? c.decode(Double.self, forKey: .inputLatency)) ?? 0
+        outputLatency = (try? c.decode(Double.self, forKey: .outputLatency)) ?? 0
         inputAvailable = (try? c.decode(Bool.self, forKey: .inputAvailable)) ?? false
         availableInputs = (try? c.decode([AudioPortSnapshot].self, forKey: .availableInputs)) ?? []
         if let route = try? c.decode(AudioRouteSnapshot.self, forKey: .currentRoute) { currentRoute = route }

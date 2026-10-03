@@ -131,6 +131,10 @@ jobs:
             README-BUILD-ZH.txt
             README-INSTALL-ZH.txt
             TEST-PROTOCOL-ZH.txt
+            VOICE-PROCESSING-RESEARCH-ZH.md
+            VOICE-LAB-TEST-PROTOCOL-ZH.md
+            AudioRelayLab/Resources/THIRD-PARTY-NOTICES.txt
+            AudioRelayLab/VoiceLab/Vendor/DEPENDENCIES.json
       - name: 记录最终状态
         if: always()
         env:

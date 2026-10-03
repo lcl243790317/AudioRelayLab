@@ -22,6 +22,10 @@ targets:
           - Assets.xcassets
           - Info.plist
           - Resources
+          - VoiceLab/Vendor
+          - VoiceLab/DSP
+      - path: AudioRelayLab/VoiceLab/DSP
+        compilerFlags: "-O3"
       - path: AudioRelayLab/Resources
         buildPhase: resources
       - path: AudioRelayLab/Assets.xcassets
@@ -38,6 +42,8 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SWIFT_OBJC_BRIDGING_HEADER: AudioRelayLab/VoiceLab/DSP/AudioRelayLab-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
     info:
       path: AudioRelayLab/Info.plist
       properties:
@@ -51,7 +57,7 @@ targets:
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        NSMicrophoneUsageDescription: 播放和录音模式实验需要配置可使用麦克风的音频会话，本应用不会采集或保存麦克风录音。
+        NSMicrophoneUsageDescription: Voice Lab 使用麦克风进行实时变声、试听及用户主动开始的本地录音；不上传录音。C/D 实验也需要麦克风会话权限。
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
     dependencies:

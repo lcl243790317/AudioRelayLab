@@ -1,57 +1,62 @@
 AudioRelayLab 1.2.0 / build 3 — 本轮验证状态
 
 项目根目录：D:\Codex projectless\Wechat delay playback app
-现有仓库：https://github.com/lcl243790317/AudioRelayLab
-Bundle ID：com.audiorelaylab.AudioRelayLab
-最低系统：iOS 17.0，仅 iPhone。
-继续使用原有 SwiftUI / XcodeGen / Git 历史 / macOS Actions 工程，没有重建仓库。
+仓库：https://github.com/lcl243790317/AudioRelayLab
+Bundle ID：com.audiorelaylab.AudioRelayLab；仅 iPhone；最低 iOS 17.0。
+正式功能使用 iOS 18.1.1 已有公开 API；没有重新创建仓库或改写既有历史。
 
-本轮修改：
-A/C/D/E 可新建；B 仅保留 legacy decode/history display，不可开始实验。
-公开 CXCallObserver 只读可见通话状态前置检查，不识别具体 App、不获取号码。
-会话激活成功后验证路由、输入可用性、有限采样率/声道，再创建播放器和 Engine 图。
-本应用不使用 inputNode，不用 Swift catch 假装可以捕获 Objective-C assertion。
-准备与开始分成两阶段；UUID token 状态机拒绝重复启动、取消后回调与过期任务。
-中断最多自动恢复一次，失败即结束并清理；媒体服务和 Engine 配置改变不复用旧图。
-App 音量保留 0...1，实际播放器音量回读；系统音量只读。
-可选播放时长：AVAudioPlayer 真实裁剪 CAF，Engine 使用调度帧数限制，nil 为完整文件。
-JSON schemaVersion=2；损坏单条隔离、缺失字段修复提示、未知值只用于历史。
-真实 JSON 导入与 TXT/JSON/CSV 导出；自动日志含 UUID/sequence/uptime。
-自动诊断不记录个人路由名、UID、私人路径；用户备注保留在用户控制的实验记录。
+本轮实现：
+- AudioAsset/AudioSource 统一 Bundle、导入、处理后录音、混合录音；沙盒音频库和 metadata。
+- picker completion 取得 security scope，NSFileCoordinator 读取，UUID 命名、分块可取消复制、实际 PCM 解码。
+- 可取消导入并切换内置测试音，UUID 拒绝迟到导入覆盖；选新音重置 preview、起点和实验状态。
+- 起点进度、六项精调、独立 preview/5秒试听、七档倍速与 explicit apply。
+- AVAudioPlayer 与 AVAudioEngine 共用起点/rate/volume；后者用 segment + TimePitch。
+- Voice Lab：真实麦克风、Signalsmith pitch/formant、EQ/动态/去齿音/门/wet/gain，15 个预设。
+- 实时监听、input/DSP output level、路由和延迟；耳机默认、扬声器可选、独立音量。
+- 后台队列写 Float PCM CAF，处理后与混合录音回流主播放器、分享、删除。
+- Mixer 音乐起点/rate/运行中 seek；原生 DynamicsProcessor 输出保护。
+- 历史旧字段默认兼容；Voice 参数变化审计；日志和 CSV 增加源类型/格式/起点/rate。
+- 前置会话/硬件格式验证、UUID/cancel、route/interruption/media/lifecycle 安全停止并手动重启。
 
-已证明：
-- Windows 静态检查通过。
-- Python IPA 校验器测试通过；最终脚本测试数量以本轮 CI 日志为准。
-- 此前 1.0.0 曾真实 Simulator / iPhoneOS 构建成功；
-  https://github.com/lcl243790317/AudioRelayLab/actions/runs/37072473308
-  这不是当前 1.1.0 源码的编译证据。
+音频选择问题的证据：
+Git 原码的 controlsLocked=isImporting||machine.isActive 同时拦截外部与默认测试音；
+旧导入没有取消/替换入口，provider 工作挂起时两条选择路径均被锁住。
+旧导入也没有 NSFileCoordinator，scope 在 detached task 才申请；这些已修复。
+自动测试验证立即取消导入→切 Bundle、旧任务不能覆盖、选音重置和真实编码文件导入。
+没有本次失败的真机日志，不能确认某一个风险就是设备上唯一根因。
+
+格式证据：
+Confirmed audio formats：每个实际文件通过公开 AVAudioFile 解码验证后接受。
+Tested audio formats：CI 真实 MP3/M4A/AAC/WAV/AIFF/AIFC/CAF/FLAC 及 Bundle WAV。
+Runtime-validated additional formats：广义 audio 与所有文件回退；真实解码通过才纳入。
+以上不是全部编码变体或 iOS 18.1.1 真机格式保证；真机矩阵目前均待验证。
+
+阶段 0～2 已有真实检查点：
+源码：01a7d0f511411ca1c3f5727a19ef8aab7d07d051
+https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
+87 XCTest、15 Python 通过；Simulator Debug / iPhoneOS Release 成功，Swift 警告 0。
+这仅是音频导入/编辑阶段证据，不代替下方最终 Voice Lab 源码证据。
 
 待本轮真实 CI 更新：
-音频选择/库管理、独立试听、起点、倍速与实际编码格式回归新增，等待当前源码的真实 Xcode 构建。
-此前 1.1.0 成功不能作为当前源码证据。
+完整 Voice Lab/Mixer 版本等待真实 Xcode 类型检查、XCTest、arm64 Release、IPA 验证。
 
-真机已有观察（来自用户，不是本轮独立复测）：
-- iPhone17,1 / iOS 18.1.1：A 的多次微信语音消息收录成功，曾与本人讲话共同收录。
-- C/D 普通语音消息环境曾工作；D 导出成功实验实际使用内置路由，不等于蓝牙验证。
-- App 音量降到约 4% 后明显变小，音量控制有效。
-- 微信实时语音通话中 A/C/D 未实现目标播放，系统电话期间同样未实现。
-- 旧版 C 在电话或微信实时通话中点击准备曾闪退。
+真机已有观察（旧版用户结果，不是本轮复测）：
+- iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。
+- 约 4% App 音量明显降低，音量控制有效。
+- 微信实时语音通话 / 系统电话中 A/C/D 未实现目标播放，旧 C 准备曾闪退。
+- D 曾用实际内置路由成功，不等于 Bluetooth HFP 已验证。
 
-闪退根因证据边界：
-没有 crash report / exception backtrace，不能宣称已定位唯一触发栈。
-代码审查确认了激活前创建 Engine、缺少硬件格式前置验证、
-准备阶段中断/取消和恢复失败清理不足等风险，本轮已修复这些风险路径。
-Swift do/catch 只处理可抛出 Error，不能替代对 Objective-C 异常触发条件的前置防御。
+仍需 iOS 18.1.1 真机验收：
+- Files/iCloud/provider picker 实际可选、下载授权、metadata、试听、seek、倍速和两引擎 Experiment。
+- 8 类音频的完整真机链路，包括 AIF/AIFC/FLAC 和各编码变体。
+- 真人预设自然度、可懂度、监听端到端延迟、切换/音量/seek 瞬态、长时间掉帧与发热。
+- 麦克风权限、耳机/HFP、扬声器反馈、录音和混合 CAF、回流/分享/删除。
+- 中断、后台、媒体服务和路由变化；跨 App Voice 停止行为及保存后主播放器收录。
+- 新版 C 在真实电话/微信实时通话中准备不闪退、结束后可重新启动，仍为发布前阻断项。
+没有旧 crash report，不能宣称已定位唯一 C 崩溃栈或所有通话场景已稳定。
 
-尚未验证：
-- 新版在真实系统电话/微信实时通话中选择 C 并准备是否完全不闪退。
-  这是产品发布前必须完成的真机 release blocker；自动测试和编译不能替代。
-- 结束通话后重新准备 A/C/D/E 的真机行为。
-- 特定耳机实际 Bluetooth HFP 路由、不同 iOS/微信版本。
-- 新版本真实人声收录质量、后台调度和音量稳定性。
-
-签名：
-当前工程未配置 Apple 证书/私钥/provisioning profile，也不读取或提交此类秘密。
-CI 保持 contents: read，通过正常授权连接器提交源码。
-本轮将输出 AudioRelayLab-unsigned.ipa，需要用户自己的有效证书重新签名安装。
-无私有 API、hook、通话音频抓取、注入启用、系统音量修改、静音保活或隐藏后台技巧。
+第三方：Signalsmith Stretch 1.3.2 / Linear，固定 SHA，MIT 完整许可证已纳入 App。
+技术 graph、参数、局限和来源见 VOICE-PROCESSING-RESEARCH-ZH.md。
+App 不联网、不使用私有 API/注入/通话抓取/静音保活，不修改系统音量。
+导入审计按本轮要求含原 URL/文件名/沙盒目标，分享前检查个人路径。
+未配置 Apple 证书/私钥/profile；unsigned IPA 需要用户有效证书重新签名。

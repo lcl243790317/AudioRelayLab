@@ -125,7 +125,8 @@ E 分别测静音开关与锁屏，不能把 ambient 的系统限制误当作调
 TXT / JSON 导出当前显示日志；清空页面不删实验审计日志，历史保存完整本轮记录。
 JSON 历史含 settings、requestedDuration、设备 / OS、会话快照、结果、人工备注和错误。
 用户结果保留成功、失败、不确定、未检查等真实判断；自动事件不代替人工回听。
-自动日志去掉 UID、私人端口名和文件路径；旧历史和人工备注仍需分享前检查。
+自动日志去掉 UID 和私人端口名；导入审计按本轮要求含文件名、原 URL 与目标，
+旧历史、个人路径和人工备注需分享前检查。
 
 Windows 分析：
 python scripts/analyze-log.py <日志.txt 或历史.json 或诊断.jsonl>
@@ -133,3 +134,38 @@ python scripts/analyze-log.py <日志.txt 或历史.json 或诊断.jsonl>
 真实请求时间、调度调用、目标音频时间、可观察时间、实际发声与微信回听分别判读。
 每轮最终证据包括 commit / build、实验 UUID、日志、JSON 和人工结果。
 CI run / xcodebuild / IPA SHA 记录在 BUILD-STATUS-ZH.txt，不能代替本协议。
+
+十一、Audio Import Matrix（1.2.0，真机全部待验证）
+CI 真实 codec 自动测试与主设备 iOS 18.1.1 分开填写。每类本地 Files /
+iCloud 尚未下载 / 第三方 Provider 各一轮；不支持编码应友好失败并保留当前音频。
+格式         | picker可选 | 导入 | metadata | 试听 | seek | rate | Experiment
+Bundle WAV   | 不适用     | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+MP3          | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+M4A/AAC      | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+AAC/ADTS     | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+WAV/PCM      | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+AIF/AIFF     | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+AIFC         | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+CAF          | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+FLAC         | 待测       | 待测 | 待测     | 待测 | 待测 | 待测 | 待测
+
+每个成功文件显示名称/格式/时长/采样率/声道/字节，再立即试听。
+起点=0、中间、靠近尾部；±10/±1/±0.1 s clamp，尾端=duration 应提示无剩余。
+各档 0.5/0.75/1/1.25/1.5/1.75/2x；试听播放头独立于已应用起点。
+设 preview 4%、正式 50%，编辑变化直到“应用”才进入 Experiment；源 duration
+与 rate 共同影响实际播放时间。5秒试听计实际时间，源剩余不足则自然结束。
+AVAudioPlayer/Engine 两引擎分别检查延迟后实际从起点播放与时长/rate 一致。
+
+导入进行中立即取消/选择内置测试音，确认控制立即恢复且旧工作不能覆盖新选择。
+重复文件名不能覆盖；坏文件、空文件、超限、删除或不可访问输入要安全失败。
+Provider UTI 不正确时试“显示所有文件”；真实解码仍是最终门禁。
+替换音频应停旧试听，清零起点、播放头、duration、旧状态；退出重启仍用沙盒副本。
+导入日志核对原 URL/UTType/结果/格式/字节/目标/metadata/底层错误。
+Confirmed 是单文件实际验证；Tested 是当前 CI 夹具；Runtime-validated additional
+是不预先保证的额外格式。iOS 18.1.1 只有填入设备与实际结果才能称真机已验证。
+
+十二、Voice Lab / Mixer
+按 VOICE-LAB-TEST-PROTOCOL-ZH.md 执行原声及 15 预设、实时监听、处理后录音、
+Voice+Music、耳机/扬声器、路由/中断、回流与微信语音消息实测。
+进入后台停止实时 Voice，跨 App 可先保存 CAF 再走主播放器 A 延迟收录。
+末字后留约 0.3 秒静音再停止，核对 DSP 延迟尾部未切断，保存真实失败记录。

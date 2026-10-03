@@ -1,12 +1,14 @@
 import AVFAudio
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 @MainActor final class ExperimentCoordinator: ObservableObject {
     let logger: DiagnosticsLogger
     let session: AudioSessionManager
     let store: ExperimentStore
     let preview: PreviewPlaybackController
+    let voiceLab: VoiceProcessingEngine
     @Published private(set) var audio: AudioFileMetadata?
     @Published var engineKind: PlaybackEngineKind = .audioPlayer
     @Published var profile: AudioSessionProfile = .mixingPlayback
@@ -40,9 +42,12 @@ import UIKit
         self.logger = logger
         session = AudioSessionManager(logger: logger)
         preview = PreviewPlaybackController(session: session, logger: logger)
+        voiceLab = VoiceProcessingEngine(session: session, logger: logger)
         store = ExperimentStore(logger: logger)
         logger.log("生命周期", "App 启动；设备=\(DeviceInfo.current().modelIdentifier)；iOS=\(DeviceInfo.current().systemVersion)")
         session.onEvent = { [weak self] event in self?.handle(event) }
+        voiceLab.beforeStart = { [weak self] in self?.stop(); self?.preview.stop() }
+        voiceLab.onSaved = { [weak self] _ in self?.refreshLibrary() }
         for name in [UIApplication.didEnterBackgroundNotification, UIApplication.willEnterForegroundNotification] {
             lifecycleObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
                 let background = note.name == UIApplication.didEnterBackgroundNotification
@@ -79,13 +84,15 @@ import UIKit
     }
     var isRunning: Bool { machine.isActive }
     var busy: Bool { isImporting || state == .preparing }
-    var controlsLocked: Bool { isImporting || machine.isActive }
+    var controlsLocked: Bool { isImporting || machine.isActive || voiceLab.isActive }
 
     func importAudio(_ url: URL) {
-        guard !machine.isActive else { report(LabError.audioUnavailable, message: "请先结束当前实验再选择音频。"); return }
+        guard !machine.isActive, !voiceLab.isActive else { report(LabError.audioUnavailable, message: "请先结束当前实验或 Voice Lab 再选择音频。"); return }
         cancelImport()
         preview.reset()
         let lease = AudioAccessLease(url)
+        let type = UTType(filenameExtension: url.pathExtension)?.identifier ?? "未知（由解码器裁决）"
+        logger.log("音频导入请求", "原 URL=\(url.absoluteString)，文件=\(url.lastPathComponent)，UTType=\(type)，来源=imported")
         let token = UUID(); importGeneration = token
         isImporting = true
         importTask = Task { [weak self] in
@@ -96,7 +103,7 @@ import UIKit
                 let metadata = try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
                 guard !Task.isCancelled, self.importGeneration == token else { try? AudioFileManager.removeAudio(metadata); return }
                 try self.selectAudio(metadata)
-                self.logger.log("音频导入", "已复制至沙盒并释放安全作用域；时长=\(metadata.duration)s，采样率=\(metadata.sampleRate)，声道=\(metadata.channelCount)，字节数=\(metadata.byteCount)；不记录私人源路径或文件名。")
+                self.logger.log("音频导入", "validation=通过实际 PCM 解码，asset=\(metadata.id)，format=\(metadata.formatDescription)，destination=\(try AudioFileManager.url(for: metadata).absoluteString)，时长=\(metadata.duration)s，采样率=\(metadata.sampleRate)，声道=\(metadata.channelCount)，字节数=\(metadata.byteCount)；后续只使用本地副本。")
             } catch {
                 guard self.importGeneration == token, !Task.isCancelled else { return }
                 self.report(error, message: "无法读取这个音频文件：\(url.lastPathComponent)（\(url.pathExtension.uppercased())）。请先下载到本机或选择其他格式。")
@@ -104,12 +111,12 @@ import UIKit
         }
     }
     func useTestAudio() {
-        guard !machine.isActive else { return }
+        guard !machine.isActive, !voiceLab.isActive else { return }
         cancelImport()
         do {
             let metadata = try AudioFileManager.loadBundledAudio()
             try selectAudio(metadata)
-            logger.log("测试音频", "已生成 11.7s、44100Hz、单声道测试 WAV；10ms 淡入淡出，0.28 峰值。")
+            logger.log("测试音频", "已选择 Bundle 测试音（资源缺失时本地生成）；11.7s、44100Hz、单声道 WAV，10ms 淡入淡出，0.28 峰值。")
         } catch { report(error, message: "测试音频生成失败，请检查存储空间。") }
     }
     func cancelImport() {
@@ -120,7 +127,7 @@ import UIKit
         catch { logger.log("音频库读取失败", diagnosticError(error)) }
     }
     func selectAudio(_ asset: AudioAsset) throws {
-        guard !machine.isActive else { throw LabError.message("请先结束正式实验") }
+        guard !machine.isActive, !voiceLab.isActive else { throw LabError.message("请先结束正式实验或 Voice Lab") }
         let checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
             id: asset.id, source: asset.source, presetName: asset.presetName)
         preview.reset()
@@ -129,11 +136,11 @@ import UIKit
         machine = ExperimentStateMachine(); state = .idle; currentExperiment = nil; remaining = 0
         audio = checked; requestedDuration = nil; editing = AudioPlaybackSettings(); applied = editing; volume = Double(applied.volume)
         errorMessage = nil; technicalDetails = nil
-        logger.log("音频选择", "asset=\(checked.id)，来源=\(checked.source.rawValue)，格式=\(checked.formatDescription)，时长=\(checked.duration)，采样率=\(checked.sampleRate)，声道=\(checked.channelCount)，字节=\(checked.byteCount)；私人路径和名称不写入自动日志。")
+        logger.log("音频选择", "asset=\(checked.id)，文件=\(checked.fileName)，来源=\(checked.source.rawValue)，格式=\(checked.formatDescription)，时长=\(checked.duration)，采样率=\(checked.sampleRate)，声道=\(checked.channelCount)，字节=\(checked.byteCount)")
         refreshLibrary()
     }
     func selectLocal(_ asset: AudioAsset) {
-        guard !machine.isActive else { return }
+        guard !machine.isActive, !voiceLab.isActive else { return }
         cancelImport()
         do { try selectAudio(asset) }
         catch { report(error, message: "本地音频无法读取，请重新导入。") }
@@ -182,6 +189,7 @@ import UIKit
             currentExperiment = Experiment(id: id, date: Date(), device: DeviceInfo.current(), audio: audio, settings: settings,
                 schedule: nil, finalState: .preparing, result: .uncertain, resultReviewed: false, notes: "", finishedAt: nil, logs: [])
             logger.log("实验请求", "开始准备；引擎=\(settings.engine.rawValue)，配置=\(settings.profile.rawValue)，延迟=\(settings.delay)s，时长=\(settings.requestedDuration.map { String($0) } ?? "完整文件")，App音量=\(settings.volume)")
+            logger.log("实验音频", "asset=\(audio.id)，来源=\(audio.source)，格式=\(audio.formatDescription)，总时长=\(audio.duration)，起点=\(settings.startOffset)，rate=\(settings.playbackRate)，剩余源时长=\(audio.duration-settings.startOffset)，预计播放时间=\(AudioPlaybackSettings(startOffset:settings.startOffset,playbackRate:settings.playbackRate).estimatedDuration(duration:audio.duration,sourceLimit:settings.requestedDuration))")
             capture("prepare request")
             checkpoint()
             prepareTask = Task { [weak self] in
@@ -330,6 +338,7 @@ import UIKit
         case .active: logger.log("生命周期", "Scene active / foreground"); capture("foreground"); refresh()
         case .inactive: logger.log("生命周期", "Scene inactive")
         case .background:
+            voiceLab.stop()
             preview.stop()
             cancelImport()
             logger.log("生命周期", "Scene background")
@@ -365,6 +374,7 @@ import UIKit
         if machine.isActive || reason == "experiment finish" { currentExperiment?.sessionSnapshots.append(snapshot) }
     }
     private func handle(_ event: AudioSessionEvent) {
+        voiceLab.handle(event)
         preview.handle(event)
         let token = machine.generation
         logEngineState()

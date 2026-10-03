@@ -5,14 +5,17 @@ import UniformTypeIdentifiers
 struct MainView: View {
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var session: AudioSessionManager
+    @ObservedObject var voice: VoiceProcessingEngine
     @State private var importing = false
     @State private var showResult = false
     @State private var showTechnicalDetails = false
     @State private var customDelay = false
+    @State private var showAllImportFiles = false
 
     init(coordinator: ExperimentCoordinator) {
         self.coordinator = coordinator
         session = coordinator.session
+        voice = coordinator.voiceLab
     }
 
     var body: some View {
@@ -34,7 +37,9 @@ struct MainView: View {
             }
             .navigationTitle("AudioRelayLab")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
+            .fileImporter(isPresented: $importing,
+                allowedContentTypes: showAllImportFiles ? [.item] : [.audio] + ["mp3","m4a","aac","wav","aif","aiff","aifc","caf","flac"].compactMap { UTType(filenameExtension: $0) },
+                allowsMultipleSelection: false) { result in
                 switch result {
                 case .success(let urls):
                     if let url = urls.first { coordinator.importAudio(url) }
@@ -112,8 +117,11 @@ struct MainView: View {
             }
             Button("导入音频") { importing = true }
                 .disabled(coordinator.controlsLocked)
+            Toggle("显示所有文件（仍验证真实音频）", isOn: $showAllImportFiles).disabled(coordinator.controlsLocked)
+            Text("文件提供器若将音频标为未知类型，可开启此选项。导入成功以真实解码为准；云端文件请先下载到本机。")
+                .font(.caption).foregroundStyle(.secondary)
             Button("使用测试音频") { coordinator.useTestAudio() }
-                .disabled(coordinator.isRunning)
+                .disabled(coordinator.isRunning || voice.isActive)
             if coordinator.isImporting {
                 ProgressView("正在读取文件提供器并复制音频…")
                 Button("取消导入") { coordinator.cancelImport() }
@@ -121,7 +129,7 @@ struct MainView: View {
             if !coordinator.library.isEmpty {
                 DisclosureGroup("本地音频库（\(coordinator.library.count)）") {
                     ForEach(coordinator.library) { asset in
-                        Button(asset.fileName) { coordinator.selectLocal(asset) }.disabled(coordinator.isRunning)
+                        Button(asset.fileName) { coordinator.selectLocal(asset) }.disabled(coordinator.isRunning || voice.isActive)
                     }
                 }
             }

@@ -165,16 +165,7 @@ enum AudioSessionEvent {
         return snapshot
     }
     var microphoneInjectionDiagnostic: String {
-        #if compiler(>=6.1)
-        if #available(iOS 18.2, *) {
-            return "系统能力可用：\(session.isMicrophoneInjectionAvailable ? "是" : "否")。此页面仅读取能力，不启用注入。"
-        }
-        #else
-        if #available(iOS 18.2, *) {
-            return "此构建 SDK 未编入麦克风注入能力查询；核心声学实验仍可使用。"
-        }
-        #endif
-        return "当前系统低于 iOS 18.2，不支持此诊断能力。"
+        "本轮正式功能以 iOS 18.1.1 能力为界；不查询或启用麦克风注入。Voice Lab 只使用本 App 麦克风输入。"
     }
     private func receive(_ notification: Notification) {
         switch notification.name {

@@ -34,7 +34,7 @@ enum ExportManager {
     }
     static func csvFile(experiments: [Experiment]) throws -> URL {
         let iso = ISO8601DateFormatter()
-        var rows = [["实验编号", "日期", "设备", "iOS 版本", "App 版本", "构建", "音频", "引擎", "音频模式", "延迟秒", "请求播放时长秒", "初始播放音量", "语音优化", "扬声器覆盖", "最终状态", "结果", "用户已判断", "备注", "请求时间", "调度调用时间", "目标音频时间", "结束时间", "会话快照", "技术错误", "历史兼容提示", "记录版本", "完整日志"]]
+        var rows = [["实验编号", "日期", "设备", "iOS 版本", "App 版本", "构建", "音频", "引擎", "音频模式", "延迟秒", "请求播放时长秒", "初始播放音量", "语音优化", "扬声器覆盖", "最终状态", "结果", "用户已判断", "备注", "请求时间", "调度调用时间", "目标音频时间", "结束时间", "会话快照", "技术错误", "历史兼容提示", "记录版本", "完整日志", "开始位置秒", "播放倍速", "音频来源", "音频格式"]]
         rows += experiments.map { value -> [String] in
             var row = [value.id.uuidString, iso.string(from: value.date), value.device.modelIdentifier,
                        value.device.systemVersion, value.device.appVersion, value.device.build, value.audio.fileName]
@@ -48,6 +48,7 @@ enum ExportManager {
             row += [value.sessionSnapshots.map(\.summary).joined(separator: "\n\n"), value.errorDetails.joined(separator: "\n"),
                     value.migrationWarnings.joined(separator: "\n"), String(value.schemaVersion),
                     value.logs.map(\.line).joined(separator: "\n")]
+            row += [String(value.settings.startOffset),String(value.settings.playbackRate),value.audio.source.rawValue,value.audio.formatDescription]
             return row
         }
         let content = "\u{FEFF}" + rows.map { $0.map(csvCell).joined(separator: ",") }.joined(separator: "\r\n") + "\r\n"

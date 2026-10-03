@@ -23,8 +23,8 @@ struct AudioEditorView: View {
             Picker("播放速度", selection: $coordinator.editing.playbackRate) {
                 ForEach(AudioPlaybackSettings.rates, id: \.self) { Text(String(format: "%gx", $0)).tag($0) }
             }.onChange(of: coordinator.editing.playbackRate) { _, _ in preview.stop() }
-            Slider(value: Binding(get: { Double(coordinator.editing.volume) }, set: { coordinator.editing.volume = Float($0) }), in: 0...1)
-            LabeledContent("试听/待应用音量", value: "\(Int(coordinator.editing.volume * 100))%")
+            Slider(value: Binding(get: { coordinator.editing.volume.isFinite ? Double(min(1,max(0,coordinator.editing.volume))) : 0 }, set: { coordinator.editing.volume = Float($0) }), in: 0...1)
+            LabeledContent("试听/待应用音量", value: coordinator.editing.volume.isFinite ? "\(Int(min(1,max(0,coordinator.editing.volume)) * 100))%" : "不可用")
             LabeledContent("源音频剩余", value: AudioPlaybackSettings.time(coordinator.editing.remaining(duration: duration)))
             LabeledContent("预计播放时间", value: AudioPlaybackSettings.time(coordinator.editing.estimatedDuration(duration: duration)))
             HStack {

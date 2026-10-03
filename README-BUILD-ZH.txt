@@ -1,4 +1,4 @@
-AudioRelayLab — 构建与验证说明
+AudioRelayLab 1.2.0 / build 3 — 构建与验证说明
 
 1. 在现有工程上迭代
 仓库：https://github.com/lcl243790317/AudioRelayLab
@@ -73,7 +73,8 @@ Artifact 至少应含 IPA、ipa manifest、build log、environment info、genera
 报告的构建 SHA 与 Artifact 打包时文件之间应能核对；构建后的报告更新不能虚构进旧 Artifact。
 
 6. macOS 手动复现
-brew install xcodegen
+brew install xcodegen ffmpeg
+python3 scripts/generate-audio-fixtures.py
 xcodegen generate
 xcodebuild -project AudioRelayLab.xcodeproj -list
 按 .github/workflows/build-ios.yml 运行自动测试、模拟器和真机编译完整命令。
@@ -88,3 +89,18 @@ https://developer.apple.com/documentation/callkit/cxcallobserver
 https://developer.apple.com/documentation/swift/handling-cocoa-errors-in-swift
 https://developer.apple.com/documentation/avfaudio/avaudioplayernode/play(at:)
 https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md
+
+8. 本轮音频与 DSP 复现
+CI 在 XcodeGen 前用 Python 自有正弦信号生成 Bundle 测试 WAV，并通过 ffmpeg 真正编码
+MP3/M4A/AAC/WAV/AIFF/AIFC/CAF/FLAC。夹具不含用户人声，不把扩展名改名冒充格式。
+请先运行 generate-audio-fixtures.py，否则 codec XCTest 缺少资源应真实失败。
+ffmpeg 仅用于 CI 夹具生成，不进入 iOS App。App 解码使用 AVFoundation。
+Voice DSP 是 vendored 固定版本 MIT C++ 源码，通过 bridging header 供 Swift 使用；
+CLANG_CXX_LANGUAGE_STANDARD=c++17，DSP -O3，不需要在线取包或额外模型。
+project.yml 为 Vendor 与 DSP 分别配置，防止编入其他平台代码。
+Artifact 添加研究、Voice 真机协议、依赖版本及完整第三方许可证。
+
+自动测试包括真实编码读取/复制/AVAudioPlayer 参数、frame seek、CAF 裁剪、
+预设 Codable/兼容、真实 PCM DSP 数值、dry/wet、切换、ring→CAF 写入/清理、
+原生输出动态处理器配置与取消状态。合成 PCM 不代表真人声音质量或实际麦克风。
+具体最终测试数/工具链/IPA SHA 以 BUILD-STATUS 和 dist/build-evidence.json 为准。
