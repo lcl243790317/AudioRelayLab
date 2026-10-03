@@ -221,8 +221,8 @@ struct AIConnectionView: View {
                     PaperCaption("电脑运行 server/run.ps1，在 server/CONNECTION-ZH.txt 中复制地址与连接密钥。手机与电脑需在同一网络。")
                     TextField("http://192.168.1.8:7867",text:$ai.address)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("连接密钥",text:$ai.key).textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.roundedBorder).disabled(ai.connecting || ai.busy)
+                    SecureField("连接密钥",text:$ai.key).textFieldStyle(.roundedBorder).disabled(ai.connecting || ai.busy)
                     Button("连接并读取音色") { ai.connect() }.buttonStyle(PaperButtonStyle(primary:true))
                         .disabled(ai.connecting || ai.busy)
                     if ai.connecting { ProgressView("正在连接…") }

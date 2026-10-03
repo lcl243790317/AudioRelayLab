@@ -197,12 +197,18 @@ enum AIRequestAudio {
                     throw LabError.message((try? JSONDecoder().decode(Failure.self,from:data).message) ?? "人声上传失败")
                 }
                 let submitted = try JSONDecoder().decode(Job.self,from:data)
+                guard self.generation == token else {
+                    Task { _ = try? await self.request(base,key:key,path:"v1/jobs/\(submitted.id)",method:"DELETE") }
+                    return
+                }
                 self.remoteID = submitted.id
                 try Task.checkCancellation()
                 for _ in 0..<1800 {
                     try Task.checkCancellation()
                     let (data,_) = try await self.request(base,key:key,path:"v1/jobs/\(submitted.id)")
                     let job = try JSONDecoder().decode(Job.self,from:data)
+                    try Task.checkCancellation()
+                    guard self.generation == token else { return }
                     self.status = job.message
                     if job.state == "failed" || job.state == "cancelled" { throw LabError.message(job.message) }
                     if job.state == "complete" {
@@ -230,10 +236,10 @@ enum AIRequestAudio {
                 }
                 throw LabError.message("转换等待超过 30 分钟，请检查电脑日志")
             } catch {
+                guard self.generation == token else { return }
                 if let id = self.remoteID, let connection = self.activeConnection {
                     Task { _ = try? await self.request(connection.0,key:connection.1,path:"v1/jobs/\(id)",method:"DELETE") }
                 }
-                guard self.generation == token else { return }
                 if !Task.isCancelled { self.errorMessage = userFacingAudioError(error); self.status = "转换未完成，可检查连接后重试" }
             }
         }
