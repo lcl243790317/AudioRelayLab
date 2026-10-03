@@ -23,7 +23,8 @@ enum ExperimentParameters {
     static let maximumRequestedDuration: Double = 600
 
     /// nil duration means the complete file. An explicit duration is additionally capped at 600 seconds.
-    static func validate(delay: Double, volume: Double, requestedDuration: Double?, audioDuration: Double) throws {
+    static func validate(delay: Double, volume: Double, requestedDuration: Double?, audioDuration: Double,
+                         startOffset: Double = 0, playbackRate: Float = 1) throws {
         guard delay.isFinite, (minimumDelay...maximumDelay).contains(delay) else {
             throw ExperimentParameterError.invalidDelay
         }
@@ -33,10 +34,11 @@ enum ExperimentParameters {
         guard audioDuration.isFinite, audioDuration > 0 else {
             throw ExperimentParameterError.invalidAudioDuration
         }
+        _ = try AudioPlaybackSettings(startOffset: startOffset, playbackRate: playbackRate, volume: Float(volume)).validated(duration: audioDuration)
         if let requestedDuration {
             guard requestedDuration.isFinite,
                   requestedDuration >= minimumRequestedDuration,
-                  requestedDuration <= min(audioDuration, maximumRequestedDuration) else {
+                  requestedDuration <= min(audioDuration - startOffset, maximumRequestedDuration) else {
                 throw ExperimentParameterError.invalidRequestedDuration
             }
         }

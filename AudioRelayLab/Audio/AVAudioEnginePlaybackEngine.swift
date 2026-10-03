@@ -23,6 +23,10 @@ import Darwin
     private var observed = false
     private var voiceOptimized = false
     private var requestedDuration: TimeInterval?
+    private var initialFrame: AVAudioFramePosition = 0
+    private var startOffset: TimeInterval = 0
+    private var playbackRate: Float = 1
+    private var timePitch: AVAudioUnitTimePitch?
 
     init(logger: DiagnosticsLogger, validateEnvironment: @escaping () throws -> Void) {
         self.logger = logger
@@ -47,10 +51,12 @@ import Darwin
         logger.log("引擎状态", diagnosticState)
         onStateChange?(value)
     }
-    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?) async throws {
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval = 0, playbackRate: Float = 1) async throws {
         teardown()
         self.voiceOptimized = voiceOptimized
         self.requestedDuration = requestedDuration
+        self.startOffset = startOffset
+        self.playbackRate = playbackRate
         observed = false
         startFrame = 0
         resumeFrame = 0
@@ -69,15 +75,19 @@ import Darwin
             let newFile = try AVAudioFile(forReading: playbackURL)
             try AudioRuntimeValidation.validate(newFile.processingFormat)
             guard newFile.length > 0 else { throw LabError.invalidFormat }
+            _ = try AudioPlaybackSettings(startOffset: startOffset, playbackRate: playbackRate, volume: volume)
+                .validated(duration: Double(newFile.length) / newFile.processingFormat.sampleRate)
+            initialFrame = try AudioPlaybackSettings.frame(startOffset, sampleRate: newFile.processingFormat.sampleRate, length: newFile.length)
+            resumeFrame = initialFrame
             let frames: AVAudioFramePosition
             if let requestedDuration {
                 guard requestedDuration.isFinite, (0.1...600).contains(requestedDuration) else { throw LabError.invalidFormat }
-                frames = min(newFile.length, AVAudioFramePosition((requestedDuration * newFile.processingFormat.sampleRate).rounded(.down)))
-            } else { frames = newFile.length }
+                frames = min(newFile.length - initialFrame, AVAudioFramePosition((requestedDuration * newFile.processingFormat.sampleRate).rounded(.down)))
+            } else { frames = newFile.length - initialFrame }
             guard frames > 0, frames <= AVAudioFramePosition(UInt32.max), volume.isFinite, (0...1).contains(volume) else {
                 throw LabError.message("音频时长或音量超出安全调度范围")
             }
-            endFrame = frames
+            endFrame = initialFrame + frames
             file = newFile
             try buildGraph()
             logger.log("引擎准备", "格式采样率=\(newFile.processingFormat.sampleRate)，声道=\(newFile.processingFormat.channelCount)，调度帧数=\(frames)；\(diagnosticState)")
@@ -99,16 +109,21 @@ import Darwin
         newEngine.attach(newNode)
         engine = newEngine
         node = newNode
+        let rateNode = AVAudioUnitTimePitch()
+        rateNode.rate = playbackRate
+        newEngine.attach(rateNode)
+        timePitch = rateNode
         if voiceOptimized {
             let newEQ = AVAudioUnitEQ(numberOfBands: 2)
             AudioProcessor.configure(eq: newEQ, sampleRate: file.processingFormat.sampleRate)
             newEngine.attach(newEQ)
             newEngine.connect(newNode, to: newEQ, format: file.processingFormat)
-            newEngine.connect(newEQ, to: newEngine.mainMixerNode, format: file.processingFormat)
+            newEngine.connect(newEQ, to: rateNode, format: file.processingFormat)
             eq = newEQ
         } else {
-            newEngine.connect(newNode, to: newEngine.mainMixerNode, format: file.processingFormat)
+            newEngine.connect(newNode, to: rateNode, format: file.processingFormat)
         }
+        newEngine.connect(rateNode, to: newEngine.mainMixerNode, format: file.processingFormat)
         newNode.volume = volume
         let graphToken = UUID()
         graphGeneration = graphToken
@@ -137,12 +152,12 @@ import Darwin
         guard !addition.overflow else { throw LabError.message("播放目标时间超出范围") }
         targetHostTime = addition.partialValue
         logger.log("调度调用", "当前hostTime=\(now)，延迟=\(delay)s，目标hostTime=\(addition.partialValue)")
-        try enqueue(from: 0, at: addition.partialValue)
+        try enqueue(from: initialFrame, at: addition.partialValue)
         setState(.waiting)
         logger.log("调度返回", "scheduleSegment + play(at:) 已调用；此 API 无 Bool 返回值；\(diagnosticState)。无法直接确认扬声器起始时间。")
         return PlaybackSchedule(requestedTime: requestedTime, scheduleCallTime: callTime,
             requestedDelay: delay, targetUptime: uptime + delay, audioClock: "mach_absolute_time / AVAudioTime.hostTime",
-            scheduledAudioTime: String(addition.partialValue), accepted: true, requestedDuration: requestedDuration)
+            scheduledAudioTime: String(addition.partialValue), accepted: true, requestedDuration: requestedDuration, startOffset: startOffset, playbackRate: playbackRate)
     }
     private func enqueue(from frame: AVAudioFramePosition, at hostTime: UInt64) throws {
         try validateEnvironment()
@@ -229,6 +244,7 @@ import Darwin
         }
         node = nil
         eq = nil
+        timePitch = nil
         engine = nil
     }
     func mediaServicesLost() {

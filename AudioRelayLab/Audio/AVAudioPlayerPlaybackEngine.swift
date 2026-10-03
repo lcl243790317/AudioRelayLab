@@ -12,6 +12,8 @@ import AVFAudio
     private var requestedDuration: TimeInterval?
     private var observed = false
     private var previousTime: TimeInterval = 0
+    private var startOffset: TimeInterval = 0
+    private var playbackRate: Float = 1
     var volume: Float = 0.5 { didSet { if volume.isFinite { player?.volume = min(1, max(0, volume)) } } }
 
     init(logger: DiagnosticsLogger, validateEnvironment: @escaping () throws -> Void) {
@@ -28,11 +30,13 @@ import AVFAudio
         logger.log("播放器状态", diagnosticState)
         onStateChange?(value)
     }
-    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?) async throws {
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval = 0, playbackRate: Float = 1) async throws {
         teardown()
         observed = false
         previousTime = 0
         self.requestedDuration = requestedDuration
+        self.startOffset = startOffset
+        self.playbackRate = playbackRate
         setState(.preparing)
         do {
             try validateEnvironment()
@@ -43,9 +47,12 @@ import AVFAudio
             let source = try AVAudioFile(forReading: url)
             try AudioRuntimeValidation.validate(source.processingFormat)
             guard source.length > 0 else { throw LabError.invalidFormat }
+            let totalDuration = Double(source.length) / source.processingFormat.sampleRate
+            _ = try AudioPlaybackSettings(startOffset: startOffset, playbackRate: playbackRate, volume: volume).validated(duration: totalDuration)
             let playbackURL: URL
-            if let requestedDuration, requestedDuration < Double(source.length) / source.processingFormat.sampleRate {
-                let work = Task.detached(priority: .userInitiated) { try AudioProcessor.trimmedCopy(of: url, duration: requestedDuration) }
+            let cropped = requestedDuration.map { $0 < totalDuration - startOffset } ?? false
+            if let requestedDuration, cropped {
+                let work = Task.detached(priority: .userInitiated) { try AudioProcessor.trimmedCopy(of: url, duration: requestedDuration, startOffset: startOffset) }
                 playbackURL = try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
                 processedURL = playbackURL
             } else { playbackURL = url }
@@ -54,9 +61,13 @@ import AVFAudio
             let newPlayer = try AVAudioPlayer(contentsOf: playbackURL)
             newPlayer.delegate = self
             newPlayer.volume = volume
+            newPlayer.enableRate = true
+            newPlayer.rate = playbackRate
+            newPlayer.currentTime = cropped ? 0 : startOffset
+            previousTime = newPlayer.currentTime
             player = newPlayer
             guard newPlayer.prepareToPlay(), newPlayer.duration.isFinite, newPlayer.duration > 0 else { throw LabError.audioUnavailable }
-            logger.log("播放器准备", "prepareToPlay 成功；实际时长=\(newPlayer.duration)s；实际播放器音量=\(newPlayer.volume)。")
+            logger.log("播放器准备", "prepareToPlay 成功；源起点=\(startOffset)s；rate=\(newPlayer.rate)；currentTime=\(newPlayer.currentTime)；实际时长=\(newPlayer.duration)s；实际播放器音量=\(newPlayer.volume)。")
             setState(.prepared)
         } catch {
             teardown()
@@ -79,7 +90,7 @@ import AVFAudio
         setState(.waiting)
         return PlaybackSchedule(requestedTime: requestedTime, scheduleCallTime: callTime,
             requestedDelay: delay, targetUptime: uptime + delay, audioClock: "AVAudioPlayer.deviceCurrentTime",
-            scheduledAudioTime: String(format: "%.9f", target), accepted: accepted, requestedDuration: requestedDuration)
+            scheduledAudioTime: String(format: "%.9f", target), accepted: accepted, requestedDuration: requestedDuration, startOffset: startOffset, playbackRate: playbackRate)
     }
     func observe() {
         guard let player, state == .waiting || state == .playing else { return }

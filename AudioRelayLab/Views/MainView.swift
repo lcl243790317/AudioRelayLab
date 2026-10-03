@@ -20,6 +20,7 @@ struct MainView: View {
             Form {
                 sessionSection
                 audioSection
+                AudioEditorView(coordinator: coordinator)
                 settingsSection
                 volumeSection
                 experimentSection
@@ -102,6 +103,7 @@ struct MainView: View {
             if let audio = coordinator.audio {
                 Text(audio.fileName).font(.headline).lineLimit(2)
                 LabeledContent("时长", value: String(format: "%.2f 秒", audio.duration))
+                LabeledContent("格式 / 来源", value: "\(audio.formatDescription) / \(audio.source.rawValue)")
                 LabeledContent("采样率", value: String(format: "%.0f Hz", audio.sampleRate))
                 LabeledContent("声道", value: String(audio.channelCount))
                 LabeledContent("大小", value: ByteCountFormatter.string(fromByteCount: audio.byteCount, countStyle: .file))
@@ -111,7 +113,18 @@ struct MainView: View {
             Button("导入音频") { importing = true }
                 .disabled(coordinator.controlsLocked)
             Button("使用测试音频") { coordinator.useTestAudio() }
-                .disabled(coordinator.controlsLocked)
+                .disabled(coordinator.isRunning)
+            if coordinator.isImporting {
+                ProgressView("正在读取文件提供器并复制音频…")
+                Button("取消导入") { coordinator.cancelImport() }
+            }
+            if !coordinator.library.isEmpty {
+                DisclosureGroup("本地音频库（\(coordinator.library.count)）") {
+                    ForEach(coordinator.library) { asset in
+                        Button(asset.fileName) { coordinator.selectLocal(asset) }.disabled(coordinator.isRunning)
+                    }
+                }
+            }
         }
     }
 
@@ -156,8 +169,8 @@ struct MainView: View {
                 }
             }
             Text(coordinator.requestedDuration == nil
-                 ? "播放完整音频。开启限制后，从文件开头播放指定时长。"
-                 : "限制时长须小于等于音频总时长且不超过 600 秒。无效参数会在准备前给出提示。")
+                 ? "从已应用的起点播放剩余音频。限制时长按源音频秒数计算，倍速会改变实际播放时间。"
+                 : "限制时长须不超过剩余源音频且最多 600 秒。")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("强制使用内置扬声器", isOn: $coordinator.speakerOverride)
                 .disabled(!coordinator.profile.usesInput)
@@ -188,6 +201,9 @@ struct MainView: View {
 
     private var experimentSection: some View {
         Section("播放实验") {
+            LabeledContent("已应用开始位置", value: AudioPlaybackSettings.time(coordinator.applied.startOffset))
+            LabeledContent("已应用速度", value: String(format: "%gx", coordinator.applied.playbackRate))
+            LabeledContent("正式音量 / 延迟", value: "\(percentage(coordinator.volume)) / \(coordinator.delay)s")
             Label(coordinator.state.title, systemImage: stateIcon).font(.headline)
             if coordinator.busy { ProgressView("正在准备或读取音频…") }
             if coordinator.state == .prepared {
@@ -244,7 +260,7 @@ struct MainView: View {
     }
 
     private var maximumDuration: Double {
-        let duration = coordinator.audio?.duration ?? 600
+        let duration = (coordinator.audio?.duration ?? 600) - coordinator.applied.startOffset
         return duration.isFinite ? max(0.1, min(duration, 600)) : 600
     }
 

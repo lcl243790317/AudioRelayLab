@@ -55,14 +55,16 @@ enum AudioProcessor {
             throw error
         }
     }
-    static func trimmedCopy(of url: URL, duration: TimeInterval) throws -> URL {
+    static func trimmedCopy(of url: URL, duration: TimeInterval, startOffset: TimeInterval = 0) throws -> URL {
         let source = try AVAudioFile(forReading: url)
         let format = source.processingFormat
         guard duration.isFinite, duration >= 0.1, duration <= 600,
             format.sampleRate.isFinite, (8_000...384_000).contains(format.sampleRate),
             (1...8).contains(format.channelCount), source.length > 0,
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192) else { throw LabError.invalidFormat }
-        let frameLimit = min(source.length, AVAudioFramePosition((duration * format.sampleRate).rounded(.down)))
+        let first = try AudioPlaybackSettings.frame(startOffset, sampleRate: format.sampleRate, length: source.length)
+        source.framePosition = first
+        let frameLimit = first + min(source.length - first, AVAudioFramePosition((duration * format.sampleRate).rounded(.down)))
         guard frameLimit > 0 else { throw LabError.invalidFormat }
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("segment-\(UUID().uuidString).caf")
         do {

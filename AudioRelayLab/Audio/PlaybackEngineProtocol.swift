@@ -42,8 +42,10 @@ struct PlaybackSchedule: Codable {
     let scheduledAudioTime: String
     let accepted: Bool
     var requestedDuration: TimeInterval? = nil
+    var startOffset: TimeInterval = 0
+    var playbackRate: Float = 1
     enum CodingKeys: String, CodingKey {
-        case requestedTime, scheduleCallTime, requestedDelay, targetUptime, audioClock, scheduledAudioTime, accepted, requestedDuration
+        case requestedTime, scheduleCallTime, requestedDelay, targetUptime, audioClock, scheduledAudioTime, accepted, requestedDuration, startOffset, playbackRate
     }
 }
 
@@ -58,6 +60,8 @@ extension PlaybackSchedule {
         scheduledAudioTime = (try? c.decode(String.self, forKey: .scheduledAudioTime)) ?? "未知"
         accepted = (try? c.decode(Bool.self, forKey: .accepted)) ?? false
         requestedDuration = try? c.decode(Double.self, forKey: .requestedDuration)
+        startOffset = (try? c.decode(Double.self, forKey: .startOffset)) ?? 0
+        playbackRate = (try? c.decode(Float.self, forKey: .playbackRate)) ?? 1
     }
 }
 
@@ -67,7 +71,7 @@ extension PlaybackSchedule {
     var volume: Float { get set }
     var diagnosticState: String { get }
     var onStateChange: ((PlaybackState) -> Void)? { get set }
-    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?) async throws
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval, playbackRate: Float) async throws
     func schedule(delay: TimeInterval, requestedTime: Date) throws -> PlaybackSchedule
     func observe()
     func stop()
@@ -75,4 +79,10 @@ extension PlaybackSchedule {
     func resumeIfPossible() throws -> Bool
     func mediaServicesLost()
     func teardown()
+}
+
+extension PlaybackEngineProtocol {
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?) async throws {
+        try await prepare(url: url, voiceOptimized: voiceOptimized, requestedDuration: requestedDuration, startOffset: 0, playbackRate: 1)
+    }
 }

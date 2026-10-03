@@ -45,6 +45,8 @@ jobs:
       - name: 生成 Xcode 工程
         run: |
           set -euo pipefail
+          if ! command -v ffmpeg >/dev/null; then brew install ffmpeg; fi
+          python3 scripts/generate-audio-fixtures.py 2>&1 | tee build-audio-fixtures.log
           xcodegen generate 2>&1 | tee build-xcodegen.log
           xcodebuild -project AudioRelayLab.xcodeproj -list 2>&1 | tee build-project-list.log
       - name: 编译模拟器

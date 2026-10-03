@@ -33,9 +33,11 @@ struct ExperimentSettings: Codable {
     let voiceOptimized: Bool
     let speakerOverride: Bool
     let requestedDuration: Double?
+    let startOffset: Double
+    let playbackRate: Float
 
     init(engine: PlaybackEngineKind, profile: AudioSessionProfile, delay: Double, volume: Float,
-         voiceOptimized: Bool, speakerOverride: Bool, requestedDuration: Double? = nil) {
+         voiceOptimized: Bool, speakerOverride: Bool, requestedDuration: Double? = nil, startOffset: Double = 0, playbackRate: Float = 1) {
         self.engine = engine
         self.profile = profile
         self.delay = delay
@@ -43,10 +45,12 @@ struct ExperimentSettings: Codable {
         self.voiceOptimized = voiceOptimized
         self.speakerOverride = speakerOverride
         self.requestedDuration = requestedDuration
+        self.startOffset = startOffset
+        self.playbackRate = playbackRate
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, profile, delay, volume, voiceOptimized, speakerOverride, requestedDuration
+        case engine, profile, delay, volume, voiceOptimized, speakerOverride, requestedDuration, startOffset, playbackRate
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -60,6 +64,10 @@ struct ExperimentSettings: Codable {
         speakerOverride = values.historyValue(Bool.self, forKey: .speakerOverride, default: false)
         let duration = try? values.decodeIfPresent(Double.self, forKey: .requestedDuration)
         requestedDuration = duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        let offset = values.historyValue(Double.self, forKey: .startOffset, default: 0)
+        startOffset = offset.isFinite && offset >= 0 ? offset : 0
+        let rate = values.historyValue(Float.self, forKey: .playbackRate, default: 1)
+        playbackRate = rate.isFinite && (0.5...2).contains(rate) ? rate : 1
     }
 }
 
