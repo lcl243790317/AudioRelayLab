@@ -64,7 +64,11 @@
 
 ## 验证证据
 
-当前 iPhone Simulator / iPhoneOS 构建、XCTest 和 IPA 哈希见 `BUILD-STATUS-ZH.txt`。1.5.0 实际通过 60 秒生成、31 秒后续转换、三次重连及超长拒绝，证据在 `dist/voice-1.5/http-60s-evidence.json`。60 秒输出精确为 60 秒；这项测试使用重复合成中文，仅验证长度和连续流程。既有 1.4.0 电脑真实 GPU 对比文件在 `dist/voice-1.4`；五次认证 HTTP 连续生成、四种模式切换与五次重连已通过，详见 [本机 AI 对比记录](VOICE-QUALITY-REPORT-ZH.md)。输入为本机 Microsoft Kangkang 合成中文男声，客观识别和基频分析用于排查漏字与走势，不能作为真人自然度的评分。
+1.5.0 / build 8 的 [真实 Actions 构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37144884794) 已通过：158 项 iPhone Simulator XCTest、30 项 Python、Swift 警告 0；下载 IPA 后再次核对版本、arm64/iPhoneOS、unsigned 与 SHA-256。
+
+实际录音自动保存为 60 秒，上传编码后仍为 60 秒；覆盖 22.05/44.1/48 kHz 与末 20 ms 可听音频。编码按转换器请求分块读取，并使用离线正常预充，依据 [Apple AVAudioConverterPrimeMethod.normal](https://developer.apple.com/documentation/avfaudio/avaudioconverterprimemethod/normal) 与 [priming 信息](https://developer.apple.com/documentation/avfaudio/avaudioconverterprimeinfo)。
+
+当前 iPhone Simulator / iPhoneOS 构建、XCTest 和 IPA 哈希见 `BUILD-STATUS-ZH.txt`。1.5.0 实际通过 60 秒生成、31 秒后续转换、六次连续转换/重连、四种方式各自 60 秒及超长拒绝，证据在 `dist/voice-1.5/http-60s-evidence.json`。60 秒输出精确为 60 秒；这项测试使用重复合成中文，仅验证长度和连续流程。既有 1.4.0 电脑真实 GPU 对比文件在 `dist/voice-1.4`；五次认证 HTTP 连续生成、四种模式切换与五次重连已通过，详见 [本机 AI 对比记录](VOICE-QUALITY-REPORT-ZH.md)。输入为本机 Microsoft Kangkang 合成中文男声，客观识别和基频分析用于排查漏字与走势，不能作为真人自然度的评分。
 
 旧 1.3.1 的两次 F0 基频走势相关性约 0.991，连续 HTTP 生成和工作进程恢复证据在 `dist/ai-prosody`，属于旧版结果。新增模型与音色参数的历史结果以上方 1.4.0 对比记录为准；1.5.0 未更换这些模型参数。
 
