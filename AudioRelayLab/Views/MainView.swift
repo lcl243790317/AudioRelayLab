@@ -34,6 +34,7 @@ struct MainView: View {
             .navigationTitle("AudioRelayLab")
             .buttonStyle(PaperButtonStyle())
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() } }
             .sheet(isPresented: $importing) {
                 AudioDocumentPicker(onSelection: { url in
                     // Acquire the scope and hand off the copied URL before dismissing the picker.
@@ -175,8 +176,8 @@ struct MainView: View {
                 }
             }
             Text(coordinator.requestedDuration == nil
-                 ? "从已应用的起点播放剩余音频。限制时长按源音频秒数计算，倍速会改变实际播放时间。"
-                 : "限制时长须不超过剩余源音频且最多 600 秒。")
+                 ? "播放已应用的起止区间。限制时长按源音频秒数计算，倍速会改变实际播放时间。"
+                 : "限制时长须不超过所选区间且最多 600 秒。")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("强制使用内置扬声器", isOn: $coordinator.speakerOverride)
                 .disabled(!coordinator.profile.usesInput)
@@ -212,6 +213,7 @@ struct MainView: View {
                 ForEach([1.0,2,3,4,5,7,10],id:\.self) { Text("\(Int($0)) 秒").tag($0) }
             }.disabled(coordinator.controlsLocked)
             LabeledContent("已应用开始位置", value: AudioPlaybackSettings.time(coordinator.applied.startOffset))
+            LabeledContent("已应用结束位置", value: AudioPlaybackSettings.time(coordinator.applied.endPosition(duration:coordinator.audio?.duration ?? 0)))
             LabeledContent("已应用速度", value: String(format: "%gx", coordinator.applied.playbackRate))
             LabeledContent("正式音量 / 延迟", value: "\(percentage(coordinator.volume)) / \(coordinator.delay)s")
             Label(coordinator.state.title, systemImage: stateIcon).font(.headline)
@@ -269,7 +271,7 @@ struct MainView: View {
     }
 
     private var maximumDuration: Double {
-        let duration = (coordinator.audio?.duration ?? 600) - coordinator.applied.startOffset
+        let duration = coordinator.applied.remaining(duration:coordinator.audio?.duration ?? 600)
         return duration.isFinite ? max(0.1, min(duration, 600)) : 600
     }
 

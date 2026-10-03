@@ -1,4 +1,4 @@
-param([switch]$Stop, [switch]$Restart)
+﻿param([switch]$Stop, [switch]$Restart)
 $ErrorActionPreference = 'Stop'
 $privateRoot = Join-Path $PSScriptRoot '.private'
 $workerFile = Join-Path $privateRoot 'server-process.json'

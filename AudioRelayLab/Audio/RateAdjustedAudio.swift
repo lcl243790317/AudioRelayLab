@@ -2,17 +2,16 @@ import AVFAudio
 
 /// Render playback speed before scheduling. The AVAudioPlayer device-clock gate stays at 1x.
 enum RateAdjustedAudio {
-    static func copy(of url:URL, startOffset:TimeInterval, rate:Float, duration:TimeInterval?) throws -> URL {
+    static func copy(of url:URL, startOffset:TimeInterval, rate:Float, duration:TimeInterval?, endOffset:TimeInterval? = nil) throws -> URL {
         let file = try AVAudioFile(forReading:url)
         let format = file.processingFormat
         try AudioRuntimeValidation.validate(format)
-        _ = try AudioPlaybackSettings(startOffset:startOffset,playbackRate:rate).validated(duration:Double(file.length)/format.sampleRate)
+        let selected = try AudioPlaybackSettings(startOffset:startOffset,playbackRate:rate,endOffset:endOffset).validated(duration:Double(file.length)/format.sampleRate)
         let first = try AudioPlaybackSettings.frame(startOffset,sampleRate:format.sampleRate,length:file.length)
-        var sourceFrames = file.length-first
         if let duration {
             guard duration.isFinite, (0.1...600).contains(duration) else { throw LabError.invalidFormat }
-            sourceFrames = min(sourceFrames,Int64((duration*format.sampleRate).rounded(.down)))
         }
+        let sourceFrames = try selected.selectedFrameCount(sampleRate:format.sampleRate,length:file.length,sourceLimit:duration)
         let outputLength = ceil(Double(sourceFrames)/Double(rate))
         guard sourceFrames>0, sourceFrames<=Int64(UInt32.max), outputLength.isFinite,
             outputLength*Double(format.channelCount)*4 <= 512*1024*1024 else {

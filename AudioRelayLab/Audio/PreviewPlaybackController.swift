@@ -13,45 +13,71 @@ import Combine
     private var token = UUID()
     private var deadline: TimeInterval?
     private var ownsSession = false
+    private var preparation: Task<Void, Never>?
+    private var processedURL: URL?
+    private var sourceTimeOffset: Double = 0
+    private var startInPlayer: Double = 0
     init(session: AudioSessionManager, logger: DiagnosticsLogger) { self.session = session; self.logger = logger }
-    deinit { timer?.invalidate() }
+    deinit { timer?.invalidate(); preparation?.cancel(); if let processedURL { try? FileManager.default.removeItem(at:processedURL) } }
     var isActive: Bool { state == .preparing || state == .playing }
+    var preparedDuration: Double? { player.map { $0.duration-startInPlayer } }
     func play(asset: AudioAsset, settings: AudioPlaybackSettings, fiveSeconds: Bool) {
         stop()
         errorMessage = nil
         let currentToken = UUID(); token = currentToken
         state = .preparing
-        do {
+        preparation = Task { [weak self] in
+          guard let self else { return }
+          var temporary: URL?
+          do {
             _ = try settings.validated(duration: asset.duration)
+            let original = try AudioFileManager.url(for:asset)
+            let playbackURL: URL
+            if settings.endPosition(duration:asset.duration) < asset.duration {
+                let work = Task.detached(priority:.userInitiated) { try AudioProcessor.rangeCopy(of:original,settings:settings) }
+                let cropped = try await withTaskCancellationHandler(operation:{ try await work.value },onCancel:{ work.cancel() })
+                temporary = cropped; playbackURL = cropped
+            } else { playbackURL = original }
+            try Task.checkCancellation()
+            guard self.token == currentToken, self.state == .preparing else { throw CancellationError() }
             try session.beginManualAttempt()
             try session.configure(profile: .mixingPlayback, speakerOverride: false)
             ownsSession = true
             guard token == currentToken, state == .preparing else { throw CancellationError() }
-            let next = try AVAudioPlayer(contentsOf: AudioFileManager.url(for: asset))
+            let next = try AVAudioPlayer(contentsOf:playbackURL)
             next.enableRate = true; next.rate = settings.playbackRate; next.volume = settings.volume
-            next.currentTime = settings.startOffset; next.delegate = self
+            sourceTimeOffset = temporary == nil ? 0 : settings.startOffset
+            startInPlayer = temporary == nil ? settings.startOffset : 0
+            next.currentTime = startInPlayer; next.delegate = self
             player = next
+            processedURL = temporary; temporary = nil
             try session.validateForPlayback()
             guard next.prepareToPlay(), next.play() else { throw LabError.audioUnavailable }
-            currentTime = next.currentTime
+            currentTime = sourceTimeOffset+next.currentTime
             deadline = fiveSeconds ? ProcessInfo.processInfo.systemUptime + 5 : nil
             state = .playing
-            logger.log("试听开始", "asset=\(asset.id)，起点=\(settings.startOffset)s，rate=\(settings.playbackRate)，previewVolume=\(settings.volume)，5秒=\(fiveSeconds)")
+            logger.log("试听开始", "asset=\(asset.id)，起点=\(settings.startOffset)s，终点=\(settings.endPosition(duration:asset.duration))s，rate=\(settings.playbackRate)，previewVolume=\(settings.volume)，5秒=\(fiveSeconds)")
             timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard let self, self.token == currentToken else { return }
-                    self.currentTime = self.player?.currentTime ?? self.currentTime
+                    if let player = self.player { self.currentTime = self.sourceTimeOffset+player.currentTime }
                     if let deadline = self.deadline, ProcessInfo.processInfo.systemUptime >= deadline { self.stop() }
                 }
             }
-        } catch {
+          } catch {
+            if let temporary { try? FileManager.default.removeItem(at:temporary) }
+            guard self.token == currentToken else { return }
+            if error is CancellationError { self.stop(); return }
             stop(); state = .failed; errorMessage = userFacingAudioError(error)
             logger.log("试听失败", diagnosticError(error))
+          }
         }
     }
     func stop() {
         token = UUID(); timer?.invalidate(); timer = nil
+        preparation?.cancel(); preparation = nil
         player?.delegate = nil; player?.stop(); player = nil; deadline = nil
+        if let processedURL { try? FileManager.default.removeItem(at:processedURL) }; processedURL = nil
         if ownsSession { ownsSession = false; session.deactivate(); logger.log("试听停止", "已释放试听播放器和会话。") }
         state = .idle
     }
@@ -67,7 +93,7 @@ import Combine
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self, weak player] in
             guard let self, let player, self.player === player else { return }
-            self.currentTime = player.duration; self.stop()
+            self.currentTime = self.sourceTimeOffset+player.duration; self.stop()
             if !flag { self.errorMessage = "试听没有正常完成，请查看诊断。" }
         }
     }

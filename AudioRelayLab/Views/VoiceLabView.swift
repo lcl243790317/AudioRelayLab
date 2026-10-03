@@ -30,6 +30,7 @@ struct VoiceLabView: View {
                     NavigationLink("录音与已生成的声音") { VoiceRecordLibraryView(coordinator:coordinator) }
                 }
             }.navigationTitle("变声").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() } }
                 .buttonStyle(PaperButtonStyle())
                 .sheet(isPresented:$showConnection) { AIConnectionView(ai:ai) }
         }
@@ -91,14 +92,14 @@ struct VoiceLabView: View {
                             .disabled(coordinator.controlsLocked || ai.connecting || coordinator.audio == nil)
                     }
                 }
-                PaperCaption("每段 0.3–25 秒；录制到 24 秒会自动保存。请在安静环境正常说话。")
+                PaperCaption("每段 0.3–60 秒；录满 60 秒自动保存。请在安静环境正常说话。")
                 if ai.input?.id == coordinator.audio?.id {
-                    PaperCaption("转换范围沿用音频页已应用的起点和限制时长。")
+                    PaperCaption("转换范围沿用音频页已应用的起点、终点和限制时长。")
                 }
                 Button("生成 AI 声音") {
                     let selected = ai.input?.id == coordinator.audio?.id
                     ai.convert(start:selected ? coordinator.applied.startOffset : 0,
-                               limit:selected ? coordinator.requestedDuration : nil)
+                               limit:selected ? coordinator.applied.sourceLimit(duration:coordinator.audio?.duration ?? 0,requested:coordinator.requestedDuration) : nil)
                 }.buttonStyle(PaperButtonStyle(primary:true))
                     .disabled(coordinator.controlsLocked || ai.connecting || ai.input == nil || ai.voices.isEmpty)
                 if ai.busy {
@@ -191,7 +192,7 @@ struct VoiceLabView: View {
                 Toggle("加入背景音乐",isOn:$mixer).disabled(voice.isActive)
                 if mixer {
                     Text(coordinator.audio?.fileName ?? "请先在音频页选择音乐").font(.subheadline)
-                    PaperCaption("沿用已应用的起点 \(AudioPlaybackSettings.time(coordinator.applied.startOffset)) · \(String(format:"%gx",coordinator.applied.playbackRate))")
+                    PaperCaption("沿用已应用区间 \(AudioPlaybackSettings.time(coordinator.applied.startOffset)) → \(AudioPlaybackSettings.time(coordinator.applied.endPosition(duration:coordinator.audio?.duration ?? 0))) · \(String(format:"%gx",coordinator.applied.playbackRate))")
                 }
             }
             PaperCard("试听与录制") {
@@ -219,12 +220,12 @@ struct VoiceLabView: View {
                     PaperCaption("实时试听建议使用耳机。录音默认关闭现场监听。")
                     if voice.isRecording { Button("丢弃这次录音",role:.destructive) { voice.stop(saveRecording:false) } }
                     if voice.state == .running && voice.isMixed {
-                        Slider(value:$musicSeek,in:0...max(0.001,coordinator.audio?.duration ?? 0.001))
+                        Slider(value:$musicSeek,in:0...max(0.001,coordinator.applied.endPosition(duration:coordinator.audio?.duration ?? 0.001)-0.001))
                         Picker("音乐速度",selection:$musicRate) {
                             ForEach(AudioPlaybackSettings.rates,id:\.self) { Text(String(format:"%gx",$0)).tag($0) }
                         }
                         Button("应用音乐起点与速度") {
-                            voice.seekMusic(.init(startOffset:musicSeek,playbackRate:musicRate,volume:voice.musicVolume))
+                            voice.seekMusic(.init(startOffset:musicSeek,playbackRate:musicRate,volume:voice.musicVolume,endOffset:coordinator.applied.endOffset))
                         }
                     }
                 }
@@ -271,7 +272,8 @@ struct VoiceLabView: View {
             defer { mixing = false; coordinator.endMixing() }
             do {
                 let voiceURL = try AudioFileManager.url(for:result), musicURL = try AudioFileManager.url(for:music)
-                _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:.init(),volumes:volumes) }.value
+                let settings = music.id == coordinator.audio?.id ? coordinator.applied : AudioPlaybackSettings()
+                _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:settings,volumes:volumes) }.value
                 coordinator.refreshLibrary(); mixStatus = "已保存，可在录音库回听或应用。"
             } catch { mixStatus = userFacingAudioError(error) }
         }

@@ -2,12 +2,19 @@ import SwiftUI
 import UIKit
 
 enum PaperTheme {
-    static let background = Color(red:0.91,green:0.91,blue:0.89)
-    static let paper = Color(red:0.975,green:0.971,blue:0.955)
-    static let ink = Color(red:0.23,green:0.24,blue:0.23)
-    static let secondary = Color(red:0.42,green:0.43,blue:0.41)
-    static let accent = Color(red:0.20,green:0.42,blue:0.49)
-    static let line = Color.black.opacity(0.10)
+    private static func adaptive(_ light:(Double,Double,Double),_ dark:(Double,Double,Double),alpha:Double=1) -> Color {
+        Color(UIColor { traits in
+            let rgb = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red:rgb.0,green:rgb.1,blue:rgb.2,alpha:alpha)
+        })
+    }
+    static let background = adaptive((0.91,0.91,0.89),(0.10,0.11,0.12))
+    static let paper = adaptive((0.975,0.971,0.955),(0.16,0.17,0.18))
+    static let ink = adaptive((0.23,0.24,0.23),(0.92,0.91,0.88))
+    static let secondary = adaptive((0.42,0.43,0.41),(0.68,0.69,0.67))
+    static let accent = adaptive((0.20,0.42,0.49),(0.47,0.73,0.77))
+    static let line = adaptive((0,0,0),(1,1,1),alpha:0.10)
+    static let edge = adaptive((1,1,1),(0.32,0.34,0.35),alpha:0.8)
     static let body = Font.system(.body,design:.serif)
     @MainActor static func configure() {
         let bar = UITabBarAppearance()
@@ -32,6 +39,7 @@ enum PaperTheme {
 
 struct PaperTexture: View {
     var card = false
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         Canvas { context, size in
             context.fill(Path(CGRect(origin:.zero,size:size)),with:.color(card ? PaperTheme.paper : PaperTheme.background))
@@ -40,7 +48,7 @@ struct PaperTexture: View {
                 for x in stride(from:0,to:Int(size.width),by:11) {
                     let shift = (x*17+y*13)%7
                     let rect = CGRect(x:CGFloat(x+shift),y:CGFloat(y+(shift%3)),width:0.7,height:0.7)
-                    context.fill(Path(ellipseIn:rect),with:.color(.black.opacity(0.028)))
+                    context.fill(Path(ellipseIn:rect),with:.color(scheme == .dark ? .white.opacity(0.025) : .black.opacity(0.028)))
                 }
             }
         }.accessibilityHidden(true)
@@ -73,7 +81,7 @@ struct PaperCard<Content:View>: View {
         }.frame(maxWidth:.infinity,alignment:.leading).padding(20)
             .background(PaperTexture(card:true))
             .clipShape(RoundedRectangle(cornerRadius:6))
-            .overlay(RoundedRectangle(cornerRadius:6).stroke(.white.opacity(0.8),lineWidth:1))
+            .overlay(RoundedRectangle(cornerRadius:6).stroke(PaperTheme.edge,lineWidth:1))
             .shadow(color:.black.opacity(0.09),radius:6,x:0,y:4)
     }
 }

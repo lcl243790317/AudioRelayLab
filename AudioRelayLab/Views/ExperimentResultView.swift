@@ -20,7 +20,7 @@ struct ExperimentResultView: View {
                     Text("\(experiment.settings.engine.rawValue) · \(experiment.settings.profile.historyTitle)")
                     Text("延迟 \(experiment.settings.delay, specifier: "%.1f") 秒 · 初始音量 \(Int(experiment.settings.volume * 100))%")
                     Text(experiment.settings.requestedDuration.map { "请求播放 \(String(format: "%.1f", $0)) 秒" } ?? "播放完整文件")
-                    Text("源起点 \(AudioPlaybackSettings.time(experiment.settings.startOffset)) · \(String(format:"%gx",experiment.settings.playbackRate)) · 预计播放 \(AudioPlaybackSettings.time(AudioPlaybackSettings(startOffset:experiment.settings.startOffset,playbackRate:experiment.settings.playbackRate).estimatedDuration(duration:experiment.audio.duration,sourceLimit:experiment.settings.requestedDuration)))")
+                    Text("源起点 \(AudioPlaybackSettings.time(experiment.settings.startOffset)) → \(AudioPlaybackSettings.time(experiment.settings.endOffset ?? experiment.audio.duration)) · \(String(format:"%gx",experiment.settings.playbackRate)) · 预计播放 \(AudioPlaybackSettings.time(AudioPlaybackSettings(startOffset:experiment.settings.startOffset,playbackRate:experiment.settings.playbackRate,endOffset:experiment.settings.endOffset).estimatedDuration(duration:experiment.audio.duration,sourceLimit:experiment.settings.requestedDuration)))")
                     Text("最终状态：\(experiment.finalState.title)")
                     Text("\(experiment.device.modelIdentifier) · iOS \(experiment.device.systemVersion)").font(.caption)
                 }

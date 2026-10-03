@@ -165,14 +165,15 @@ import Combine
             let file = try AVAudioFile(forReading: AudioFileManager.url(for: music))
             try AudioRuntimeValidation.validate(file.processingFormat)
             let start = try AudioPlaybackSettings.frame(settings.startOffset, sampleRate: file.processingFormat.sampleRate, length: file.length)
-            guard file.length - start <= Int64(UInt32.max) else { throw LabError.invalidFormat }
+            let count = try settings.selectedFrameCount(sampleRate:file.processingFormat.sampleRate,length:file.length)
+            guard count <= Int64(UInt32.max) else { throw LabError.invalidFormat }
             let node = AVAudioPlayerNode(), timePitch = AVAudioUnitTimePitch()
             timePitch.rate = settings.playbackRate
             next.attach(node); next.attach(timePitch)
             next.connect(node, to: timePitch, format: file.processingFormat)
             next.connect(timePitch, to: next.mainMixerNode, format: file.processingFormat)
             node.volume = try validVolume(musicVolume)
-            node.scheduleSegment(file, startingFrame: start, frameCount: AVAudioFrameCount(file.length-start), at: nil)
+            node.scheduleSegment(file, startingFrame:start,frameCount:AVAudioFrameCount(count),at:nil)
             musicNode = node; musicPitch = timePitch; musicFile = file; fixedMusicSettings = settings; musicPosition = settings.startOffset
         } else { fixedMusicSettings = nil }
         input.installTap(onBus: 0, bufferSize: 512, format: hardware) { buffer, _ in
@@ -184,7 +185,9 @@ import Combine
             let format = tapNode.outputFormat(forBus: 0)
             try AudioRuntimeValidation.validate(format)
             guard format.commonFormat == .pcmFormatFloat32, !format.isInterleaved else { throw LabError.invalidFormat }
-            writer = try VoiceRecordingWriter(context: dsp, sampleRate: format.sampleRate)
+            writer = try VoiceRecordingWriter(context:dsp,sampleRate:format.sampleRate,
+                maximumSeconds:mode == .rawRecording ? AIAudioLimits.maximumSeconds : 600,
+                automaticallyFinishAtLimit:mode == .rawRecording)
             parameterEvents = []
             recordParameters()
             recordingTapNode = tapNode; recordPreset = mode == .rawRecording ? VoicePreset.all[0] : preset; startedAt = Date(); recordURL = writer?.url
@@ -228,8 +231,8 @@ import Combine
                     engine.prepare(); try engine.start()
                     guard engine.isRunning else { throw LabError.audioUnavailable }
                     if let settings = self.fixedMusicSettings, let file = self.musicFile,
-                        self.musicPosition<Double(file.length)/file.processingFormat.sampleRate {
-                        self.seekMusic(.init(startOffset:self.musicPosition,playbackRate:settings.playbackRate,volume:self.musicVolume))
+                        self.musicPosition<settings.endPosition(duration:Double(file.length)/file.processingFormat.sampleRate) {
+                        self.seekMusic(.init(startOffset:self.musicPosition,playbackRate:settings.playbackRate,volume:self.musicVolume,endOffset:settings.endOffset))
                     }
                     self.logger.log("Voice 图恢复", "\(reason)；同硬件格式重启一次，参数保留；实际音频连续性需回听")
                 case .stop:
@@ -256,12 +259,12 @@ import Combine
             volumes:mode == .rawRecording ? .init(voice:1,music:0,master:1) : .init(voice:voiceVolume,music:musicVolume,master:masterVolume),musicSettings:fixedMusicSettings))
     }
     private func updateMeters() {
-        if mode == .rawRecording, let startedAt, Date().timeIntervalSince(startedAt) >= 24 { stop(); return }
+        if mode == .rawRecording, writer?.hasReachedLimit == true { stop(); return }
         guard let context else { return }
         inputLevel = VLInputLevel(context.pointer); outputLevel = VLOutputLevel(context.pointer)
         if let node = musicNode, let render = node.lastRenderTime, let time = node.playerTime(forNodeTime: render),
             time.isSampleTimeValid, time.sampleRate.isFinite, time.sampleRate > 0, let file = musicFile {
-            musicPosition = min(Double(file.length)/file.processingFormat.sampleRate,
+            musicPosition = min(fixedMusicSettings?.endPosition(duration:Double(file.length)/file.processingFormat.sampleRate) ?? Double(file.length)/file.processingFormat.sampleRate,
                 (fixedMusicSettings?.startOffset ?? 0) + Double(max(0,time.sampleTime))/time.sampleRate)
         }
         if let error = writer?.currentFailure() { abort(error) }
@@ -273,8 +276,10 @@ import Combine
             try session.validateForPlayback()
             _ = try settings.validated(duration: Double(file.length)/file.processingFormat.sampleRate)
             let frame = try AudioPlaybackSettings.frame(settings.startOffset, sampleRate:file.processingFormat.sampleRate,length:file.length)
+            let count = try settings.selectedFrameCount(sampleRate:file.processingFormat.sampleRate,length:file.length)
+            guard count <= Int64(UInt32.max) else { throw LabError.invalidFormat }
             node.stop(); musicPitch?.rate = settings.playbackRate
-            node.scheduleSegment(file,startingFrame:frame,frameCount:AVAudioFrameCount(file.length-frame),at:nil)
+            node.scheduleSegment(file,startingFrame:frame,frameCount:AVAudioFrameCount(count),at:nil)
             node.volume = try validVolume(musicVolume); node.play()
             fixedMusicSettings = settings; musicPosition = settings.startOffset
             if isRecording { recordParameters() }

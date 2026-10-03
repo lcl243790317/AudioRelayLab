@@ -3,8 +3,14 @@ import SwiftUI
 @main struct AudioRelayLabApp: App {
     @StateObject private var coordinator = ExperimentCoordinator()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("appearance.nightMode") private var nightMode = false
     @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-local-snapshot") ? 1 : 0
-    init() { PaperTheme.configure() }
+    init() {
+        if ProcessInfo.processInfo.arguments.contains("night-snapshot") {
+            UserDefaults.standard.set(true,forKey:"appearance.nightMode")
+        }
+        PaperTheme.configure()
+    }
     var body: some Scene {
         WindowGroup {
             TabView(selection:$selectedTab) {
@@ -12,7 +18,8 @@ import SwiftUI
                 VoiceLabView(coordinator:coordinator).tabItem { Label("变声",systemImage:"mic") }.tag(1)
                 LibraryHubView(coordinator:coordinator).tabItem { Label("资料",systemImage:"folder") }.tag(2)
             }
-                .tint(PaperTheme.accent).preferredColorScheme(.light)
+                .tint(PaperTheme.accent)
+                .preferredColorScheme(nightMode ? .dark : .light)
                 .buttonStyle(PaperButtonStyle(compact:true))
                 .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
                 .onChange(of: scenePhase, initial: true) { _, phase in coordinator.sceneChanged(phase) }

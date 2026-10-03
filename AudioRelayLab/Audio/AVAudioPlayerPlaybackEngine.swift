@@ -14,7 +14,9 @@ import AVFAudio
     private var previousTime: TimeInterval = 0
     private var startOffset: TimeInterval = 0
     private var playbackRate: Float = 1
+    private var endOffset: TimeInterval?
     var nativeRate: Float? { player?.rate }
+    var preparedDuration: Double? { player.map { $0.duration-(processedURL == nil ? startOffset : 0) } }
     var nativePlaybackTime: TimeInterval? { player?.currentTime }
     var volume: Float = 0.5 { didSet { if volume.isFinite { player?.volume = min(1, max(0, volume)) } } }
 
@@ -32,13 +34,14 @@ import AVFAudio
         logger.log("播放器状态", diagnosticState)
         onStateChange?(value)
     }
-    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval = 0, playbackRate: Float = 1) async throws {
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval = 0, playbackRate: Float = 1, endOffset: TimeInterval? = nil) async throws {
         teardown()
         observed = false
         previousTime = 0
         self.requestedDuration = requestedDuration
         self.startOffset = startOffset
         self.playbackRate = playbackRate
+        self.endOffset = endOffset
         setState(.preparing)
         do {
             try validateEnvironment()
@@ -50,18 +53,20 @@ import AVFAudio
             try AudioRuntimeValidation.validate(source.processingFormat)
             guard source.length > 0 else { throw LabError.invalidFormat }
             let totalDuration = Double(source.length) / source.processingFormat.sampleRate
-            _ = try AudioPlaybackSettings(startOffset: startOffset, playbackRate: playbackRate, volume: volume).validated(duration: totalDuration)
+            let selected = try AudioPlaybackSettings(startOffset:startOffset,playbackRate:playbackRate,volume:volume,endOffset:endOffset).validated(duration:totalDuration)
             let playbackURL: URL
-            let cropped = requestedDuration.map { $0 < totalDuration - startOffset } ?? false
+            let selectedFrames = try selected.selectedFrameCount(sampleRate:source.processingFormat.sampleRate,length:source.length,sourceLimit:requestedDuration)
+            let first = try AudioPlaybackSettings.frame(startOffset,sampleRate:source.processingFormat.sampleRate,length:source.length)
+            let cropped = selectedFrames < source.length-first
             if playbackRate != 1 {
                 logger.log("倍速准备", "先渲染源起点/倍速；未来等待用 1x 设备时钟，不缩放延迟")
                 let work = Task.detached(priority: .userInitiated) {
-                    try RateAdjustedAudio.copy(of:url,startOffset:startOffset,rate:playbackRate,duration:requestedDuration)
+                    try RateAdjustedAudio.copy(of:url,startOffset:startOffset,rate:playbackRate,duration:requestedDuration,endOffset:endOffset)
                 }
                 playbackURL = try await withTaskCancellationHandler(operation: { try await work.value },onCancel:{ work.cancel() })
                 processedURL = playbackURL
-            } else if let requestedDuration, cropped {
-                let work = Task.detached(priority: .userInitiated) { try AudioProcessor.trimmedCopy(of: url, duration: requestedDuration, startOffset: startOffset) }
+            } else if cropped {
+                let work = Task.detached(priority:.userInitiated) { try AudioProcessor.rangeCopy(of:url,settings:selected,sourceLimit:requestedDuration) }
                 playbackURL = try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
                 processedURL = playbackURL
             } else { playbackURL = url }
@@ -99,7 +104,7 @@ import AVFAudio
         setState(.waiting)
         return PlaybackSchedule(requestedTime: requestedTime, scheduleCallTime: callTime,
             requestedDelay: delay, targetUptime: uptime + delay, audioClock: "AVAudioPlayer.deviceCurrentTime",
-            scheduledAudioTime: String(format: "%.9f", target), accepted: accepted, requestedDuration: requestedDuration, startOffset: startOffset, playbackRate: playbackRate)
+            scheduledAudioTime: String(format: "%.9f", target), accepted: accepted, requestedDuration:requestedDuration,startOffset:startOffset,playbackRate:playbackRate,endOffset:endOffset)
     }
     func observe() {
         guard let player, state == .waiting || state == .playing else { return }

@@ -26,8 +26,10 @@ import Darwin
     private var initialFrame: AVAudioFramePosition = 0
     private var startOffset: TimeInterval = 0
     private var playbackRate: Float = 1
+    private var endOffset: TimeInterval?
     private var timePitch: AVAudioUnitTimePitch?
     var nativeRate: Float? { timePitch?.rate }
+    var preparedDuration: Double? { file.map { Double(endFrame-initialFrame)/$0.processingFormat.sampleRate } }
     var nativePlaybackTime: TimeInterval? {
         guard let time=currentTimeline(), time.isSampleTimeValid, time.sampleRate>0 else { return nil }
         return Double(time.sampleTime)/time.sampleRate
@@ -56,12 +58,13 @@ import Darwin
         logger.log("引擎状态", diagnosticState)
         onStateChange?(value)
     }
-    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval = 0, playbackRate: Float = 1) async throws {
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval = 0, playbackRate: Float = 1, endOffset: TimeInterval? = nil) async throws {
         teardown()
         self.voiceOptimized = voiceOptimized
         self.requestedDuration = requestedDuration
         self.startOffset = startOffset
         self.playbackRate = playbackRate
+        self.endOffset = endOffset
         observed = false
         startFrame = 0
         resumeFrame = 0
@@ -75,10 +78,13 @@ import Darwin
                 processedURL = playbackURL
                 logger.log("语音优化", "已创建独立单声道副本；原文件未修改。")
             } else { playbackURL = url }
+            if let requestedDuration {
+                guard requestedDuration.isFinite, (0.1...600).contains(requestedDuration) else { throw LabError.invalidFormat }
+            }
             if playbackRate != 1 {
                 let sourceURL = playbackURL
                 let work = Task.detached(priority:.userInitiated) {
-                    try RateAdjustedAudio.copy(of:sourceURL,startOffset:startOffset,rate:playbackRate,duration:requestedDuration)
+                    try RateAdjustedAudio.copy(of:sourceURL,startOffset:startOffset,rate:playbackRate,duration:requestedDuration,endOffset:endOffset)
                 }
                 playbackURL = try await withTaskCancellationHandler(operation:{ try await work.value },onCancel:{ work.cancel() })
                 if let previous = processedURL { try? FileManager.default.removeItem(at:previous) }
@@ -95,11 +101,10 @@ import Darwin
                 .validated(duration: Double(newFile.length) / newFile.processingFormat.sampleRate)
             initialFrame = try AudioPlaybackSettings.frame(nativeOffset, sampleRate: newFile.processingFormat.sampleRate, length: newFile.length)
             resumeFrame = initialFrame
-            let frames: AVAudioFramePosition
-            if let requestedDuration, playbackRate == 1 {
-                guard requestedDuration.isFinite, (0.1...600).contains(requestedDuration) else { throw LabError.invalidFormat }
-                frames = min(newFile.length - initialFrame, AVAudioFramePosition((requestedDuration * newFile.processingFormat.sampleRate).rounded(.down)))
-            } else { frames = newFile.length - initialFrame }
+            let nativeSelection = AudioPlaybackSettings(startOffset:nativeOffset,playbackRate:1,volume:volume,
+                endOffset:playbackRate == 1 ? endOffset : nil)
+            let frames = try nativeSelection.selectedFrameCount(sampleRate:newFile.processingFormat.sampleRate,
+                length:newFile.length,sourceLimit:playbackRate == 1 ? requestedDuration : nil)
             guard frames > 0, frames <= AVAudioFramePosition(UInt32.max), volume.isFinite, (0...1).contains(volume) else {
                 throw LabError.message("音频时长或音量超出安全调度范围")
             }
@@ -173,7 +178,7 @@ import Darwin
         logger.log("调度返回", "scheduleSegment + play(at:) 已调用；此 API 无 Bool 返回值；\(diagnosticState)。无法直接确认扬声器起始时间。")
         return PlaybackSchedule(requestedTime: requestedTime, scheduleCallTime: callTime,
             requestedDelay: delay, targetUptime: uptime + delay, audioClock: "mach_absolute_time / AVAudioTime.hostTime",
-            scheduledAudioTime: String(addition.partialValue), accepted: true, requestedDuration: requestedDuration, startOffset: startOffset, playbackRate: playbackRate)
+            scheduledAudioTime: String(addition.partialValue), accepted: true, requestedDuration:requestedDuration,startOffset:startOffset,playbackRate:playbackRate,endOffset:endOffset)
     }
     private func enqueue(from frame: AVAudioFramePosition, at hostTime: UInt64) throws {
         try validateEnvironment()

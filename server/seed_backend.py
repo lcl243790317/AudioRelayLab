@@ -116,7 +116,7 @@ class SeedBackend:
             expected = round(source_seconds*rate)
             if abs(samples.size-expected) <= rate*.05:
                 samples = np.pad(samples[:expected],(0,max(0,expected-samples.size)))
-            if not .3 <= samples.size/rate <= 40:
+            if not .3 <= samples.size/rate <= 60:
                 raise RuntimeError("模型输出长度异常，请重试或选择保留语调")
             peak = float(np.max(np.abs(samples)))
             if peak < .0001: raise RuntimeError("AI 输出为空或静音")

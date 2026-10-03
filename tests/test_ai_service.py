@@ -76,6 +76,25 @@ class AIServiceTests(unittest.TestCase):
         self.assertEqual(data["protocolVersion"],3)
         self.assertEqual(data["conversionMode"],"preserveProsody")
         self.assertEqual(data["conversionModes"],list(MODES))
+        self.assertEqual(data["maxSeconds"],60)
+
+    def test_sixty_seconds_upload_download_and_next_job_complete(self):
+        for seconds in (60,31):
+            data=pcm(seconds)
+            with self.request("/v1/jobs?voice=female","POST",data) as response:
+                key=json.load(response)["id"]
+            self.service.queue.join()
+            job=self.service.snapshot(key)
+            self.assertEqual(job["state"],"complete")
+            self.assertEqual(job["inputDuration"],seconds)
+            with self.request("/v1/jobs/"+key+"/audio") as response:
+                self.assertEqual(response.read(),data)
+
+    def test_over_sixty_seconds_is_rejected_by_http_without_queueing(self):
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.request("/v1/jobs?voice=female","POST",pcm(60.1))
+        self.assertEqual(caught.exception.code,400)
+        self.assertEqual(self.service.jobs,{})
 
     def test_consecutive_jobs_complete_and_persist_separate_results(self):
         keys = []
@@ -128,7 +147,7 @@ class AIServiceTests(unittest.TestCase):
         self.assertEqual(self.service.jobs,{})
 
     def test_long_recording_and_unknown_voice_rejected(self):
-        with self.assertRaises(ValueError): validate_wav(pcm(25.1))
+        with self.assertRaises(ValueError): validate_wav(pcm(60.1))
         with self.assertRaises(ValueError): self.service.submit(pcm(),"not-found")
         self.assertEqual(self.service.jobs,{})
 

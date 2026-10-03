@@ -35,9 +35,10 @@ struct ExperimentSettings: Codable {
     let requestedDuration: Double?
     let startOffset: Double
     let playbackRate: Float
+    let endOffset: Double?
 
     init(engine: PlaybackEngineKind, profile: AudioSessionProfile, delay: Double, volume: Float,
-         voiceOptimized: Bool, speakerOverride: Bool, requestedDuration: Double? = nil, startOffset: Double = 0, playbackRate: Float = 1) {
+         voiceOptimized: Bool, speakerOverride: Bool, requestedDuration: Double? = nil, startOffset: Double = 0, playbackRate: Float = 1, endOffset: Double? = nil) {
         self.engine = engine
         self.profile = profile
         self.delay = delay
@@ -47,10 +48,11 @@ struct ExperimentSettings: Codable {
         self.requestedDuration = requestedDuration
         self.startOffset = startOffset
         self.playbackRate = playbackRate
+        self.endOffset = endOffset
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, profile, delay, volume, voiceOptimized, speakerOverride, requestedDuration, startOffset, playbackRate
+        case engine, profile, delay, volume, voiceOptimized, speakerOverride, requestedDuration, startOffset, playbackRate, endOffset
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -65,9 +67,12 @@ struct ExperimentSettings: Codable {
         let duration = try? values.decodeIfPresent(Double.self, forKey: .requestedDuration)
         requestedDuration = duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         let offset = values.historyValue(Double.self, forKey: .startOffset, default: 0)
-        startOffset = offset.isFinite && offset >= 0 ? offset : 0
+        let validOffset = offset.isFinite && offset >= 0 ? offset : 0
+        startOffset = validOffset
         let rate = values.historyValue(Float.self, forKey: .playbackRate, default: 1)
         playbackRate = rate.isFinite && (0.5...2).contains(rate) ? rate : 1
+        let end = try? values.decode(Double.self,forKey:.endOffset)
+        endOffset = end.flatMap { $0.isFinite && $0 > validOffset ? $0 : nil }
     }
 }
 

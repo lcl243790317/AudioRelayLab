@@ -82,6 +82,27 @@ enum AudioProcessor {
             throw error
         }
     }
+    static func rangeCopy(of url:URL, settings:AudioPlaybackSettings, sourceLimit:Double? = nil) throws -> URL {
+        let source = try AVAudioFile(forReading:url)
+        let format = source.processingFormat
+        try AudioRuntimeValidation.validate(format)
+        let count = try settings.selectedFrameCount(sampleRate:format.sampleRate,length:source.length,sourceLimit:sourceLimit)
+        let first = try AudioPlaybackSettings.frame(settings.startOffset,sampleRate:format.sampleRate,length:source.length)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:8192) else { throw LabError.invalidFormat }
+        source.framePosition = first
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("range-\(UUID()).caf")
+        do {
+            let writer = try AVAudioFile(forWriting:destination,settings:format.settings)
+            let last = first+count
+            while source.framePosition < last {
+                try Task.checkCancellation()
+                try source.read(into:buffer,frameCount:AVAudioFrameCount(min(8192,last-source.framePosition)))
+                guard buffer.frameLength > 0 else { throw LabError.invalidFormat }
+                try writer.write(from:buffer)
+            }
+            return destination
+        } catch { try? FileManager.default.removeItem(at:destination); throw error }
+    }
     static func configure(eq: AVAudioUnitEQ, sampleRate: Double) {
         eq.globalGain = -2
         eq.bands[0].filterType = .highPass

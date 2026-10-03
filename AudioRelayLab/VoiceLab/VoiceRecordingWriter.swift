@@ -35,10 +35,14 @@ final class VoiceRecordingWriter: @unchecked Sendable {
     private var failure: Error?
     private var frames: AVAudioFramePosition = 0
     private let maximumFrames: AVAudioFramePosition
-    init(context: VoiceDSPContext, sampleRate: Double) throws {
+    private let automaticallyFinishAtLimit: Bool
+    private var reachedLimit = false
+    init(context: VoiceDSPContext, sampleRate: Double, maximumSeconds: Double = 600, automaticallyFinishAtLimit: Bool = false) throws {
         self.context = context
         guard sampleRate.isFinite, (8_000...384_000).contains(sampleRate) else { throw LabError.invalidFormat }
-        maximumFrames = AVAudioFramePosition(sampleRate * 600)
+        guard maximumSeconds.isFinite, maximumSeconds > 0, maximumSeconds <= 600 else { throw LabError.invalidFormat }
+        maximumFrames = AVAudioFramePosition((sampleRate*maximumSeconds).rounded(.down))
+        self.automaticallyFinishAtLimit = automaticallyFinishAtLimit
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192) else { throw LabError.invalidFormat }
         self.buffer = buffer
@@ -55,14 +59,22 @@ final class VoiceRecordingWriter: @unchecked Sendable {
             while true {
                 let count = VLRecordRead(context.pointer, samples, buffer.frameCapacity)
                 if count == 0 { break }
-                guard frames + AVAudioFramePosition(count) <= maximumFrames else { throw LabError.message("录音达到 10 分钟上限，请停止并保存") }
-                buffer.frameLength = count
-                try file.write(from: buffer); frames += AVAudioFramePosition(count)
+                let remaining = maximumFrames-frames
+                if !automaticallyFinishAtLimit, AVAudioFramePosition(count) > remaining {
+                    throw LabError.message("录音达到 10 分钟上限，请停止并保存")
+                }
+                let kept = AVAudioFrameCount(min(AVAudioFramePosition(count),max(0,remaining)))
+                if kept > 0 {
+                    buffer.frameLength = kept
+                    try file.write(from:buffer); frames += AVAudioFramePosition(kept)
+                }
+                if automaticallyFinishAtLimit, frames == maximumFrames { reachedLimit = true }
             }
             guard VLDropped(context.pointer) == 0 else { throw LabError.message("处理或录音缓冲发生丢帧，不能标为完整录音") }
         } catch { failure = error }
     }
     func currentFailure() -> Error? { queue.sync { failure } }
+    var hasReachedLimit: Bool { queue.sync { reachedLimit } }
     /// Call only after removing taps and stopping the engine, so no producer remains.
     func finish() throws -> URL {
         timer?.cancel(); timer = nil

@@ -26,6 +26,7 @@ struct LibraryHubView: View {
                 }
                 PaperCaption("AudioRelayLab · \(version)\n手机实时处理与电脑 AI 转换，可在同一套播放实验中回听。")
             }.navigationTitle("资料").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() } }
         }
     }
 }

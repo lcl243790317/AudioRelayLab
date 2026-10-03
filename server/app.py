@@ -21,7 +21,7 @@ from conversion_profiles import MODES, conversion_settings
 
 ROOT = Path(__file__).resolve().parent
 MAX_BYTES = 16 * 1024 * 1024
-MAX_SECONDS = 25
+MAX_SECONDS = 60
 LOG = logging.getLogger("AudioRelayLab.AI")
 
 def event(name, **fields):
@@ -35,7 +35,7 @@ def validate_wav(data):
                 raise ValueError("需要 8–48 kHz 单声道 16-bit PCM WAV")
             duration = frames / rate
             if not 0.3 <= duration <= MAX_SECONDS:
-                raise ValueError("请使用 0.3–25 秒的纯人声录音")
+                raise ValueError("请使用 0.3–60 秒的纯人声录音")
             if len(f.readframes(frames)) != frames * 2:
                 raise ValueError("WAV 文件不完整")
             return duration

@@ -83,9 +83,10 @@ enum AIRequestAudio {
         let format = file.processingFormat
         let available = Double(file.length)/format.sampleRate-start
         let seconds = limit.map { min($0,available) } ?? available
-        guard start.isFinite, start >= 0, seconds.isFinite, (0.3...25).contains(seconds),
+        if let limit { guard limit.isFinite, limit >= AIAudioLimits.minimumSeconds else { throw LabError.invalidFormat } }
+        guard start.isFinite, start >= 0, seconds.isFinite, (AIAudioLimits.minimumSeconds...AIAudioLimits.maximumSeconds).contains(seconds),
             format.commonFormat == .pcmFormatFloat32, !format.isInterleaved else {
-            throw LabError.message("请选择 0.3–25 秒的纯人声；长文件可在音频页设置起点和限制时长")
+            throw LabError.message("请选择 0.3–60 秒的纯人声；长文件可在音频页设置起止区间")
         }
         file.framePosition = try AudioPlaybackSettings.frame(start,sampleRate:format.sampleRate,length:file.length)
         let frames = AVAudioFrameCount(seconds*format.sampleRate)
@@ -316,7 +317,7 @@ enum AIRequestAudio {
                         do {
                             try audio.write(to:local,options:.atomic)
                             var asset = try AudioFileManager.inspect(url:local,displayName:name,id:id,source:.aiConverted,presetName:metadata.voiceName)
-                            guard asset.duration >= 0.3, asset.duration <= 40 else { throw LabError.invalidFormat }
+                            guard asset.duration >= AIAudioLimits.minimumSeconds, asset.duration <= AIAudioLimits.maximumSeconds else { throw LabError.invalidFormat }
                             asset.aiConversion = metadata
                             try AudioFileManager.register(asset)
                             self.result = asset; self.busy = false

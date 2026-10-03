@@ -6,7 +6,7 @@
 
 - 所有接口要求 `Authorization: Bearer <本机私有连接密钥>`。
 - `GET /v1/health` 返回真实模型加载状态和设备；`GET /v1/voices` 返回实际存在参考文件的音色及来源。
-- `POST /v1/jobs?voice=<ID>` 的 body 为单声道 PCM16 WAV，8–48 kHz、0.3–25 秒、最大 16 MB。返回任务 UUID 和 queued/loading/converting/complete/failed/cancelled 状态。
+- `POST /v1/jobs?voice=<ID>` 的 body 为单声道 PCM16 WAV，8–48 kHz、0.3–60 秒、最大 16 MB。返回任务 UUID 和 queued/loading/converting/complete/failed/cancelled 状态。
 - `GET /v1/jobs/<UUID>` 查询；完成后 `GET /v1/jobs/<UUID>/audio` 返回实际生成 WAV 和 `X-Audio-SHA256`。
 - `DELETE /v1/jobs/<UUID>` 取消。正在计算的模型步骤不能立即抢占，之后丢弃结果；已取消结果不能下载。
 

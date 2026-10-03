@@ -190,7 +190,7 @@ import UniformTypeIdentifiers
         do {
             applied = try editing.validated(duration: audio.duration)
             volume = Double(applied.volume); requestedDuration = nil
-            logger.log("应用播放设置", "asset=\(audio.id)，起点=\(applied.startOffset)，rate=\(applied.playbackRate)，volume=\(applied.volume)，剩余源时长=\(applied.remaining(duration: audio.duration))，预计时间=\(applied.estimatedDuration(duration: audio.duration))")
+            logger.log("应用播放设置", "asset=\(audio.id)，起点=\(applied.startOffset)，终点=\(applied.endPosition(duration:audio.duration))，rate=\(applied.playbackRate)，volume=\(applied.volume)，剩余源时长=\(applied.remaining(duration: audio.duration))，预计时间=\(applied.estimatedDuration(duration: audio.duration))")
         } catch { report(error, message: userFacingAudioError(error)) }
     }
     func audition(fiveSeconds: Bool = false) {
@@ -216,20 +216,20 @@ import UniformTypeIdentifiers
         do {
             guard let audio else { throw LabError.message("请先选择有效的音频文件") }
             try ExperimentParameters.validate(delay: delay, volume: volume, requestedDuration: requestedDuration, audioDuration: audio.duration,
-                startOffset: applied.startOffset, playbackRate: applied.playbackRate)
+                startOffset:applied.startOffset,playbackRate:applied.playbackRate,endOffset:applied.endOffset)
             guard profile.isSelectable, engineKind != .unknown else { throw LabError.message("旧版或未知配置不能用于新实验") }
             let token = try machine.begin()
             state = machine.state
             let settings = ExperimentSettings(engine: engineKind, profile: profile, delay: delay, volume: Float(volume),
                 voiceOptimized: voiceOptimized && engineKind == .audioEngine,
-                speakerOverride: speakerOverride && profile.usesInput, requestedDuration: requestedDuration, startOffset: applied.startOffset, playbackRate: applied.playbackRate)
+                speakerOverride: speakerOverride && profile.usesInput, requestedDuration: requestedDuration, startOffset:applied.startOffset,playbackRate:applied.playbackRate,endOffset:applied.endOffset)
             let id = UUID()
             logBoundary = logger.nextSequence
             logger.setExperimentID(id)
             currentExperiment = Experiment(id: id, date: Date(), device: DeviceInfo.current(), audio: audio, settings: settings,
                 schedule: nil, finalState: .preparing, result: .uncertain, resultReviewed: false, notes: "", finishedAt: nil, logs: [])
             logger.log("实验请求", "开始准备；引擎=\(settings.engine.rawValue)，配置=\(settings.profile.rawValue)，延迟=\(settings.delay)s，时长=\(settings.requestedDuration.map { String($0) } ?? "完整文件")，App音量=\(settings.volume)")
-            logger.log("实验音频", "asset=\(audio.id)，来源=\(audio.source)，格式=\(audio.formatDescription)，总时长=\(audio.duration)，起点=\(settings.startOffset)，rate=\(settings.playbackRate)，剩余源时长=\(audio.duration-settings.startOffset)，预计播放时间=\(AudioPlaybackSettings(startOffset:settings.startOffset,playbackRate:settings.playbackRate).estimatedDuration(duration:audio.duration,sourceLimit:settings.requestedDuration))")
+            logger.log("实验音频", "asset=\(audio.id)，来源=\(audio.source)，格式=\(audio.formatDescription)，总时长=\(audio.duration)，起点=\(settings.startOffset)，终点=\(settings.endOffset ?? audio.duration)，rate=\(settings.playbackRate)，剩余源时长=\(audio.duration-settings.startOffset)，预计播放时间=\(AudioPlaybackSettings(startOffset:settings.startOffset,playbackRate:settings.playbackRate,endOffset:settings.endOffset).estimatedDuration(duration:audio.duration,sourceLimit:settings.requestedDuration))")
             capture("prepare request")
             checkpoint()
             prepareTask = Task { [weak self] in
@@ -270,7 +270,7 @@ import UniformTypeIdentifiers
                     newEngine.onStateChange = { [weak self] value in self?.engineStateChanged(value, token: token) }
                     let url = try AudioFileManager.url(for: audio)
                     try await newEngine.prepare(url: url, voiceOptimized: settings.voiceOptimized, requestedDuration: settings.requestedDuration,
-                        startOffset: settings.startOffset, playbackRate: settings.playbackRate)
+                        startOffset:settings.startOffset,playbackRate:settings.playbackRate,endOffset:settings.endOffset)
                     try Task.checkCancellation()
                     guard self.machine.generation == token, self.machine.state == .prepared else { throw CancellationError() }
                     try self.session.validateForPlayback()

@@ -102,6 +102,12 @@ jobs:
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-local-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-local.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab night-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-audio-dark.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-local-snapshot night-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-local-dark.png
           xcrun simctl terminate "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
           printf 'XCTest iPhone Simulator UDID: %s; architecture: %s\n' "$SIMULATOR_UDID" "$SIMULATOR_ARCH" | tee build-test-destination.log
           xcodebuild \

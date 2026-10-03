@@ -44,8 +44,9 @@ struct PlaybackSchedule: Codable {
     var requestedDuration: TimeInterval? = nil
     var startOffset: TimeInterval = 0
     var playbackRate: Float = 1
+    var endOffset: TimeInterval? = nil
     enum CodingKeys: String, CodingKey {
-        case requestedTime, scheduleCallTime, requestedDelay, targetUptime, audioClock, scheduledAudioTime, accepted, requestedDuration, startOffset, playbackRate
+        case requestedTime, scheduleCallTime, requestedDelay, targetUptime, audioClock, scheduledAudioTime, accepted, requestedDuration, startOffset, playbackRate, endOffset
     }
 }
 
@@ -62,6 +63,7 @@ extension PlaybackSchedule {
         requestedDuration = try? c.decode(Double.self, forKey: .requestedDuration)
         startOffset = (try? c.decode(Double.self, forKey: .startOffset)) ?? 0
         playbackRate = (try? c.decode(Float.self, forKey: .playbackRate)) ?? 1
+        endOffset = try? c.decode(Double.self,forKey:.endOffset)
     }
 }
 
@@ -71,7 +73,7 @@ extension PlaybackSchedule {
     var volume: Float { get set }
     var diagnosticState: String { get }
     var onStateChange: ((PlaybackState) -> Void)? { get set }
-    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval, playbackRate: Float) async throws
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval, playbackRate: Float, endOffset: TimeInterval?) async throws
     func schedule(delay: TimeInterval, requestedTime: Date) throws -> PlaybackSchedule
     func observe()
     func stop()
@@ -82,7 +84,7 @@ extension PlaybackSchedule {
 }
 
 extension PlaybackEngineProtocol {
-    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?) async throws {
-        try await prepare(url: url, voiceOptimized: voiceOptimized, requestedDuration: requestedDuration, startOffset: 0, playbackRate: 1)
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?, startOffset: TimeInterval = 0, playbackRate: Float = 1) async throws {
+        try await prepare(url:url,voiceOptimized:voiceOptimized,requestedDuration:requestedDuration,startOffset:startOffset,playbackRate:playbackRate,endOffset:nil)
     }
 }

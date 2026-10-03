@@ -1,4 +1,4 @@
-当前 1.4.0 增量：见 AI-VOICE-GUIDE-ZH.md。来源命名、六个音色、四种模式、左划删除及实时调音细节需按新指南验证。
+当前 1.5.0 / build 8 增量：双圆点起止范围、AI 原声录制/转换最高 60 秒、右上角一键日夜切换；见 AI-VOICE-GUIDE-ZH.md。
 
 AudioRelayLab 1.2.1 / build 4 — 构建与验证说明
 
