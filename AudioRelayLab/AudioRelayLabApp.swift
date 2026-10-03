@@ -3,15 +3,16 @@ import SwiftUI
 @main struct AudioRelayLabApp: App {
     @StateObject private var coordinator = ExperimentCoordinator()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("voice-snapshot") ? 1 : 0
+    init() { PaperTheme.configure() }
     var body: some Scene {
         WindowGroup {
-            TabView {
-                MainView(coordinator: coordinator).tabItem { Label("Audio", systemImage: "waveform") }
-                VoiceLabView(coordinator: coordinator, mixer: false).tabItem { Label("Voice Lab", systemImage: "mic") }
-                VoiceLabView(coordinator: coordinator, mixer: true).tabItem { Label("Mixer", systemImage: "slider.horizontal.3") }
-                NavigationStack { HistoryView(coordinator: coordinator) }.tabItem { Label("History", systemImage: "clock") }
-                NavigationStack { DiagnosticsView(coordinator: coordinator) }.tabItem { Label("Diagnostics", systemImage: "doc.text") }
+            TabView(selection:$selectedTab) {
+                MainView(coordinator:coordinator).tabItem { Label("音频",systemImage:"music.note") }.tag(0)
+                VoiceLabView(coordinator:coordinator).tabItem { Label("变声",systemImage:"mic") }.tag(1)
+                LibraryHubView(coordinator:coordinator).tabItem { Label("资料",systemImage:"folder") }.tag(2)
             }
+                .tint(PaperTheme.accent).preferredColorScheme(.light)
                 .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
                 .onChange(of: scenePhase, initial: true) { _, phase in coordinator.sceneChanged(phase) }
         }

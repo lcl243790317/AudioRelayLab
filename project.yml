@@ -35,8 +35,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.audiorelaylab.AudioRelayLab
         PRODUCT_NAME: AudioRelayLab
         TARGETED_DEVICE_FAMILY: '1'
-        MARKETING_VERSION: '1.2.1'
-        CURRENT_PROJECT_VERSION: '4'
+        MARKETING_VERSION: '1.3.0'
+        CURRENT_PROJECT_VERSION: '5'
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -57,7 +57,10 @@ targets:
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        NSMicrophoneUsageDescription: Voice Lab 使用麦克风进行实时变声、试听及用户主动开始的本地录音；不上传录音。C/D 实验也需要麦克风会话权限。
+        NSMicrophoneUsageDescription: 使用麦克风录音或实时变声。只有主动点击生成 AI 声音时，所选录音才发送到你配置的电脑。C/D 实验也需要麦克风会话权限。
+        NSLocalNetworkUsageDescription: 连接你同一网络的电脑，在本机服务中转换所选人声。
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
     dependencies:
@@ -67,6 +70,8 @@ targets:
       - sdk: UIKit.framework
       - sdk: SwiftUI.framework
       - sdk: CallKit.framework
+      - sdk: Security.framework
+      - sdk: CryptoKit.framework
     scheme:
       testTargets:
         - AudioRelayLabTests

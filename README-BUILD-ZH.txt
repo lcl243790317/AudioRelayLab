@@ -1,3 +1,5 @@
+当前 1.3.0 增量：电脑 AI 与声音工坊使用说明见 AI-VOICE-GUIDE-ZH.md。原声录制、AI 生成、AI 混音和手机局域网连接需按新指南验证。
+
 AudioRelayLab 1.2.1 / build 4 — 构建与验证说明
 
 1. 在现有工程上迭代

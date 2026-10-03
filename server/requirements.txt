@@ -1,0 +1,15 @@
+# Seed-VC 51383efd921027683c89e5348211d93ff12ac2a8 inference dependencies.
+# Install torch/torchaudio/torchvision 2.5.1/2.5.1/0.20.1 from the cu124 index first.
+numpy==1.26.4
+scipy==1.13.1
+librosa==0.10.2
+soundfile==0.12.1
+transformers==4.46.3
+huggingface-hub==0.28.1
+hydra-core==1.3.2
+munch==4.0.0
+einops==0.8.0
+pydub==0.25.1
+pyyaml==6.0.2
+matplotlib==3.9.2
+imageio-ffmpeg==0.6.0

@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Plachtaa/seed-vc",
+  "revision": "51383efd921027683c89e5348211d93ff12ac2a8",
+  "sourceZipSHA256": "72a27a1d20efec1489041eac2854e3e1c9c23d650ac15900821ad3ab367f0290",
+  "license": "GPL-3.0",
+  "engine": "Seed-VC v2",
+  "inferenceMode": "recorded-speech"
+}

@@ -18,3 +18,8 @@ __pycache__/
 build-*.log
 AudioRelayLab/Resources/*.wav
 AudioRelayLabTests/Fixtures/generated/
+server/.venv/
+server/.runtime/
+server/.logs/
+server/.private/
+server/CONNECTION-ZH.txt

@@ -40,19 +40,19 @@ struct HistoryView: View {
                     Button("查看并填写结果") { editing = experiment }
                     NavigationLink("查看实验日志") {
                         List(experiment.logs) { Text($0.line).font(.caption.monospaced()).textSelection(.enabled) }
-                            .navigationTitle("实验日志")
+                            .paperList().navigationTitle("实验日志")
                     }
                     if !experiment.errorDetails.isEmpty {
                         NavigationLink("查看技术详情") {
                             List(Array(experiment.errorDetails.enumerated()), id: \.offset) { item in
                                 Text(item.element).font(.caption.monospaced()).textSelection(.enabled)
-                            }.navigationTitle("技术详情")
+                            }.paperList().navigationTitle("技术详情")
                         }
                     }
                 }
             }
         }
-        .navigationTitle("实验历史")
+        .paperList().navigationTitle("实验历史")
         .onAppear { coordinator.checkpoint() }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
             switch result {

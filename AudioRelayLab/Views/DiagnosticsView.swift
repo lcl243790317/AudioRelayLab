@@ -74,7 +74,7 @@ struct DiagnosticsView: View {
                 }
             }
         }
-        .navigationTitle("诊断与日志")
+        .paperList().navigationTitle("诊断与日志")
         .sheet(item: $shareItem) { ShareSheet(url: $0.url) }
         .confirmationDialog("清空页面中的日志？", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("清空页面", role: .destructive) { logger.clearDisplay(); feedback = "已清空显示，实验审计记录仍保留。" }

@@ -19,22 +19,20 @@ struct MainView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                sessionSection
+            PaperScreen {
+                PaperHeader(title:"音频接力",subtitle:"选一段声音，留一点时间。")
                 audioSection
-                AudioEditorView(coordinator: coordinator)
-                settingsSection
-                volumeSection
+                PaperCard("播放与试听") { AudioEditorView(coordinator:coordinator) }
                 experimentSection
                 if coordinator.errorMessage != nil || coordinator.state == .failed {
                     failureSection
                 }
-                Section {
-                    NavigationLink("查看诊断与导出日志") { DiagnosticsView(coordinator: coordinator) }
-                    NavigationLink("实验历史") { HistoryView(coordinator: coordinator) }
+                PaperCard {
+                    DisclosureGroup("高级实验设置") { settingsSection; sessionSection }
                 }
             }
             .navigationTitle("AudioRelayLab")
+            .buttonStyle(PaperButtonStyle())
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $importing) {
                 AudioDocumentPicker(onSelection: { url in
@@ -67,7 +65,7 @@ struct MainView: View {
                 }
             }
             .onChange(of: customDelay) { _, enabled in
-                if !enabled { coordinator.delay = 3 }
+                if !enabled { coordinator.delay = 5 }
             }
             .onChange(of: coordinator.engineKind) { _, value in
                 if value == .audioPlayer { coordinator.voiceOptimized = false }
@@ -76,7 +74,7 @@ struct MainView: View {
     }
 
     private var sessionSection: some View {
-        Section("当前音频环境") {
+        VStack(alignment:.leading,spacing:12) {
             LabeledContent("Audio Session", value: session.availabilityMessage)
             LabeledContent("当前配置", value: "\(coordinator.profile.rawValue) · \(coordinator.profile.title)")
             LabeledContent("实验状态", value: coordinator.state.title)
@@ -102,23 +100,29 @@ struct MainView: View {
     }
 
     private var audioSection: some View {
-        Section("测试音 / 音频文件") {
+        PaperCard("我的音频") {
             if let audio = coordinator.audio {
-                Text(audio.fileName).font(.headline).lineLimit(2)
+                HStack(spacing:16) {
+                    Image(systemName:"music.note").font(.title).frame(width:58,height:58).background(PaperTheme.background)
+                    VStack(alignment:.leading,spacing:6) {
+                        Text(audio.fileName).font(.headline).lineLimit(2)
+                        PaperCaption(AudioPlaybackSettings.time(audio.duration)+" · "+audio.formatDescription)
+                    }
+                }
+                DisclosureGroup("文件详情") {
                 LabeledContent("时长", value: String(format: "%.2f 秒", audio.duration))
                 LabeledContent("格式 / 来源", value: "\(audio.formatDescription) / \(audio.source.rawValue)")
                 LabeledContent("采样率", value: String(format: "%.0f Hz", audio.sampleRate))
                 LabeledContent("声道", value: String(audio.channelCount))
                 LabeledContent("大小", value: ByteCountFormatter.string(fromByteCount: audio.byteCount, countStyle: .file))
+                }
             } else {
                 Text("尚未选择音频")
             }
-            Button("导入音频") { importing = true }
-                .disabled(coordinator.controlsLocked)
-            Text("请选择 MP3、M4A、WAV 等音频。所有文件均可点选，非音频会显示明确错误；云端文件需等待下载。")
-                .font(.caption).foregroundStyle(.secondary)
-            Button("使用测试音频") { coordinator.useTestAudio() }
-                .disabled(coordinator.isRunning || voice.isActive)
+            HStack {
+                Button("导入音频") { importing = true }.buttonStyle(PaperButtonStyle(primary:true))
+                Button("使用测试音频") { coordinator.useTestAudio() }
+            }.disabled(coordinator.controlsLocked)
             if coordinator.isImporting {
                 ProgressView("正在读取文件提供器并复制音频…")
                 Button("取消导入") { coordinator.cancelImport() }
@@ -134,7 +138,7 @@ struct MainView: View {
     }
 
     private var settingsSection: some View {
-        Section("实验参数") {
+        VStack(alignment:.leading,spacing:14) {
             Picker("音频配置", selection: $coordinator.profile) {
                 ForEach(AudioSessionProfile.selectableCases) { profile in
                     Text("\(profile.rawValue) · \(profile.title)").tag(profile)
@@ -191,7 +195,7 @@ struct MainView: View {
     }
 
     private var volumeSection: some View {
-        Section("App 播放音量") {
+        VStack(alignment:.leading,spacing:8) {
             Slider(value: Binding(
                 get: { coordinator.volume.isFinite ? min(1, max(0, coordinator.volume)) : 0 },
                 set: { coordinator.volume = $0 }
@@ -199,13 +203,17 @@ struct MainView: View {
                 .accessibilityLabel("App 播放音量")
                 .accessibilityValue(percentage(coordinator.volume))
             Text("\(percentage(coordinator.volume)) · 0%～100%")
-            Text("仅控制本 App 播放器，系统音量在首页只读显示。真机测试已观察到降至约 4% 时声音明显变小。")
+            Text("仅控制 App 播放音量。")
                 .font(.caption).foregroundStyle(.secondary)
         }.disabled(coordinator.controlsLocked)
     }
 
     private var experimentSection: some View {
-        Section("播放实验") {
+        PaperCard("延迟播放") {
+            volumeSection
+            Picker("等待时间",selection:$coordinator.delay) {
+                ForEach([1.0,2,3,4,5,7,10],id:\.self) { Text("\(Int($0)) 秒").tag($0) }
+            }.disabled(coordinator.controlsLocked)
             LabeledContent("已应用开始位置", value: AudioPlaybackSettings.time(coordinator.applied.startOffset))
             LabeledContent("已应用速度", value: String(format: "%gx", coordinator.applied.playbackRate))
             LabeledContent("正式音量 / 延迟", value: "\(percentage(coordinator.volume)) / \(coordinator.delay)s")
@@ -215,7 +223,7 @@ struct MainView: View {
                 Text("音频已准备。点击“开始实验”后才计算延迟并提交未来播放请求。")
                     .font(.callout)
                 Button("开始实验") { coordinator.startPrepared() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PaperButtonStyle(primary:true))
             } else if coordinator.state == .waiting {
                 Text(coordinator.remaining > 0 && coordinator.remaining.isFinite ? "\(Int(ceil(min(60, coordinator.remaining))))" : "等待状态观察")
                     .font(.system(size: coordinator.remaining > 0 ? 64 : 22, weight: .bold, design: .rounded))
@@ -224,7 +232,7 @@ struct MainView: View {
                     .font(.callout)
             } else if !coordinator.controlsLocked {
                 Button(coordinator.state == .failed ? "稍后重试：重新准备" : "准备实验") { coordinator.prepare() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PaperButtonStyle(primary:true))
                     .disabled(coordinator.audio == nil)
             }
             Button(coordinator.state == .preparing || coordinator.state == .prepared ? "取消准备" : "停止 / 取消实验", role: .destructive) {
@@ -233,13 +241,12 @@ struct MainView: View {
                 .disabled(!coordinator.isRunning && !coordinator.busy)
             Button("填写并保存实验结果") { coordinator.checkpoint(); showResult = true }
                 .disabled(coordinator.currentExperiment == nil || coordinator.controlsLocked)
-            Text("后台音频资格、系统允许播放、扬声器发声与微信收录是不同证据。实时通话测试以安全失败和正确诊断为通过标准。")
-                .font(.caption).foregroundStyle(.secondary)
+            PaperCaption("倒计时按真实时间运行，不受播放倍速影响。")
         }
     }
 
     private var failureSection: some View {
-        Section("本次操作未完成") {
+        PaperCard("本次操作未完成") {
             Label(coordinator.errorMessage ?? "当前音频环境不允许开始实验。结束通话或其他高优先级音频后，可以重新准备。",
                   systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.orange)

@@ -3,8 +3,8 @@ import Foundation
 struct VoicePreset: Codable, Identifiable, Hashable {
     let id: String
     let name: String
-    let pitch: Float
-    let formant: Float
+    var pitch: Float
+    var formant: Float
     var highpass: Float = 80
     var lowmid: Float = -2
     var presence: Float = 1
@@ -23,11 +23,11 @@ struct VoicePreset: Codable, Identifiable, Hashable {
     }
     static let all: [VoicePreset] = [
         .init(id:"original",name:"原声",pitch:0,formant:0,highpass:20,lowmid:0,presence:0,compression:0,deesser:0,wet:0,outputGain:1),
-        .init(id:"female",name:"自然女声",pitch:3,formant:1.8,highpass:100,lowmid:-2.5,presence:1.5,air:1),
-        .init(id:"girl",name:"少女声",pitch:4.5,formant:2.5,highpass:110,lowmid:-3,presence:2,air:1.5),
-        .init(id:"loli",name:"萝莉音",pitch:6,formant:3.2,highpass:130,lowmid:-4,presence:2,air:1,compression:0.5,deesser:0.5),
-        .init(id:"sweet",name:"甜美女声",pitch:2.5,formant:2.2,lowmid:-1.5,presence:1,air:2,compression:0.5,deesser:0.5),
-        .init(id:"mature",name:"成熟女声",pitch:1,formant:0.8,highpass:70,lowmid:0,presence:1,air:0.5),
+        .init(id:"female",name:"自然女声",pitch:7,formant:2.8,highpass:100,lowmid:-3,presence:1.2,air:0.8,compression:0.3,deesser:0.5),
+        .init(id:"girl",name:"少女声",pitch:9,formant:3.5,highpass:110,lowmid:-3,presence:1.5,air:1,compression:0.3,deesser:0.5),
+        .init(id:"loli",name:"萝莉音",pitch:11,formant:4,highpass:130,lowmid:-4,presence:1.5,air:0.8,compression:0.35,deesser:0.55),
+        .init(id:"sweet",name:"甜美女声",pitch:7.5,formant:3,highpass:100,lowmid:-2.5,presence:1,air:1.2,compression:0.3,deesser:0.5),
+        .init(id:"mature",name:"成熟女声",pitch:5,formant:2.2,highpass:85,lowmid:-2,presence:0.8,air:0.5,compression:0.35,deesser:0.45),
         .init(id:"boy",name:"正太音",pitch:3.5,formant:1.4,highpass:100,lowmid:-1,presence:1.5,air:0.5),
         .init(id:"male",name:"自然男声",pitch:-2.5,formant:-1.5,highpass:65,lowmid:1,presence:1),
         .init(id:"young",name:"青年男声",pitch:-1,formant:-0.8,highpass:75,lowmid:-1,presence:2),

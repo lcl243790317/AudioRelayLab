@@ -1,0 +1,9 @@
+{
+  "revision": "074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc",
+  "sha256": "c7b31d6dbe7cc6a716dded00550db5b50940bf209e424e4ad207b12e657c8ff6",
+  "repository": "https://github.com/QwenAudio/CosyVoice",
+  "attribution": "Alibaba Inc. / QwenAudio CosyVoice",
+  "path": "asset/zero_shot_prompt.wav",
+  "license": "Apache-2.0 repository license",
+  "usage": "Private local reference; no paid tuner preset copied"
+}

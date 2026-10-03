@@ -3,7 +3,7 @@ import Combine
 
 @MainActor final class VoiceProcessingEngine: ObservableObject {
     enum State: String { case idle, preparing, running, failed }
-    enum Mode { case monitor, voiceRecording, mixedMonitor, mixedRecording }
+    enum Mode { case monitor, voiceRecording, mixedMonitor, mixedRecording, rawRecording }
     @Published private(set) var state: State = .idle
     @Published var preset = VoicePreset.all[0]
     @Published var strength: Float = 1
@@ -125,7 +125,7 @@ import Combine
     }
     private func build(mode: Mode, music: AudioAsset?, settings: AudioPlaybackSettings?, generation: UUID) throws {
         try session.validateForPlayback()
-        let recording = mode == .voiceRecording || mode == .mixedRecording
+        let recording = mode == .voiceRecording || mode == .mixedRecording || mode == .rawRecording
         let mixed = mode == .mixedMonitor || mode == .mixedRecording
         let snapshot = session.capture("Voice Lab graph 前")
         let headphones = snapshot.currentRoute.outputs.contains {
@@ -143,7 +143,7 @@ import Combine
             let mono = AVAudioFormat(standardFormatWithSampleRate: hardware.sampleRate, channels: 1) else { throw LabError.invalidFormat }
         try AudioRuntimeValidation.validate(next.outputNode.inputFormat(forBus: 0))
         let dsp = try VoiceDSPContext(sampleRate: hardware.sampleRate)
-        try dsp.apply(preset, strength: strength)
+        try dsp.apply(mode == .rawRecording ? VoicePreset.all[0] : preset, strength: mode == .rawRecording ? 0 : strength)
         let source = AVAudioSourceNode(format: mono) { _, _, count, list -> OSStatus in
             VLRender(dsp.pointer, list, count); return noErr
         }
@@ -156,8 +156,8 @@ import Combine
         next.connect(limiter, to: monitor, format: nil)
         next.connect(monitor, to: next.outputNode, format: nil)
         engine = next; context = dsp; voiceMixer = voice; monitorMixer = monitor
-        voice.outputVolume = try validVolume(voiceVolume)
-        next.mainMixerNode.outputVolume = try validVolume(masterVolume)
+        voice.outputVolume = mode == .rawRecording ? 1 : try validVolume(voiceVolume)
+        next.mainMixerNode.outputVolume = mode == .rawRecording ? 1 : try validVolume(masterVolume)
         monitor.outputVolume = recording ? 0 : 1
         if mixed {
             guard let music, let settings else { throw LabError.message("请先在主音频页选择并应用音乐播放设置") }
@@ -187,7 +187,7 @@ import Combine
             writer = try VoiceRecordingWriter(context: dsp, sampleRate: format.sampleRate)
             parameterEvents = []
             recordParameters()
-            recordingTapNode = tapNode; recordPreset = preset; startedAt = Date(); recordURL = writer?.url
+            recordingTapNode = tapNode; recordPreset = mode == .rawRecording ? VoicePreset.all[0] : preset; startedAt = Date(); recordURL = writer?.url
             tapNode.installTap(onBus: 0, bufferSize: 512, format: format) { buffer, _ in
                 VLRecordPush(dsp.pointer, buffer.audioBufferList, buffer.frameLength)
             }
@@ -243,19 +243,20 @@ import Combine
     }
     func updateParameters() {
         do {
-            try context?.apply(preset, strength: strength)
-            voiceMixer?.outputVolume = try validVolume(voiceVolume)
+            try context?.apply(mode == .rawRecording ? VoicePreset.all[0] : preset, strength: mode == .rawRecording ? 0 : strength)
+            voiceMixer?.outputVolume = mode == .rawRecording ? 1 : try validVolume(voiceVolume)
             musicNode?.volume = try validVolume(musicVolume)
-            engine?.mainMixerNode.outputVolume = try validVolume(masterVolume)
+            engine?.mainMixerNode.outputVolume = mode == .rawRecording ? 1 : try validVolume(masterVolume)
             if isRecording { recordParameters() }
             logger.log("Voice 参数", "preset=\(preset.id)，strength=\(strength)，voice=\(voiceVolume)，music=\(musicVolume)，master=\(masterVolume)")
         } catch { abort(error) }
     }
     private func recordParameters() {
-        parameterEvents.append(.init(date:Date(),preset:preset,strength:strength,
-            volumes:.init(voice:voiceVolume,music:musicVolume,master:masterVolume),musicSettings:fixedMusicSettings))
+        parameterEvents.append(.init(date:Date(),preset:mode == .rawRecording ? VoicePreset.all[0] : preset,strength:mode == .rawRecording ? 0 : strength,
+            volumes:mode == .rawRecording ? .init(voice:1,music:0,master:1) : .init(voice:voiceVolume,music:musicVolume,master:masterVolume),musicSettings:fixedMusicSettings))
     }
     private func updateMeters() {
+        if mode == .rawRecording, let startedAt, Date().timeIntervalSince(startedAt) >= 24 { stop(); return }
         guard let context else { return }
         inputLevel = VLInputLevel(context.pointer); outputLevel = VLOutputLevel(context.pointer)
         if let node = musicNode, let render = node.lastRenderTime, let time = node.playerTime(forNodeTime: render),
@@ -291,14 +292,14 @@ import Combine
             if let recordingWriter, saveRecording {
                 let url = try recordingWriter.finish()
                 let mixed = mode == .mixedRecording
-                let presetLabel = Set(parameterEvents.map { $0.preset.name }).count > 1 ? "多预设" : preset.name
+                let presetLabel = mode == .rawRecording ? "AI 原声" : (Set(parameterEvents.map { $0.preset.name }).count > 1 ? "多预设" : preset.name)
                 let asset = try AudioFileManager.inspect(url: url, displayName: "\(mixed ? "混合录音" : "处理后人声") \(presetLabel).caf",
                     source: mixed ? .mixedRecording : .voiceLabRecording, presetName: presetLabel)
                 try AudioFileManager.register(asset)
                 savedAsset = asset
                 let record = VoiceLabRecord(id: UUID(), date: startedAt ?? Date(), asset: asset, preset: recordPreset ?? preset,
-                    strength: strength, mixed: mixed, voiceVolume: voiceVolume, musicVolume: musicVolume,
-                    masterVolume: masterVolume, musicSettings: fixedMusicSettings, parameterEvents: parameterEvents)
+                    strength: mode == .rawRecording ? 0 : strength, mixed: mixed, voiceVolume: mode == .rawRecording ? 1 : voiceVolume, musicVolume: musicVolume,
+                    masterVolume: mode == .rawRecording ? 1 : masterVolume, musicSettings: fixedMusicSettings, parameterEvents: parameterEvents)
                 let updated = [record] + recordings
                 let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
                 try encoder.encode(updated).write(to: Self.recordsURL(), options: .atomic)

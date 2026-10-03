@@ -91,6 +91,15 @@ jobs:
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           xcrun simctl install "$SIMULATOR_UDID" build/simulator/Build/Products/Debug-iphonesimulator/AudioRelayLab.app
           xcrun simctl privacy "$SIMULATOR_UDID" grant microphone com.audiorelaylab.AudioRelayLab
+          # Capture real, rendered SwiftUI pages from the installed app, before tests change its library.
+          xcrun simctl ui "$SIMULATOR_UDID" appearance light
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-audio.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice.png
+          xcrun simctl terminate "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
           printf 'XCTest iPhone Simulator UDID: %s; architecture: %s\n' "$SIMULATOR_UDID" "$SIMULATOR_ARCH" | tee build-test-destination.log
           xcodebuild \
             -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
@@ -137,12 +146,14 @@ jobs:
             build-*.log
             build-simulators.json
             build/*.xcresult/
+            build/ui-*.png
             BUILD-STATUS-ZH.txt
             README-BUILD-ZH.txt
             README-INSTALL-ZH.txt
             TEST-PROTOCOL-ZH.txt
             VOICE-PROCESSING-RESEARCH-ZH.md
             VOICE-LAB-TEST-PROTOCOL-ZH.md
+            AI-VOICE-GUIDE-ZH.md
             AudioRelayLab/Resources/THIRD-PARTY-NOTICES.txt
             AudioRelayLab/VoiceLab/Vendor/DEPENDENCIES.json
       - name: 记录最终状态

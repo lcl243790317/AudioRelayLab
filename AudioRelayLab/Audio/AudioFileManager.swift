@@ -1,7 +1,7 @@
 import AVFoundation
 import UniformTypeIdentifiers
 
-enum AudioSource: String, Codable { case bundled, imported, voiceLabRecording, mixedRecording }
+enum AudioSource: String, Codable { case bundled, imported, voiceLabRecording, mixedRecording, aiConverted }
 
 struct AudioFileMetadata: Codable, Identifiable {
     let id: UUID
@@ -14,7 +14,8 @@ struct AudioFileMetadata: Codable, Identifiable {
     var source: AudioSource = .imported
     var formatDescription: String = "音频"
     var presetName: String? = nil
-    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName }
+    var aiConversion: AIConversionMetadata? = nil
+    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName, aiConversion }
 }
 
 extension AudioFileMetadata {
@@ -30,6 +31,7 @@ extension AudioFileMetadata {
         source = (try? c.decode(AudioSource.self, forKey: .source)) ?? (sandboxFileName == "test-tone.wav" ? .bundled : .imported)
         formatDescription = (try? c.decode(String.self, forKey: .formatDescription)) ?? URL(fileURLWithPath: sandboxFileName).pathExtension.uppercased()
         presetName = try? c.decode(String.self, forKey: .presetName)
+        aiConversion = try? c.decode(AIConversionMetadata.self, forKey: .aiConversion)
     }
 }
 

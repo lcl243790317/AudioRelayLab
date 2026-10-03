@@ -1,4 +1,5 @@
 import AVFAudio
+import Combine
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -9,6 +10,8 @@ import UniformTypeIdentifiers
     let store: ExperimentStore
     let preview: PreviewPlaybackController
     let voiceLab: VoiceProcessingEngine
+    let aiVoice = AIConversionController()
+    private var aiObserver: AnyCancellable?
     @Published private(set) var audio: AudioFileMetadata?
     @Published var engineKind: PlaybackEngineKind = .audioPlayer
     @Published var profile: AudioSessionProfile = .mixingPlayback
@@ -47,7 +50,13 @@ import UniformTypeIdentifiers
         logger.log("生命周期", "App 启动；设备=\(DeviceInfo.current().modelIdentifier)；iOS=\(DeviceInfo.current().systemVersion)")
         session.onEvent = { [weak self] event in self?.handle(event) }
         voiceLab.beforeStart = { [weak self] in self?.stop(); self?.preview.stop() }
-        voiceLab.onSaved = { [weak self] _ in self?.refreshLibrary() }
+        voiceLab.onSaved = { [weak self] asset in
+            self?.refreshLibrary()
+            if asset.presetName == "AI 原声" { self?.aiVoice.input = asset }
+        }
+        aiVoice.beforeConvert = { [weak self] in self?.stop(); self?.preview.stop() }
+        aiVoice.onResult = { [weak self] _ in self?.refreshLibrary() }
+        aiObserver = aiVoice.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         for name in [UIApplication.didEnterBackgroundNotification, UIApplication.willEnterForegroundNotification] {
             lifecycleObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
                 let background = note.name == UIApplication.didEnterBackgroundNotification
@@ -71,7 +80,9 @@ import UniformTypeIdentifiers
                 } else {
                 let url = try AudioFileManager.url(for: saved)
                 if FileManager.default.fileExists(atPath: url.path) {
-                    audio = try AudioFileManager.inspect(url: url, displayName: saved.fileName, id: saved.id, source: saved.source, presetName: saved.presetName)
+                    var restored = try AudioFileManager.inspect(url: url, displayName: saved.fileName, id: saved.id, source: saved.source, presetName: saved.presetName)
+                    restored.aiConversion = saved.aiConversion
+                    audio = restored
                 }
                 }
             } catch { logger.log("音频恢复失败", diagnosticError(error)) }
@@ -90,10 +101,10 @@ import UniformTypeIdentifiers
     }
     var isRunning: Bool { machine.isActive }
     var busy: Bool { isImporting || state == .preparing }
-    var controlsLocked: Bool { isImporting || machine.isActive || voiceLab.isActive }
+    var controlsLocked: Bool { isImporting || machine.isActive || voiceLab.isActive || aiVoice.busy }
 
     func importAudio(_ url: URL) {
-        guard !machine.isActive, !voiceLab.isActive else { report(LabError.audioUnavailable, message: "请先结束当前实验或 Voice Lab 再选择音频。"); return }
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { report(LabError.audioUnavailable, message: "请先结束当前实验或变声再选择音频。"); return }
         cancelImport()
         preview.reset()
         let lease = AudioAccessLease(url)
@@ -117,7 +128,7 @@ import UniformTypeIdentifiers
         }
     }
     func useTestAudio() {
-        guard !machine.isActive, !voiceLab.isActive else { return }
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { return }
         cancelImport()
         do {
             let metadata = try AudioFileManager.loadBundledAudio()
@@ -133,9 +144,10 @@ import UniformTypeIdentifiers
         catch { logger.log("音频库读取失败", diagnosticError(error)) }
     }
     func selectAudio(_ asset: AudioAsset) throws {
-        guard !machine.isActive, !voiceLab.isActive else { throw LabError.message("请先结束正式实验或 Voice Lab") }
-        let checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { throw LabError.message("请先结束正式实验或变声") }
+        var checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
             id: asset.id, source: asset.source, presetName: asset.presetName)
+        checked.aiConversion = asset.aiConversion
         preview.reset()
         try rememberAudio(checked)
         checkpoint()
@@ -146,7 +158,7 @@ import UniformTypeIdentifiers
         refreshLibrary()
     }
     func selectLocal(_ asset: AudioAsset) {
-        guard !machine.isActive, !voiceLab.isActive else { return }
+        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy else { return }
         cancelImport()
         do { try selectAudio(asset) }
         catch { report(error, message: "本地音频无法读取，请重新导入。") }
