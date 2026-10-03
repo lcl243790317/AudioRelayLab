@@ -51,6 +51,28 @@ enum AIConnectionKey {
     }
 }
 
+enum AIConnectionError {
+    static func message(_ error: Error) -> String {
+        if let error = error as? LabError { return error.errorDescription ?? "AI 操作未完成" }
+        let value = error as NSError
+        if value.domain == NSURLErrorDomain {
+            switch URLError.Code(rawValue:value.code) {
+            case .cannotConnectToHost: return "电脑 AI 服务未启动或端口不可达。请在电脑运行 server/run.ps1，确认同一 Wi-Fi 和防火墙后重新连接。"
+            case .cannotFindHost, .dnsLookupFailed: return "找不到电脑地址。请重新复制 CONNECTION-ZH.txt 中的当前局域网地址。"
+            case .notConnectedToInternet, .networkConnectionLost: return "手机与电脑的连接已断开。请确认同一 Wi-Fi、电脑保持唤醒，然后直接重试连接。"
+            case .timedOut: return "电脑服务响应超时。请检查电脑是否休眠或正在下载模型，再重试。"
+            case .appTransportSecurityRequiresSecureConnection: return "此地址被系统网络策略拒绝。局域网请使用电脑连接文件中的地址，远程服务需使用 HTTPS。"
+            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot:
+                return "无法验证电脑的 HTTPS 连接。请检查服务证书或使用同一局域网的连接地址。"
+            case .cancelled: return "已取消 AI 操作"
+            default: return "AI 网络请求失败（\(value.code)）。请检查电脑服务与手机的局域网权限后重试；详情已写入诊断。"
+            }
+        }
+        if error is DecodingError { return "电脑服务返回的数据格式不兼容。请更新电脑服务后重新连接。" }
+        return "AI 操作未完成；技术详情已写入诊断。请重新选择原声或连接电脑后重试。"
+    }
+}
+
 enum AIRequestAudio {
     /// Decode the chosen range and use AVAudioConverter to produce speech-rate mono PCM.
     static func make(url:URL, start:Double = 0, limit:Double? = nil) throws -> URL {
@@ -119,13 +141,21 @@ enum AIRequestAudio {
     private var remoteID:String?
     private var activeConnection:(URL,String)?
     private let client:URLSession
-    init() {
+    private let logger:DiagnosticsLogger?
+    init(logger:DiagnosticsLogger? = nil, session:URLSession? = nil) {
+        self.logger = logger
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 60; config.timeoutIntervalForResource = 180
-        client = URLSession(configuration:config)
+        client = session ?? URLSession(configuration:config)
     }
     deinit { task?.cancel() }
+    func selectInput(_ asset:AudioAsset?) {
+        guard !busy, !connecting else { return }
+        input = asset; result = nil; errorMessage = nil
+        status = asset == nil ? "正在准备录制新原声" : "原声已就绪，可以生成 AI 声音"
+    }
     private struct VoicesResponse:Decodable { let voices:[AIVoice] }
+    private struct Health:Decodable { let engine:String; let modelState:String; let protocolVersion:Int? }
     private struct Job:Decodable {
         let id:String; let state:String; let message:String
         let metadata:AIConversionMetadata?
@@ -136,6 +166,7 @@ enum AIRequestAudio {
         request.httpMethod = method; request.httpBody = body
         request.setValue("Bearer \(key)",forHTTPHeaderField:"Authorization")
         if body != nil { request.setValue("audio/wav",forHTTPHeaderField:"Content-Type") }
+        if path == "v1/health" || path == "v1/voices" { request.timeoutInterval = 12 }
         let (data,response) = try await client.data(for:request)
         guard let http = response as? HTTPURLResponse else { throw LabError.audioUnavailable }
         guard (200...299).contains(http.statusCode) else {
@@ -146,29 +177,43 @@ enum AIRequestAudio {
     }
     func connect() {
         guard !busy, !connecting else { return }
-        connecting = true; errorMessage = nil
+        let token = UUID(); generation = token
+        connecting = true; errorMessage = nil; status = "正在检查电脑连接"
+        logger?.log("AI 连接", "用户连接电脑；不记录地址、密钥或录音内容。")
         task = Task { [weak self] in
             guard let self else { return }
-            defer { self.connecting = false; self.task = nil }
+            defer { if self.generation == token { self.connecting = false; self.task = nil } }
             do {
                 let base = try AIEndpoint.validate(self.address)
-                guard !self.key.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { throw LabError.message("请复制电脑连接文件中的密钥") }
-                let (data,_) = try await self.request(base,key:self.key,path:"v1/voices")
+                let key = self.key.trimmingCharacters(in:.whitespacesAndNewlines)
+                guard !key.isEmpty else { throw LabError.message("请复制电脑连接文件中的密钥") }
+                let (healthData,_) = try await self.request(base,key:key,path:"v1/health")
+                let health = try JSONDecoder().decode(Health.self,from:healthData)
+                guard (health.protocolVersion ?? 1) >= 2 else { throw LabError.message("电脑服务需要更新。请在电脑重新运行 server/run.ps1 后再连接，启用保留原话与语调的转换。") }
+                let (data,_) = try await self.request(base,key:key,path:"v1/voices")
                 try Task.checkCancellation()
+                guard self.generation == token else { return }
                 let voices = try JSONDecoder().decode(VoicesResponse.self,from:data).voices
                 guard !voices.isEmpty else { throw LabError.message("电脑没有可用音色") }
-                try AIConnectionKey.save(self.key)
+                try AIConnectionKey.save(key)
                 UserDefaults.standard.set(self.address,forKey:"aiAddress")
                 self.voices = voices
                 if !voices.contains(where:{$0.id == self.selectedVoice}) { self.selectedVoice = voices[0].id }
                 self.status = "电脑已连接 · 首次生成可能需要下载模型"
-            } catch { self.voices = []; self.errorMessage = userFacingAudioError(error) }
+                self.logger?.log("AI 已连接", "引擎=\(health.engine)，模型状态=\(health.modelState)，音色数=\(voices.count)，协议=\(health.protocolVersion ?? 1)")
+            } catch {
+                guard self.generation == token else { return }
+                self.voices = []; self.errorMessage = AIConnectionError.message(error)
+                self.status = "连接未完成，可以直接重试"
+                self.logger?.log("AI 连接失败", diagnosticError(error))
+            }
         }
     }
     func convert(start:Double=0, limit:Double?=nil) {
         guard !busy, !connecting, let input, voices.contains(where:{$0.id == selectedVoice}) else { return }
         beforeConvert?()
         let token = UUID(); generation = token; busy = true; result = nil; errorMessage = nil
+        logger?.log("AI 准备", "来源=\(input.source.rawValue)，时长=\(input.duration)，起点=\(start)，限制=\(limit.map { String($0) } ?? "完整")")
         let profile = selectedVoice
         task = Task { [weak self] in
             guard let self else { return }
@@ -202,7 +247,9 @@ enum AIRequestAudio {
                     return
                 }
                 self.remoteID = submitted.id
+                self.logger?.log("AI 已提交", "任务=\(submitted.id)，音色=\(profile)")
                 try Task.checkCancellation()
+                var previousState = ""
                 for _ in 0..<1800 {
                     try Task.checkCancellation()
                     let (data,_) = try await self.request(base,key:key,path:"v1/jobs/\(submitted.id)")
@@ -210,6 +257,10 @@ enum AIRequestAudio {
                     try Task.checkCancellation()
                     guard self.generation == token else { return }
                     self.status = job.message
+                    if job.state != previousState {
+                        self.logger?.log("AI 任务状态", "任务=\(job.id)，状态=\(job.state)")
+                        previousState = job.state
+                    }
                     if job.state == "failed" || job.state == "cancelled" { throw LabError.message(job.message) }
                     if job.state == "complete" {
                         guard let metadata = job.metadata else { throw LabError.message("转换缺少来源信息") }
@@ -228,6 +279,7 @@ enum AIRequestAudio {
                             try AudioFileManager.register(asset)
                             self.result = asset; self.busy = false
                             self.status = "已保存 AI 声音，可以回听或应用到音频页"
+                            self.logger?.log("AI 已保存", "任务=\(job.id)，引擎=\(metadata.engine)，时长=\(asset.duration)，sha256=\(hash)，耗时=\(metadata.conversionSeconds)")
                             self.onResult?(asset)
                         } catch { try? FileManager.default.removeItem(at:local); throw error }
                         return
@@ -240,12 +292,16 @@ enum AIRequestAudio {
                 if let id = self.remoteID, let connection = self.activeConnection {
                     Task { _ = try? await self.request(connection.0,key:connection.1,path:"v1/jobs/\(id)",method:"DELETE") }
                 }
-                if !Task.isCancelled { self.errorMessage = userFacingAudioError(error); self.status = "转换未完成，可检查连接后重试" }
+                if !Task.isCancelled {
+                    self.errorMessage = AIConnectionError.message(error); self.status = "转换未完成，可直接重试或重新连接"
+                    self.logger?.log("AI 转换失败", diagnosticError(error))
+                }
             }
         }
     }
     func cancel() {
-        generation = UUID(); task?.cancel(); task = nil; busy = false
+        generation = UUID(); task?.cancel(); task = nil; busy = false; connecting = false
+        logger?.log("AI 取消", "用户取消当前 AI 请求；可以开始下一次操作。")
         let id = remoteID, connection = activeConnection
         remoteID = nil; activeConnection = nil; status = "已取消转换"
         if let id, let connection { Task { _ = try? await request(connection.0,key:connection.1,path:"v1/jobs/\(id)",method:"DELETE") } }

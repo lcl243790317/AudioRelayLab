@@ -69,6 +69,43 @@ class AIServiceTests(unittest.TestCase):
             data = json.load(response)
         self.assertEqual(set(data["voices"][0]),{"id","name","referenceOrigin"})
 
+    def test_health_supports_preserving_original_prosody(self):
+        with self.request("/v1/health") as response:
+            data = json.load(response)
+        self.assertEqual(data["protocolVersion"],2)
+        self.assertEqual(data["conversionMode"],"preserveProsody")
+
+    def test_consecutive_jobs_complete_and_persist_separate_results(self):
+        keys = []
+        for duration in (0.5,1.0,1.5):
+            with self.request("/v1/jobs?voice=female","POST",pcm(duration)) as response:
+                keys.append(json.load(response)["id"])
+            self.service.queue.join()
+        self.assertEqual(len(set(keys)),3)
+        for key,duration in zip(keys,(0.5,1.0,1.5)):
+            job = self.service.snapshot(key)
+            self.assertEqual(job["state"],"complete")
+            persisted = json.loads((self.service.job_root/key/"state.json").read_text(encoding="utf-8"))
+            self.assertEqual(persisted["state"],"complete")
+            self.assertEqual(persisted["inputDuration"],duration)
+            with self.request("/v1/jobs/"+key+"/audio") as response:
+                self.assertEqual(response.read(),pcm(duration))
+
+    def test_inference_failure_does_not_kill_worker_or_block_next_job(self):
+        class RetryBackend(ContractBackend):
+            attempts = 0
+            def convert(self,*args):
+                self.attempts += 1
+                if self.attempts == 1: raise RuntimeError("controlled failure")
+                return super().convert(*args)
+        self.service.backend_factory = RetryBackend
+        first = self.service.submit(pcm(),"female")["id"]
+        self.service.queue.join()
+        self.assertEqual(self.service.snapshot(first)["state"],"failed")
+        second = self.service.submit(pcm(),"female")["id"]
+        self.service.queue.join()
+        self.assertEqual(self.service.snapshot(second)["state"],"complete")
+
     def test_job_result_download_hash_matches_actual_bytes(self):
         with self.request("/v1/jobs?voice=female","POST",pcm()) as response:
             self.assertEqual(response.status,202)

@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
     let store: ExperimentStore
     let preview: PreviewPlaybackController
     let voiceLab: VoiceProcessingEngine
-    let aiVoice = AIConversionController()
+    let aiVoice: AIConversionController
     private var aiObserver: AnyCancellable?
     @Published private(set) var audio: AudioFileMetadata?
     @Published var engineKind: PlaybackEngineKind = .audioPlayer
@@ -40,19 +40,20 @@ import UniformTypeIdentifiers
     private var logBoundary = 0
     private var scenePhase: ScenePhase = .active
 
-    init() {
+    init(historyDirectoryURL:URL? = nil) {
         let logger = DiagnosticsLogger()
         self.logger = logger
+        aiVoice = AIConversionController(logger: logger)
         session = AudioSessionManager(logger: logger)
         preview = PreviewPlaybackController(session: session, logger: logger)
         voiceLab = VoiceProcessingEngine(session: session, logger: logger)
-        store = ExperimentStore(logger: logger)
+        store = ExperimentStore(logger: logger, directoryURL:historyDirectoryURL)
         logger.log("生命周期", "App 启动；设备=\(DeviceInfo.current().modelIdentifier)；iOS=\(DeviceInfo.current().systemVersion)")
         session.onEvent = { [weak self] event in self?.handle(event) }
         voiceLab.beforeStart = { [weak self] in self?.stop(); self?.preview.stop() }
         voiceLab.onSaved = { [weak self] asset in
             self?.refreshLibrary()
-            if asset.presetName == "AI 原声" { self?.aiVoice.input = asset }
+            if asset.presetName == "AI 原声" { self?.aiVoice.selectInput(asset) }
         }
         aiVoice.beforeConvert = { [weak self] in self?.stop(); self?.preview.stop() }
         aiVoice.onResult = { [weak self] _ in self?.refreshLibrary() }
@@ -342,6 +343,14 @@ import UniformTypeIdentifiers
             finish()
         } else { checkpoint() }
     }
+    func clearHistory() throws {
+        guard !machine.isActive else { throw LabError.message("请先结束当前实验再清空历史") }
+        try store.clearAll()
+        currentExperiment = nil
+        logBoundary = logger.nextSequence
+        logger.setExperimentID(nil)
+    }
+
     func saveResult(result: ExperimentResult, notes: String) {
         guard let id = currentExperiment?.id else { return }
         currentExperiment?.result = result

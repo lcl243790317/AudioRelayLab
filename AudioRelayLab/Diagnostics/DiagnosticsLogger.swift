@@ -113,6 +113,7 @@ final class DiagnosticsLogger: ObservableObject, @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return Array(records.dropFirst(displayBoundary))
     }
+    var newestVisibleEntries: [DiagnosticEntry] { Array(visibleEntries.reversed()) }
     var text: String { visibleEntries.map(\.line).joined(separator: "\n") }
 
     func clearDisplay() {

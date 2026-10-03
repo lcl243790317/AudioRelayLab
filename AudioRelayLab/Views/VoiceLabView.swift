@@ -4,7 +4,7 @@ struct VoiceLabView: View {
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var voice: VoiceProcessingEngine
     @ObservedObject var ai: AIConversionController
-    @State private var processor = 0
+    @State private var processor = ProcessInfo.processInfo.arguments.contains("voice-local-snapshot") ? 1 : 0
     @State private var mixer = false
     @State private var showConnection = false
     @State private var musicSeek:Double = 0
@@ -51,7 +51,7 @@ struct VoiceLabView: View {
                         Button("查看连接设置") { showConnection = true }.disabled(ai.busy)
                     }
                 }
-                PaperCaption("录音后由电脑生成目标音色，完成后回到手机使用。自然度取决于原声和参考录音。")
+                PaperCaption("保留原话、停顿和语调走势，转换为参考音色；自然度取决于两段录音。")
             }
             PaperCard("一段纯人声") {
                 Text(ai.input?.fileName ?? "尚未录制或选择人声").font(.headline).lineLimit(2)
@@ -62,10 +62,10 @@ struct VoiceLabView: View {
                 } else {
                     HStack {
                         Button("录制原声") {
-                            ai.input = nil
+                            ai.selectInput(nil)
                             voice.start(.rawRecording)
                         }.disabled(coordinator.controlsLocked || ai.connecting)
-                        Button("使用当前音频") { ai.input = coordinator.audio }
+                        Button("使用当前音频") { ai.selectInput(coordinator.audio) }
                             .disabled(coordinator.controlsLocked || ai.connecting || coordinator.audio == nil)
                     }
                 }
@@ -129,6 +129,25 @@ struct VoiceLabView: View {
                     Text(String(format:"共振峰 %+.1f 半音",voice.preset.formant)).font(.subheadline)
                     Slider(value:$voice.preset.formant,in:-8...8,step:0.2)
                 }
+                DisclosureGroup("均衡 · 厚度与清晰度") {
+                    presetSlider("低切",value:$voice.preset.highpass,range:20...500,step:5,unit:"Hz")
+                    presetSlider("低中频 · 厚度",value:$voice.preset.lowmid,range:-12...12,step:0.5,unit:"dB")
+                    presetSlider("存在感 · 清晰度",value:$voice.preset.presence,range:-12...12,step:0.5,unit:"dB")
+                    presetSlider("空气感 · 明亮度",value:$voice.preset.air,range:-12...12,step:0.5,unit:"dB")
+                }
+                DisclosureGroup("动态 · 效果与输出") {
+                    presetSlider("压缩强度",value:$voice.preset.compression,range:0...1,step:0.01,unit:"%")
+                    presetSlider("齿音抑制",value:$voice.preset.deesser,range:0...1,step:0.01,unit:"%")
+                    presetSlider("变声混合比例",value:$voice.preset.wet,range:0...1,step:0.01,unit:"%")
+                    presetSlider("机器人效果",value:$voice.preset.robot,range:0...1,step:0.01,unit:"%")
+                    presetSlider("音色输出增益",value:$voice.preset.outputGain,range:0...2,step:0.01,unit:"倍")
+                    PaperCaption("调节即时生效；总输出仍有削波保护。混合比例为 0% 时保留原声，效果强度为 0% 时关闭调音。")
+                }
+                Button("恢复当前预设参数") {
+                    voice.preset = VoicePreset.all.first(where:{$0.id == voice.preset.id}) ?? VoicePreset.all[0]
+                    voice.strength = 1; voice.updateParameters()
+                    calibration = "已恢复预设参数。"
+                }
                 Toggle("加入背景音乐",isOn:$mixer).disabled(voice.isActive)
                 if mixer {
                     Text(coordinator.audio?.fileName ?? "请先在音频页选择音乐").font(.subheadline)
@@ -170,6 +189,14 @@ struct VoiceLabView: View {
                     }
                 }
             }
+        }
+    }
+    private func presetSlider(_ title:String,value:Binding<Float>,range:ClosedRange<Float>,step:Float,unit:String) -> some View {
+        let number = unit == "%" ? String(format:"%.0f%%",value.wrappedValue*100) : String(format:"%+.1f %@",value.wrappedValue,unit)
+        return VStack(alignment:.leading,spacing:6) {
+            HStack { Text(title); Spacer(); Text(number).monospacedDigit().foregroundStyle(PaperTheme.accent) }
+                .font(.subheadline)
+            Slider(value:value,in:range,step:step) { Text(title) }.accessibilityValue(number)
         }
     }
     private func volume(_ title:String,value:Binding<Float>) -> some View {

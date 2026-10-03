@@ -2,8 +2,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-/// Providers do not always report a usable audio UTI. Accept items, validate PCM after selection.
+/// The system browser dims unsupported types; selected audio is still validated by decoding.
 @MainActor struct AudioDocumentPicker: UIViewControllerRepresentable {
+    static let supportedExtensions = ["wav", "mp3", "m4a", "aac", "aiff", "aifc", "caf", "flac"]
+    static let supportedTypes = supportedExtensions.compactMap { UTType(filenameExtension: $0) }
     let onSelection: (URL) -> Void
     let onCancel: () -> Void
 
@@ -14,7 +16,7 @@ import UIKit
     }
     func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
     static func makePicker(delegate: UIDocumentPickerDelegate) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: supportedTypes, asCopy: true)
         // Initialize the embedded browser before applying its display options.
         picker.loadViewIfNeeded()
         picker.allowsMultipleSelection = false

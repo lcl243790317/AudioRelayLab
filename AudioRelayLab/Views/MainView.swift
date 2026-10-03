@@ -123,6 +123,7 @@ struct MainView: View {
                 Button("导入音频") { importing = true }.buttonStyle(PaperButtonStyle(primary:true))
                 Button("使用测试音频") { coordinator.useTestAudio() }
             }.disabled(coordinator.controlsLocked)
+            PaperCaption("支持 WAV、MP3、M4A、AAC、AIFF、AIFC、CAF、FLAC；其他类型在文件选择器中显示为灰色。")
             if coordinator.isImporting {
                 ProgressView("正在读取文件提供器并复制音频…")
                 Button("取消导入") { coordinator.cancelImport() }

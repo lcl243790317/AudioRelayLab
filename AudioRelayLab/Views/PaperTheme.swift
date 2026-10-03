@@ -101,16 +101,44 @@ struct PaperHeader: View {
 
 struct PaperButtonStyle: ButtonStyle {
     var primary = false
+    var compact = false
+    func makeBody(configuration: Configuration) -> some View {
+        PaperButtonSurface(configuration: configuration, primary: primary, compact: compact)
+    }
+}
+
+private struct PaperButtonSurface: View {
+    let configuration: ButtonStyle.Configuration
+    let primary: Bool
+    let compact: Bool
     @Environment(\.isEnabled) private var enabled
-    func makeBody(configuration:Configuration) -> some View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var flash = false
+    private var highlighted: Bool { enabled && (configuration.isPressed || flash) }
+    private var foreground: Color {
+        if highlighted || primary { return PaperTheme.paper }
+        return configuration.role == .destructive ? .red : PaperTheme.ink
+    }
+    var body: some View {
         configuration.label.font(.system(.callout,design:.serif))
-            .frame(maxWidth:.infinity,minHeight:44)
-            .foregroundStyle(primary ? PaperTheme.paper : PaperTheme.ink)
-            .background(primary ? PaperTheme.secondary : PaperTheme.paper)
+            .padding(.horizontal, compact ? 12 : 8)
+            .frame(maxWidth:compact ? nil : .infinity,minHeight:44)
+            .foregroundStyle(foreground)
+            .background(highlighted ? PaperTheme.accent : (primary ? PaperTheme.secondary : PaperTheme.paper))
             .clipShape(RoundedRectangle(cornerRadius:4))
-            .overlay(RoundedRectangle(cornerRadius:4).stroke(primary ? Color.black.opacity(0.15) : PaperTheme.line,lineWidth:1))
+            .overlay(RoundedRectangle(cornerRadius:4).stroke(highlighted ? PaperTheme.accent : PaperTheme.line,lineWidth:highlighted ? 2 : 1))
             .shadow(color:.black.opacity(0.10),radius:configuration.isPressed ? 1 : 3,x:0,y:configuration.isPressed ? 1 : 2)
-            .opacity(enabled ? 1 : 0.45).scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .opacity(enabled ? 1 : 0.40)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration:0.12),value:configuration.isPressed)
+            .onChange(of:configuration.isPressed) { previous, pressed in
+                if previous && !pressed && enabled { flash = true }
+            }
+            .task(id:flash) {
+                guard flash else { return }
+                try? await Task.sleep(for:.milliseconds(280))
+                if !Task.isCancelled { flash = false }
+            }
     }
 }
 
@@ -124,5 +152,6 @@ extension View {
     func paperList() -> some View {
         scrollContentBackground(.hidden).background(PaperTexture().ignoresSafeArea())
             .foregroundStyle(PaperTheme.ink).font(PaperTheme.body)
+            .buttonStyle(PaperButtonStyle(compact:true))
     }
 }

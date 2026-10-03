@@ -68,8 +68,8 @@ struct DiagnosticsView: View {
                 if let warning = logger.storageWarning { Text(warning).foregroundStyle(.orange) }
                 if let warning = store.storageError { Text(warning).foregroundStyle(.orange) }
             }
-            Section("显示日志（\(logger.visibleEntries.count) 条）") {
-                ForEach(logger.visibleEntries) { entry in
+            Section("显示日志 · 最新在上（\(logger.visibleEntries.count) 条）") {
+                ForEach(logger.newestVisibleEntries) { entry in
                     Text(entry.line).font(.caption.monospaced()).textSelection(.enabled)
                 }
             }

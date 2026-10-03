@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import os
 import queue
 import secrets
@@ -12,6 +13,7 @@ import threading
 import time
 import uuid
 import wave
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -19,6 +21,10 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parent
 MAX_BYTES = 16 * 1024 * 1024
 MAX_SECONDS = 25
+LOG = logging.getLogger("AudioRelayLab.AI")
+
+def event(name, **fields):
+    LOG.info(json.dumps(dict(event=name, **fields), ensure_ascii=False))
 
 def validate_wav(data):
     try:
@@ -81,7 +87,7 @@ class Service:
                 raise ValueError("服务器队列已满，请稍后重试")
             # A bounded in-memory job index. Old audio remains local; no arbitrary path removal.
             if len(self.jobs) >= 128:
-                finished = [k for k,v in self.jobs.items() if v["state"] in ("complete","failed","cancelled")]
+                finished = [k for k,v in self.jobs.items() if v.get("workerDone")]
                 if not finished:
                     raise ValueError("服务器繁忙")
                 del self.jobs[finished[0]]
@@ -92,33 +98,58 @@ class Service:
             source.write_bytes(data)
             job = {"id":key, "state":"queued", "message":"等待电脑转换", "voiceID":voice,
                    "inputDuration":duration, "created":time.time(), "cancel":threading.Event(),
-                   "folder":folder}
+                   "folder":folder, "workerDone":False}
             self.jobs[key] = job
             self.queue.put_nowait(key)
+            self.persist(key)
+            event("submitted", job=key, voice=voice, duration=duration)
             return self.snapshot(key)
 
     def snapshot(self, key):
         with self.lock:
             if key not in self.jobs:
                 raise KeyError(key)
-            return {k:v for k,v in self.jobs[key].items() if k not in ("cancel", "folder")}
+            return {k:v for k,v in self.jobs[key].items() if k not in ("cancel", "folder", "workerDone")}
+
+    def persist(self, key):
+        with self.lock:
+            job = self.jobs[key]
+            target = job["folder"] / "state.json"
+            temporary = target.with_suffix(".tmp")
+            temporary.write_text(json.dumps(self.snapshot(key), ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(target)
+
+    def update(self, key, **fields):
+        with self.lock:
+            job = self.jobs[key]
+            if job["cancel"].is_set() and fields.get("state") != "cancelled":
+                return
+            job.update(fields)
+            self.persist(key)
+            event("state", job=key, state=job["state"])
 
     def cancel(self, key):
         with self.lock:
             job = self.jobs[key]
             job["cancel"].set()
             job.update(state="cancelled", message="已取消；运行中的模型步骤会在结束后丢弃输出")
+            self.persist(key)
+            event("cancelled", job=key)
 
     def work(self):
         while True:
             key = self.queue.get()
-            job = self.jobs[key]
+            with self.lock:
+                job = self.jobs.get(key)
+            if job is None:
+                self.queue.task_done()
+                continue
             try:
                 if job["cancel"].is_set():
                     continue
                 if self.backend is None:
                     self.model_state = "loading"
-                    job.update(state="loading", message="首次加载 AI 模型，需要下载权重")
+                    self.update(key, state="loading", message="首次加载 AI 模型，需要下载权重")
                     factory = self.backend_factory
                     if factory is None:
                         from seed_backend import SeedBackend
@@ -127,7 +158,7 @@ class Service:
                     self.model_state = "ready"
                 if job["cancel"].is_set():
                     continue
-                job.update(state="converting", message="正在生成目标音色")
+                self.update(key, state="converting", message="正在生成目标音色，保留原话与语调")
                 profile = self.profiles[job["voiceID"]]
                 before = time.perf_counter()
                 settings = {k:profile[k] for k in ("steps", "intelligibility", "similarity", "topP", "temperature", "repetitionPenalty")}
@@ -136,15 +167,18 @@ class Service:
                 metadata.update(conversionSeconds=time.perf_counter()-before,
                                 voiceID=profile["id"], voiceName=profile["name"], referenceOrigin=profile["referenceOrigin"])
                 if not job["cancel"].is_set():
-                    job.update(state="complete", message="转换完成", metadata=metadata)
+                    self.update(key, state="complete", message="转换完成", metadata=metadata)
             except InterruptedError:
-                job.update(state="cancelled", message="已取消")
+                self.update(key, state="cancelled", message="已取消")
             except Exception as error:
                 if self.backend is None:
                     self.model_state = "failed"
                 if not job["cancel"].is_set():
-                    job.update(state="failed", message=str(error)[:1000])
+                    self.update(key, state="failed", message="电脑 AI 推理失败，可直接重试。错误类型：" + type(error).__name__)
+                LOG.error("job=%s inference failed\n%s", key, traceback.format_exc())
             finally:
+                with self.lock:
+                    job["workerDone"] = True
                 self.queue.task_done()
 
 def make_handler(service):
@@ -175,7 +209,8 @@ def make_handler(service):
             parts = parsed.path.strip("/").split("/")
             try:
                 if self.command == "GET" and parsed.path == "/v1/health":
-                    self.respond(200, {"engine":"Seed-VC v2", "modelState":service.model_state,
+                    self.respond(200, {"engine":"Seed-VC F0 / RMVPE", "modelState":service.model_state,
+                                       "protocolVersion":2, "conversionMode":"preserveProsody",
                                        "processID":os.getpid(),
                                        "maxSeconds":MAX_SECONDS, "device":str(service.backend.device) if service.backend else "pending"})
                 elif self.command == "GET" and parsed.path == "/v1/voices":
@@ -210,7 +245,7 @@ def make_handler(service):
                 else:
                     self.respond(404, {"message":"接口不存在"})
             except KeyError:
-                self.respond(404, {"message":"任务不存在"})
+                self.respond(404, {"message":"任务不存在或电脑服务已重启，请用当前原声重新生成"})
             except (ValueError, OSError) as error:
                 self.respond(400, {"message":str(error)[:1000]})
 
@@ -220,6 +255,7 @@ def make_handler(service):
     return Handler
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", stream=__import__("sys").stdout)
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7867)
@@ -227,5 +263,7 @@ if __name__ == "__main__":
     service = Service()
     server = ThreadingHTTPServer((args.host,args.port), make_handler(service))
     (ROOT / ".private/listener-pid.txt").write_text(str(os.getpid()),encoding="ascii")
+    from process_identity import save_identity
+    save_identity(ROOT / ".private/server-process.json")
     print("AudioRelayLab AI service ready; model loads on first job. Port", args.port, flush=True)
     server.serve_forever()

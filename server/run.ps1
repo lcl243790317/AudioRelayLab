@@ -1,50 +1,58 @@
-param([switch]$Stop)
+param([switch]$Stop, [switch]$Restart)
 $ErrorActionPreference = 'Stop'
 $privateRoot = Join-Path $PSScriptRoot '.private'
-$pidFile = Join-Path $privateRoot 'server-process.json'
+$workerFile = Join-Path $privateRoot 'server-process.json'
+$supervisorFile = Join-Path $privateRoot 'supervisor-process.json'
 $listenerPIDFile = Join-Path $privateRoot 'listener-pid.txt'
-if ($Stop) {
-    if (Test-Path -LiteralPath $pidFile) {
-        $saved = Get-Content -LiteralPath $pidFile -Raw | ConvertFrom-Json
-        $process = Get-Process -Id $saved.processID -ErrorAction SilentlyContinue
-        if ($process -and $process.StartTime.ToUniversalTime().Ticks -eq [long]$saved.startTicks) { Stop-Process -Id $process.Id }
-        Remove-Item -LiteralPath $pidFile
-        if (Test-Path -LiteralPath $listenerPIDFile) { Remove-Item -LiteralPath $listenerPIDFile }
+
+function Get-OwnedProcess($identityPath) {
+    if (!(Test-Path -LiteralPath $identityPath)) { return $null }
+    $savedIdentity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+    $ownedProcess = Get-Process -Id $savedIdentity.processID -ErrorAction SilentlyContinue
+    if ($ownedProcess -and $ownedProcess.StartTime.ToUniversalTime().Ticks -eq [long]$savedIdentity.startTicks) { return $ownedProcess }
+    return $null
+}
+if ($Stop -or $Restart) {
+    foreach ($identityPath in @($supervisorFile, $workerFile)) {
+        $ownedProcess = Get-OwnedProcess $identityPath
+        if ($ownedProcess) { Stop-Process -Id $ownedProcess.Id }
+        if (Test-Path -LiteralPath $identityPath) { Remove-Item -LiteralPath $identityPath }
     }
-    Write-Output '本项目 AI 服务已停止。'
-    exit
+    if (Test-Path -LiteralPath $listenerPIDFile) { Remove-Item -LiteralPath $listenerPIDFile }
+    if ($Stop) { Write-Output '本项目 AI 服务已停止。'; return }
 }
 $privatePython = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'
 if (!(Test-Path -LiteralPath $privatePython)) { throw '请先运行 server/setup.ps1' }
-$logRoot = Join-Path $PSScriptRoot '.logs'
-New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
-if (Test-Path -LiteralPath $pidFile) {
-    $saved = Get-Content -LiteralPath $pidFile -Raw | ConvertFrom-Json
-    $existing = Get-Process -Id $saved.processID -ErrorAction SilentlyContinue
-    if ($existing -and $existing.StartTime.ToUniversalTime().Ticks -eq [long]$saved.startTicks) {
-        Write-Output '服务已运行。连接信息见 server/CONNECTION-ZH.txt。'
-        exit
+New-Item -ItemType Directory -Path (Join-Path $PSScriptRoot '.logs') -Force | Out-Null
+$existingSupervisor = Get-OwnedProcess $supervisorFile
+if (!$existingSupervisor) {
+    $existingWorker = Get-OwnedProcess $workerFile
+    if ($existingWorker) { Stop-Process -Id $existingWorker.Id }
+    foreach ($identityPath in @($supervisorFile, $workerFile, $listenerPIDFile)) {
+        if (Test-Path -LiteralPath $identityPath) { Remove-Item -LiteralPath $identityPath }
     }
+    $supervisorPath = Join-Path $PSScriptRoot 'supervisor.py'
+    # Create the hidden service independently of this temporary shell's process job.
+    # No scheduled task, administrator account or automatic login trigger is installed.
+    $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow=[uint16]0 }
+    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine=('"'+$privatePython+'" -u -X utf8 "'+$supervisorPath+'"')
+        CurrentDirectory=$PSScriptRoot
+        ProcessStartupInformation=$startup
+    }
+    if ($created.ReturnValue -ne 0) { throw ('Windows 未能启动本项目服务，返回码：' + $created.ReturnValue) }
 }
-$appPath = Join-Path $PSScriptRoot 'app.py'
-if (Test-Path -LiteralPath $listenerPIDFile) { Remove-Item -LiteralPath $listenerPIDFile }
-$process = Start-Process -FilePath $privatePython -ArgumentList ('-u -X utf8 "' + $appPath + '"') -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logRoot 'service.log') -RedirectStandardError (Join-Path $logRoot 'service-error.log')
-for ($i=0; $i -lt 30; $i++) {
-    if (Test-Path -LiteralPath $listenerPIDFile) { break }
-    $process.Refresh()
-    if ($process.HasExited) { throw '服务启动失败，请查看 server/.logs/service-error.log' }
+for ($attempt=0; $attempt -lt 80; $attempt++) {
+    if (Get-OwnedProcess $workerFile) { break }
     Start-Sleep -Milliseconds 100
 }
-if (!(Test-Path -LiteralPath $listenerPIDFile)) { throw '服务没有成功绑定端口，请查看 server/.logs/service-error.log' }
-# Windows venv python.exe can be a launcher; save the listener's PID, not the launcher.
-$listenerProcessID = [int](Get-Content -LiteralPath $listenerPIDFile -Raw)
-$listenerProcess = Get-Process -Id $listenerProcessID
-@{ processID=$listenerProcess.Id; startTicks=$listenerProcess.StartTime.ToUniversalTime().Ticks } | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding utf8
+if (!(Get-OwnedProcess $workerFile)) { throw '服务未能绑定端口，请查看 server/.logs/supervisor.log 和 service-error.log' }
 $connection = Get-Content -LiteralPath (Join-Path $privateRoot 'connection.json') -Raw | ConvertFrom-Json
 $addresses = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -match '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' -and $_.AddressState -eq 'Preferred' }
-$lines = @('AudioRelayLab 电脑 AI 连接', '手机与电脑连接同一 Wi-Fi。', '在 App 的变声页选择电脑 AI，并输入以下信息：')
+$lines = @('AudioRelayLab 电脑 AI 连接', '手机与电脑连接同一 Wi-Fi；电脑保持唤醒。', '在 App 的变声页选择电脑 AI，并输入以下信息：')
 foreach ($address in $addresses) { $lines += ('电脑地址：http://' + $address.IPAddress + ':7867') }
 $lines += ('连接密钥：' + $connection.token)
-$lines += '若无法连接，请确认 Windows 防火墙允许此 Python 在专用网络接收连接。'
+$lines += '若无法连接，请确认 Windows 防火墙允许此 Python 在专用网络接收连接，且 iPhone 设置允许本 App 使用本地网络。'
+$lines += '此窗口关闭后服务继续运行；异常退出会自动重启。电脑重启后请重新运行 run.ps1。'
 $lines | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'CONNECTION-ZH.txt') -Encoding utf8
-Write-Output 'AI 服务已启动。连接信息见 server/CONNECTION-ZH.txt；首次生成会加载模型。'
+Write-Output 'AI 服务已运行；连接信息见 server/CONNECTION-ZH.txt。停止使用 run.ps1 -Stop，更新后使用 run.ps1 -Restart。'

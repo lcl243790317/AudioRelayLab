@@ -1,56 +1,62 @@
-# AudioRelayLab 1.3：电脑 AI 与声音工坊
+# AudioRelayLab 1.3.1：电脑 AI 与声音工坊
 
-本轮在原仓库增量开发。自然度优先的路径是 **录原声 → 电脑 Seed-VC v2 转换 → 手机回听、混音、延迟播放**。这是录音后转换，手机实时路径仍使用 Signalsmith DSP。
+在现有仓库增量更新。流程是 **录原声 → 电脑转换目标音色 → 手机回听、混音、延迟播放**；手机实时模式仍使用 Signalsmith DSP。
 
-## 这台电脑现在怎么用
+## 这台电脑怎么用
 
-1. 本机依赖已经安装到 `server/.venv`，官方模型已经实际下载并运行。`server/run.ps1` 启动的服务监听 7867 端口。
-2. 打开 `server/CONNECTION-ZH.txt`，复制电脑地址和连接密钥。手机与电脑接同一 Wi-Fi，在 App 的「变声 → 电脑 AI → 连接我的电脑」填入这两项。
-3. 点击「录制原声」，在安静环境正常说话，然后「停止并保留原声」。每段 0.3–25 秒，24 秒自动保存；原声不会预先经过变调，也不会现场监听。
-4. 选择「自然女声」，点击「生成 AI 声音」。首次等待可能包含模型加载；页面显示真实的排队、加载、转换状态。完成后可以回听、应用到音频页，或选择背景音乐保存混音。
-5. 其他纯人声音频可先在音频页导入，再在变声页点击「使用当前音频」。长文件可在音频页应用起点并在高级设置限制源时长。只有主动点击生成，才发送选中的录音到配置的电脑。
+1. 在项目目录运行 `powershell -File server/run.ps1 -Restart`，更新并启动本项目服务。连接信息在 `server/CONNECTION-ZH.txt`，密钥保持原值。
+2. 手机与电脑连接同一 Wi-Fi，在「变声 → 电脑 AI → 连接我的电脑」填入当前地址、密钥。iPhone 需允许本 App 使用本地网络，电脑需保持唤醒。
+3. 「录制原声」后「停止并保留原声」。每段 0.3–25 秒，24 秒自动保存；正常语速，在安静环境录制。录制原声不套用手机实时预设。
+4. 选「自然女声」，点击「生成 AI 声音」。首次包含下载或加载模型，后续复用同一模型。完成后回听、应用到音频页，或加入背景音乐保存混音。
+5. 下一次直接录制新原声再生成；连接或上传失败后可以直接重试。具体网络错误、任务阶段和保存哈希会写入诊断，密钥和网络地址不写入 AI 诊断。
+6. 外部人声可先导入音频，点击「使用当前音频」。长文件沿用音频页已应用的起点与限制源时长。只有点击生成才发送所选录音到你的电脑。
 
-若手机连接失败，确认电脑地址对应当前 Wi-Fi，而不是 VPN/虚拟网卡；在 Windows 提示中允许本项目 Python 在专用网络接收连接。程序不自动修改防火墙。停止本项目服务：`powershell -File server/run.ps1 -Stop`；再次启动：`powershell -File server/run.ps1`。
+服务脱离临时命令窗口运行；关闭该窗口后继续监听。异常退出会有限重启，10 分钟内连续五次失败则停止并保留错误日志。电脑重启后重新运行启动脚本。停止：`powershell -File server/run.ps1 -Stop`。进程停止核对本项目 PID 与启动时间，避免误停其他 Python。
 
-## 音色来源与参数
+连接失败时，确认地址来自当前 Wi-Fi、电脑服务在运行；Windows 防火墙允许此 Python 在专用网络接收连接。服务日志位于 `server/.logs/service.log`、`service-error.log`、`supervisor.log`；每个任务还有本地 `.runtime/jobs/<UUID>/state.json`。
 
-| 音色 | 实际参考 | 用途 |
-|---|---|---|
-| 自然女声 | QwenAudio / CosyVoice 官方 `asset/zero_shot_prompt.wav`，中文，3.48 秒；仅转换 float WAV 为 PCM16 | 首选实际参考音色 |
-| 清亮女声（未启用） | 此 Windows 的 Microsoft Yaoyao 中文合成语音 | 检查出现重复词，已移出默认列表 |
-| 温柔女声（未启用） | 此 Windows 的 Microsoft Huihui Desktop 中文合成语音，语速 -1 | 检查出现重复词，已移出默认列表 |
+## 保留原话与语调
 
-官方示例来源、固定提交、原文件 SHA-256 见 `server/reference-lock.json`，仓库 Apache-2.0 文本见 `server/COSYVOICE-LICENSE.txt`。后两个参考在本机生成，未放入 Git 或 IPA。它们并非中国收费调音师的私有音色。
+1.3.0 开启了 Seed-VC v2 的 AR 风格转换，可能改变词句、停顿、语调与时长。1.3.1 默认改用固定版本 Seed-VC 的 **44.1 kHz F0 条件模型 + RMVPE**：
 
-AI 使用 30 diffusion steps、intelligibility CFG 0.7、similarity CFG 0.7、top-p 0.9、temperature 0.85、repetition penalty 1.0、convert_style=True。它们是固定模型的推理参数，不是手机 DSP 的 pitch/formant 参数。App 每个结果保存实际引擎、模型源码版本、参考来源、参数、处理时间与 WAV 哈希。
+- 内容特征来自原声；原声的声调升降曲线作为生成条件。
+- 参考录音提供目标音色与整体音高；原声基频曲线只按一个整体比例移至参考的音域。
+- 长度因子固定 1.0；扩散 30 步、CFG 0.7、F0 条件开启、自动整体音高匹配开启、额外移调 0。
+- 输出为单声道 44.1 kHz PCM16 WAV，有限幅保护。每个结果保存引擎、源码版本、实际参数、参考来源、转换时间和 SHA-256。
 
-实际样本用本地 Whisper-small 做了中文识别对比。自然女声保留主要语句，但专有名称有识别误差；合成参考的两种结果出现明显重复词或漏词，因此只启用一个默认女声。识别结果、基频和幅度见 `dist/ai-samples/actual-audio-analysis.json`；识别正确不等价于听感自然。
+这条路径重点保留原话、停顿和声调走势。音色、辅音、呼吸、响度和情绪仍需对照你的真人原声回听；客观相关性与文字识别结果不能证明听感完全一致。
 
-可在 `server/.private/references` 放置有使用权限的清晰参考，再在 `.private/voices.json` 增加/替换对应项，重启服务并让 App 重新读取音色。应选纯人声、无背景音乐、无明显混响的短参考；避免把 Windows 合成参考的自然度当作真人目标。
+## 本轮真实质量与连接验证
 
-## 已完成的实际验证
+输入为本机 Microsoft Kangkang 合成中文男声，未把真人录音发送到外部服务。NVIDIA GeForce RTX 4070 Laptop GPU / PyTorch 2.5.1+cu124；固定源码 `51383efd921027683c89e5348211d93ff12ac2a8`。
 
-本机 NVIDIA GeForce RTX 4070 Laptop GPU，PyTorch 2.5.1+cu124；模型源码固定为 `51383efd921027683c89e5348211d93ff12ac2a8`。
+- 对比关闭风格转换的 v2：两次基频走势相关性约 0.862，整体移调的标准差约 2 半音。
+- 最终 F0 条件模型：两次相关性分别 **0.99146 / 0.99164**，移调变化标准差 **0.536 / 0.523 半音**。
+- 原声 13.819 秒，两次输出均 13.816 秒，差约 3.4 毫秒。一次本地 Whisper-small 中文识别全文一致，另一次仅专名识别不同；这不等于人工逐字听感验收。
+- 最终真实带认证 HTTP 服务连续生成三次，输入时长为 13.819 / 5.500 / 13.819 秒，均生成有效 WAV，下载 SHA-256 与 metadata、响应头一致。含首次模型加载约 17.63 秒，随后约 2.16 / 3.76 秒；每次生成前重新读取健康状态与音色。
+- 证据和可回听音频在 `dist/ai-prosody`：`f0/quality.json`、`f0/f0-*.wav`、`repeat-api-evidence.json`、`api-repeat-*.wav`。
+- 回归测试另外使用明确的网络/模型测试替身，覆盖连接失败后重连、上传失败后继续、连续转换、新结果和持久化任务。它们与实际 GPU 证据分别记录。
 
-- 同一段本地 Microsoft Kangkang 中文男声输入，分别生成三种 WAV；自然女声 13.15 秒 / 10.17 秒计算，清亮女声 15.62 秒 / 12.25 秒计算，温柔女声 16.07 秒 / 12.55 秒计算。加载模型 8.41 秒。AR 风格转换会改变停顿与长度。
-- 实际带认证 HTTP 服务完成上传 → CUDA 模型 → 下载 → SHA-256 一致，含加载总等待 20.19 秒；这不是测试替身的结果。
-- 可回听文件在 `dist/ai-samples`：`male-source.wav`、三个 `female-*.wav`、`phone-api-result.wav`。机器与参数证据为 `actual-inference.json` 和 `actual-api.json`，日志在 `server/.logs`。
-- API 的认证、非法/截断 WAV、长度、音色白名单、参考路径、取消、下载哈希有独立契约测试；这些测试使用显式测试替身，与上面的真实 GPU 证据分开。
+此前两份真机诊断显示原声录制与保存成功，但旧版没有 AI 网络日志。检查时电脑服务已无监听进程，能解释重新连接失败；服务为何退出不能由这些日志唯一确定。新版独立服务进程、监督重启和任务日志用于修复与后续定位。
 
-最终单音色服务又完成一次实际转换，结果与协议证据保存为 `current-service-result.wav` / `.json`。Windows 启动器现在记录真实监听 Python 子进程的 PID 与启动时间 ticks；已验证停止后端口释放、重新启动后仅提供默认自然女声。
+## 默认音色与来源
 
-目前输入验证使用合成男声，尚未验证你的真人原声与手机 Wi-Fi 连接。自然度、性别听感和是否暴露原声需要用实际原声回听，不能由编译成功或频率数值证明。「完美」「所有男声都听不出来」不作为未经验证的承诺。
+默认「自然女声」使用 QwenAudio / CosyVoice 官方中文示例 `asset/zero_shot_prompt.wav`，3.48 秒，只转换 float WAV 为 PCM16。固定提交、原文件 SHA-256 见 `server/reference-lock.json`；Apache-2.0 文本见 `server/COSYVOICE-LICENSE.txt`。
 
-## 手机本地模式与 UI
+可用自己有使用权限的纯人声参考替换 `server/.private/references` 文件和 `.private/voices.json` 条目，重新启动后让 App 读取音色。无背景音乐、混响和明显噪声的真人参考通常更适合音色目标；默认参考并非收费调音师的私有素材。
 
-手机实时模式保留 15 个预设和实时混音。女声起始 pitch 调整为 5–11 半音，同时控制共振峰、低中频与去齿音；可测量已有原声的基频，对不同低男声计算不同移调量。可独立微调音高与共振峰，本地 DSP 仍会保留部分原说话人特征。
+官方资料：[Seed-VC 中文说明](https://github.com/Plachtaa/seed-vc/blob/51383efd921027683c89e5348211d93ff12ac2a8/README-ZH.md)、[固定 F0 推理代码](https://github.com/Plachtaa/seed-vc/blob/51383efd921027683c89e5348211d93ff12ac2a8/inference.py)、[CosyVoice](https://github.com/QwenAudio/CosyVoice)。
 
-UI 改为「音频 / 变声 / 资料」三个入口。Mixer 开关位于手机实时模式，AI 人声另有保存背景音乐混音功能；历史、录音库、日志统一进入资料。纸张色、衬线标题、灰色方形按钮、细线和轻阴影参考用户图片，高级设置折叠保留。
+## 手机实时模式与 UI
 
-## 另一台 Windows 电脑安装
+15 个预设保留。除音高、共振峰和效果强度，新增九项独立调节：低切、低中频、存在感、空气感、压缩、齿音抑制、变声混合比例、机器人效果、音色输出增益；调节即时生效，可恢复当前预设。折叠分组保留简洁布局，扬声器/耳机监听与背景音乐开关继续可用。
 
-需要 Python 3.12、较新的 NVIDIA 驱动，以及足够的磁盘和显存；本轮实际验证为 8 GB 显卡。运行 `powershell -File server/setup.ps1 -Python C:\实际路径\python.exe`。安装只使用项目私有虚拟环境。若没有上述中文 SAPI 音色，可手动提供参考文件和配置，不需重新建立 iOS 项目。
+「资料 → 实验历史」增加清空全部记录和确认提示。诊断与实验日志最新在上，完整实验审计仍按原时间顺序保存。所有纸张按钮有按压、高亮与回弹，兼容减少动态效果；系统开关、滑块与选择器显示选中状态。
 
-Seed-VC 服务为独立 GPL-3.0 进程，其固定源码与协议实现均可获得，许可证见 `server/LICENSE-GPL-3.0.txt`；iOS App 通过 HTTP 交换 WAV。服务不回退到假结果，模型加载、推理或文件校验失败会报告实际错误。
+音频导入仅亮起 WAV、MP3、M4A、AAC、AIFF、AIFC、CAF、FLAC 类型，其余灰色。选择后仍验证真实解码，文件类型不能保证所有编码变体有效。
 
-研究来源：[RVC 中文项目](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI)、[Seed-VC 中文说明](https://github.com/Plachtaa/seed-vc/blob/main/README-ZH.md)、[CosyVoice 官方转换示例](https://github.com/QwenAudio/CosyVoice/blob/main/example.py)。Seed-VC 仓库已归档，使用固定版本。iOS 局域网配置遵循 [Apple NSAllowsLocalNetworking](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsallowslocalnetworking)，没有启用全局任意 HTTP 放行。
+## 另一台 Windows 电脑
+
+需要 Python 3.12、NVIDIA 驱动和足够的磁盘/显存，实际验证为 8 GB 显卡。运行 `powershell -File server/setup.ps1 -Python C:\实际路径\python.exe`，依赖只安装到项目私有虚拟环境。首次生成下载 F0 模型、RMVPE、BigVGAN 与内容编码器；缓存位于较短的 `.runtime/f0`，避免 Windows 文件路径过长。
+
+Seed-VC 服务为独立 GPL-3.0 进程，固定源码与协议可获得，见 `server/LICENSE-GPL-3.0.txt`。iOS 通过认证 HTTP 交换 WAV。模型或校验失败会报告错误。

@@ -135,6 +135,24 @@ final class DeviceBugRegressionTests: XCTestCase {
         XCTAssertEqual(record.asset.source,.voiceLabRecording); XCTAssertGreaterThan(record.asset.duration,0.2)
         voice.delete(record)
     }
+    @MainActor func testThreeConsecutiveRawRecordingsSaveAndReleaseSession() async throws {
+        let coordinator = ExperimentCoordinator(), voice = coordinator.voiceLab
+        defer { voice.stop(saveRecording:false) }
+        var ids:Set<UUID> = []
+        for _ in 0..<3 {
+            voice.start(.rawRecording)
+            try await awaitRunning(voice)
+            guard voice.state == .running else { return }
+            try await Task.sleep(for:.milliseconds(450))
+            voice.stop(); XCTAssertEqual(voice.state,.idle,voice.errorMessage ?? voice.status)
+            let record = try XCTUnwrap(voice.recordings.first)
+            XCTAssertEqual(record.asset.presetName,"AI 原声")
+            XCTAssertGreaterThan(record.asset.duration,0.3)
+            XCTAssertTrue(ids.insert(record.id).inserted)
+            XCTAssertEqual(coordinator.aiVoice.input?.id,record.asset.id)
+            voice.delete(record)
+        }
+    }
     @MainActor func testRealSimulatorMixerCapturesMusicThroughProductionGraph() async throws {
         let coordinator=ExperimentCoordinator(), voice=coordinator.voiceLab
         defer { voice.stop(saveRecording:false) }

@@ -9,6 +9,7 @@ struct HistoryView: View {
     @State private var failure: String?
     @State private var importing = false
     @State private var importSummary: String?
+    @State private var confirmClear = false
     init(coordinator: ExperimentCoordinator) { self.coordinator = coordinator; store = coordinator.store }
     var body: some View {
         List {
@@ -16,6 +17,8 @@ struct HistoryView: View {
                 Button("导入历史 JSON") { importing = true }
                 Button("导出 JSON") { exportJSON() }.disabled(store.experiments.isEmpty)
                 Button("导出 CSV") { exportCSV() }.disabled(store.experiments.isEmpty)
+                Button("清空全部实验记录", role: .destructive) { confirmClear = true }
+                    .disabled(store.experiments.isEmpty || coordinator.isRunning)
                 Text("导入保留已有相同编号的记录。历史只包含实验资料，不包含原音频文件。备注由你填写，分享前请检查是否包含个人信息。")
                     .font(.caption).foregroundStyle(.secondary)
                 if let importSummary { Text(importSummary).font(.caption) }
@@ -39,7 +42,7 @@ struct HistoryView: View {
                     }
                     Button("查看并填写结果") { editing = experiment }
                     NavigationLink("查看实验日志") {
-                        List(experiment.logs) { Text($0.line).font(.caption.monospaced()).textSelection(.enabled) }
+                        List(Array(experiment.logs.reversed())) { Text($0.line).font(.caption.monospaced()).textSelection(.enabled) }
                             .paperList().navigationTitle("实验日志")
                     }
                     if !experiment.errorDetails.isEmpty {
@@ -53,6 +56,14 @@ struct HistoryView: View {
             }
         }
         .paperList().navigationTitle("实验历史")
+        .confirmationDialog("清空全部实验记录？", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("清空全部记录", role: .destructive) {
+                do {
+                    try coordinator.clearHistory()
+                    editing = nil; failure = nil; importSummary = "全部实验记录已清空。"
+                } catch { fail(error) }
+            }
+        } message: { Text("记录及其结果、备注和实验日志将删除。已导入和生成的音频仍保留。") }
         .onAppear { coordinator.checkpoint() }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
             switch result {
@@ -97,6 +108,6 @@ struct HistoryView: View {
     }
     private func fail(_ error: Error) {
         coordinator.logger.log("历史操作失败", diagnosticError(error))
-        failure = "历史操作失败。请确认文件是本 App 导出的有效 JSON、大小不超过 32 MB，并检查存储空间；详情见诊断日志。"
+        failure = "历史操作未完成，请检查文件与存储空间；详情见诊断日志。"
     }
 }

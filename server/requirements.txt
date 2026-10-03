@@ -13,3 +13,5 @@ pydub==0.25.1
 pyyaml==6.0.2
 matplotlib==3.9.2
 imageio-ffmpeg==0.6.0
+descript-audio-codec==1.0.0
+descript-audiotools==0.7.2

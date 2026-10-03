@@ -58,6 +58,28 @@ import Combine
         }
     }
 
+    func clearAll() throws {
+        guard let directory else { throw LabError.message("实验历史目录不可用") }
+        let manager = FileManager.default
+        let archived = directory.deletingLastPathComponent().appendingPathComponent(".clearing-\(UUID())", isDirectory: true)
+        // Swap the owned history directory first, so a failed clear can restore all records.
+        try manager.moveItem(at: directory, to: archived)
+        do {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try manager.removeItem(at: archived)
+        } catch {
+            try? manager.removeItem(at: directory)
+            try? manager.moveItem(at: archived, to: directory)
+            storageError = "历史清空失败，记录未清空。"
+            logger.log("历史清空失败", diagnosticError(error))
+            throw error
+        }
+        experiments = []
+        loadWarning = nil
+        storageError = nil
+        logger.log("历史清空", "已清空全部实验记录；音频库保持可用。")
+    }
+
     /// 相同 UUID 保留现有记录，避免导入覆盖当前实验或已填写的结果。
     func importData(_ data: Data) throws -> HistoryStoreImportSummary {
         let report = try HistoryArchive.decode(data)
