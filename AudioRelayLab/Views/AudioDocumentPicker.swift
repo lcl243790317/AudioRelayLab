@@ -15,6 +15,8 @@ import UIKit
     func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
     static func makePicker(delegate: UIDocumentPickerDelegate) -> UIDocumentPickerViewController {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        // Initialize the embedded browser before applying its display options.
+        picker.loadViewIfNeeded()
         picker.allowsMultipleSelection = false
         picker.shouldShowFileExtensions = true
         picker.delegate = delegate

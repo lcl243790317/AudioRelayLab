@@ -116,7 +116,7 @@ App 不联网、不读取微信、不抓取电话音频，不使用私有注入�
 本轮编译证据见 BUILD-STATUS-ZH.txt；C 通话准备回归见 TEST-PROTOCOL-ZH.txt，
 未通过真机回归前保留为 release blocker。
 
-9. AudioAsset、导入与编辑（1.2.0）
+9. AudioAsset、导入与编辑（1.2.1）
 AudioFileMetadata 扩展为统一 AudioAsset，AudioSource 四类，旧 metadata 有默认值。
 AudioFileManager 管 Bundle、授权 lease/provider coordination、UUID 副本、真实 PCM
 验证、metadata sidecar、列表和删除。没有把 Files 的临时 URL 当成长期播放源。
@@ -125,11 +125,12 @@ Coordinator 的 importGeneration 与可取消分块复制拒绝过期工作；se
 PreviewPlaybackController 有独立 AVAudioPlayer 与 token，50ms Timer 只更新播放头/
 前台 5秒试听限时，正式未来调度依旧不靠 Timer。进入后台停止 preview。
 AudioPlaybackSettings 用 TimeInterval；编辑与 applied 值独立，正式 volume 另存。
-AVAudioPlayer 从 currentTime 起点启用 rate；有限源时长时裁剪 offset 后 CAF。
-Engine 根据源采样率算 initial/resume/end frame，TimePitch 控制 rate；两者预计
+非1x正式实验先离线渲染源起点、时长与倍速，AVAudioPlayer/Engine 均以1x调度。
+1x的 AVAudioPlayer 从 currentTime 起点播放，有限源时长时裁剪 offset 后 CAF。
+Engine 根据实际播放文件采样率算 initial/resume/end frame；两者预计
 实际时长=源剩余或源 duration 限制除以 rate。旧历史起点=0/rate=1。
 
-10. Voice Lab / Mixer（1.2.0）
+10. Voice Lab / Mixer（1.2.1）
 VoiceProcessingEngine 在 MainActor 管权限、session、token、有效硬件格式和图；
 仅这个明确麦克风功能访问 inputNode，主文件实验仍无输入 tap。
 同一 Coordinator 让 preview/formal/voice 串行占用会话；开始 Voice 停旧实验/导入/preview，
@@ -143,7 +144,8 @@ Voice/Music/Master 与 preview/experiment 音量独立；音乐段从指定 fram
 记录保存后检查实际 PCM/metadata，原子持久化 VoiceLabRecord；失败回滚音频/sidecar。
 preset、强度、音量和 musicSettings 变化按 parameterEvents 审计；旧字段安全默认。
 Voice 后台开关开启时继续用户主动开始的真实输入/输出/录音，关闭则停止并保存；
-中断/路由/engine config/media change 安全终止未完整录音。
+真实中断、设备/格式改变或媒体失效安全终止未完整录音；普通路由/engine config
+通知先比较实际硬件，同硬件运行中的图继续，同格式停止的图最多恢复一次。
 媒体 reset 后不操作失效 graph；下一次手动开始重读格式并重建，不自动恢复抢占。
 停止录音不会额外 flush 频谱处理尾音，结束前建议留一小段静音，真机协议检查末字完整性。
 

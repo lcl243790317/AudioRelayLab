@@ -8,13 +8,13 @@ Audio 页选择 Bundle 测试音或外部文件，系统授权 URL 经协调读�
 
 Voice Lab 提供真实麦克风、独立 pitch/formant、EQ/动态/去齿音/dry-wet/gain、15 个预设和效果强度。Mixer 加入当前音乐及独立 Voice/Music/Master，音乐可在运行中独立 seek/变速。处理后录音和混合录音保存本地单声道 Float PCM CAF，可试听、应用到主音频、分享、删除。原生输出动态处理器提供余量保护；真人自然度和瞬态质量需要回听。
 
-实时监听默认耳机优先；扬声器需主动启用。录制默认关闭现场监听。Voice Lab/Mixer 提供“允许后台继续当前 Voice / Mixer”开关：开启时只继续用户主动启动的真实输入、输出或录音，关闭则切后台时停止并保存。系统中断、路由或媒体失效仍会安全停止，不完整录音丢弃。跨 App 微信录音同时使用麦克风仍可能被系统中断；也可先保存混合 CAF，再使用主播放器延迟实验。
+实时监听默认耳机优先；扬声器需主动启用。录制默认关闭现场监听。Voice Lab/Mixer 提供“允许后台继续当前 Voice / Mixer”开关：开启时只继续用户主动启动的真实输入、输出或录音，关闭则切后台时停止并保存。系统中断、实际设备/格式改变或媒体失效仍会安全停止，不完整录音丢弃；正常类别通知先核对硬件状态。跨 App 微信录音同时使用麦克风仍可能被系统中断；也可先保存混合 CAF，再使用主播放器延迟实验。
 
 | 格式证据分类 | 本轮范围 |
 |---|---|
 | Confirmed audio formats | 每个实际导入文件通过 AVAudioFile 打开、PCM 读取、metadata 校验才接受 |
 | Tested audio formats | CI 实际编码夹具：MP3、M4A/AAC、AAC/ADTS、WAV/PCM、AIFF、AIFC、CAF、FLAC；Bundle WAV |
-| Runtime-validated additional formats | 广义 audio/显式扩展名，以及“显示所有文件”回退；其他容器/编码逐文件真实验证，不按后缀保证 |
+| Runtime-validated additional formats | 原生选择器显示全部文件；其他容器/编码逐文件真实验证，不按后缀保证 |
 | iOS 18.1.1 真机已验证 | 本轮新版本尚无真机结果，所有 picker/监听/录音/收录矩阵待填写 |
 
 文件后缀不代表全部编码子类型受支持。CI 使用更新 SDK/Simulator，不能代替 18.1.1 真机。

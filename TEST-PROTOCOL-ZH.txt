@@ -135,7 +135,7 @@ python scripts/analyze-log.py <日志.txt 或历史.json 或诊断.jsonl>
 每轮最终证据包括 commit / build、实验 UUID、日志、JSON 和人工结果。
 CI run / xcodebuild / IPA SHA 记录在 BUILD-STATUS-ZH.txt，不能代替本协议。
 
-十一、Audio Import Matrix（1.2.0，真机全部待验证）
+十一、Audio Import Matrix（1.2.1，真机全部待验证）
 CI 真实 codec 自动测试与主设备 iOS 18.1.1 分开填写。每类本地 Files /
 iCloud 尚未下载 / 第三方 Provider 各一轮；不支持编码应友好失败并保留当前音频。
 格式         | picker可选 | 导入 | metadata | 试听 | seek | rate | Experiment
@@ -158,7 +158,7 @@ AVAudioPlayer/Engine 两引擎分别检查延迟后实际从起点播放与时�
 
 导入进行中立即取消/选择内置测试音，确认控制立即恢复且旧工作不能覆盖新选择。
 重复文件名不能覆盖；坏文件、空文件、超限、删除或不可访问输入要安全失败。
-Provider UTI 不正确时试“显示所有文件”；真实解码仍是最终门禁。
+原生选择器默认全部文件，Provider UTI 不正确也可点选；真实解码仍是最终门禁。
 替换音频应停旧试听，清零起点、播放头、duration、旧状态；退出重启仍用沙盒副本。
 导入日志核对原 URL/UTType/结果/格式/字节/目标/metadata/底层错误。
 Confirmed 是单文件实际验证；Tested 是当前 CI 夹具；Runtime-validated additional
