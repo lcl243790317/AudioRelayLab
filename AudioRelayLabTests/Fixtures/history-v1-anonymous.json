@@ -1,0 +1,650 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "date": "2026-01-01T00:00:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "D",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.50643086
+    },
+    "finalState": "completed",
+    "result": "captured",
+    "resultReviewed": true,
+    "notes": "",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003e8",
+        "sequence": 0,
+        "date": "2026-01-01T00:00:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 100,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:00:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:00:00Z",
+      "scheduleCallTime": "2026-01-01T00:00:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 105,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "date": "2026-01-01T00:01:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "E",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.50643086
+    },
+    "finalState": "stopped",
+    "result": "playbackStopped",
+    "resultReviewed": true,
+    "notes": "anonymous note",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003e9",
+        "sequence": 0,
+        "date": "2026-01-01T00:01:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 101,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:01:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:01:00Z",
+      "scheduleCallTime": "2026-01-01T00:01:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 106,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000003",
+    "date": "2026-01-01T00:02:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "C",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.50643086
+    },
+    "finalState": "completed",
+    "result": "quieter",
+    "resultReviewed": true,
+    "notes": "anonymous note",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003ea",
+        "sequence": 0,
+        "date": "2026-01-01T00:02:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 102,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:02:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:02:00Z",
+      "scheduleCallTime": "2026-01-01T00:02:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 107,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000004",
+    "date": "2026-01-01T00:03:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioEngine",
+      "profile": "B",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.50643086
+    },
+    "finalState": "stopped",
+    "result": "playbackStopped",
+    "resultReviewed": true,
+    "notes": "anonymous note",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003eb",
+        "sequence": 0,
+        "date": "2026-01-01T00:03:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 103,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:03:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:03:00Z",
+      "scheduleCallTime": "2026-01-01T00:03:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 108,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000005",
+    "date": "2026-01-01T00:04:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "B",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.50643086
+    },
+    "finalState": "stopped",
+    "result": "playbackStopped",
+    "resultReviewed": true,
+    "notes": "anonymous note",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003ec",
+        "sequence": 0,
+        "date": "2026-01-01T00:04:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 104,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:04:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:04:00Z",
+      "scheduleCallTime": "2026-01-01T00:04:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 109,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000006",
+    "date": "2026-01-01T00:05:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "B",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.50643086
+    },
+    "finalState": "stopped",
+    "result": "uncertain",
+    "resultReviewed": false,
+    "notes": "",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003ed",
+        "sequence": 0,
+        "date": "2026-01-01T00:05:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 105,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:05:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:05:00Z",
+      "scheduleCallTime": "2026-01-01T00:05:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 110,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000007",
+    "date": "2026-01-01T00:06:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "A",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.12165058
+    },
+    "finalState": "completed",
+    "result": "captured",
+    "resultReviewed": true,
+    "notes": "anonymous note",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003ee",
+        "sequence": 0,
+        "date": "2026-01-01T00:06:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 106,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:06:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:06:00Z",
+      "scheduleCallTime": "2026-01-01T00:06:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 111,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000008",
+    "date": "2026-01-01T00:07:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "A",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 1
+    },
+    "finalState": "completed",
+    "result": "captured",
+    "resultReviewed": true,
+    "notes": "anonymous note",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003ef",
+        "sequence": 0,
+        "date": "2026-01-01T00:07:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 107,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:07:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:07:00Z",
+      "scheduleCallTime": "2026-01-01T00:07:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 112,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000009",
+    "date": "2026-01-01T00:08:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "A",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.5
+    },
+    "finalState": "completed",
+    "result": "captured",
+    "resultReviewed": true,
+    "notes": "anonymous note",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003f0",
+        "sequence": 0,
+        "date": "2026-01-01T00:08:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 108,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:08:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:08:00Z",
+      "scheduleCallTime": "2026-01-01T00:08:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 113,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-00000000000a",
+    "date": "2026-01-01T00:09:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "A",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.5
+    },
+    "finalState": "completed",
+    "result": "uncertain",
+    "resultReviewed": false,
+    "notes": "",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003f1",
+        "sequence": 0,
+        "date": "2026-01-01T00:09:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 109,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:09:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:09:00Z",
+      "scheduleCallTime": "2026-01-01T00:09:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 114,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-00000000000b",
+    "date": "2026-01-01T00:10:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "A",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.5
+    },
+    "finalState": "stopped",
+    "result": "uncertain",
+    "resultReviewed": false,
+    "notes": "",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003f2",
+        "sequence": 0,
+        "date": "2026-01-01T00:10:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 110,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:10:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:10:00Z",
+      "scheduleCallTime": "2026-01-01T00:10:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 115,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  },
+  {
+    "id": "00000000-0000-0000-0000-00000000000c",
+    "date": "2026-01-01T00:11:00Z",
+    "device": {
+      "model": "Test",
+      "modelIdentifier": "TestDevice",
+      "systemVersion": "18.1.1",
+      "appVersion": "1.0.0",
+      "build": "1"
+    },
+    "audio": {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "fileName": "anonymous-test.wav",
+      "sandboxFileName": "anonymous-test.wav",
+      "duration": 11.7,
+      "sampleRate": 44100,
+      "channelCount": 1,
+      "byteCount": 1036036
+    },
+    "settings": {
+      "delay": 5,
+      "engine": "AVAudioPlayer",
+      "profile": "A",
+      "speakerOverride": false,
+      "voiceOptimized": false,
+      "volume": 0.5
+    },
+    "finalState": "stopped",
+    "result": "uncertain",
+    "resultReviewed": false,
+    "notes": "",
+    "logs": [
+      {
+        "id": "00000000-0000-0000-0000-0000000003f3",
+        "sequence": 0,
+        "date": "2026-01-01T00:11:00Z",
+        "localTime": "2026-01-01 00:00:00.000 Z",
+        "uptime": 111,
+        "elapsed": 0,
+        "category": "fixture",
+        "message": "anonymous event"
+      }
+    ],
+    "finishedAt": "2026-01-01T00:11:00Z",
+    "schedule": {
+      "requestedTime": "2026-01-01T00:11:00Z",
+      "scheduleCallTime": "2026-01-01T00:11:00Z",
+      "requestedDelay": 5,
+      "targetUptime": 116,
+      "audioClock": "anonymous clock",
+      "scheduledAudioTime": "100",
+      "accepted": true
+    }
+  }
+]

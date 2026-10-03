@@ -5,17 +5,22 @@ import AVFAudio
     private(set) var state: PlaybackState = .idle
     var onStateChange: ((PlaybackState) -> Void)?
     private let logger: DiagnosticsLogger
+    private let validateEnvironment: () throws -> Void
     private var player: AVAudioPlayer?
-    private var scheduleInfo: PlaybackSchedule?
     private var targetDeviceTime: TimeInterval?
-    private var userStopped = false
+    private var processedURL: URL?
+    private var requestedDuration: TimeInterval?
     private var observed = false
     private var previousTime: TimeInterval = 0
-    var volume: Float = 0.5 { didSet { player?.volume = min(1, max(0, volume)) } }
+    var volume: Float = 0.5 { didSet { if volume.isFinite { player?.volume = min(1, max(0, volume)) } } }
 
-    init(logger: DiagnosticsLogger) { self.logger = logger }
+    init(logger: DiagnosticsLogger, validateEnvironment: @escaping () throws -> Void) {
+        self.logger = logger
+        self.validateEnvironment = validateEnvironment
+    }
+    deinit { if let processedURL { try? FileManager.default.removeItem(at: processedURL) } }
     var diagnosticState: String {
-        "引擎=AVAudioPlayer，状态=\(state.title)，isPlaying=\(player?.isPlaying ?? false)，currentTime=\(player?.currentTime ?? 0)，deviceCurrentTime=\(player?.deviceCurrentTime ?? 0)，目标设备时间=\(targetDeviceTime.map(String.init(describing:)) ?? "无")"
+        "引擎=AVAudioPlayer，状态=\(state.title)，isPlaying=\(player?.isPlaying ?? false)，currentTime=\(player?.currentTime ?? 0)，deviceCurrentTime=\(player?.deviceCurrentTime ?? 0)，实际播放器音量=\(player?.volume ?? volume)，目标设备时间=\(targetDeviceTime.map(String.init(describing:)) ?? "无")"
     }
     private func setState(_ value: PlaybackState) {
         guard state != value else { return }
@@ -23,53 +28,73 @@ import AVFAudio
         logger.log("播放器状态", diagnosticState)
         onStateChange?(value)
     }
-    func prepare(url: URL, voiceOptimized: Bool) throws {
-        userStopped = false
+    func prepare(url: URL, voiceOptimized: Bool, requestedDuration: TimeInterval?) async throws {
+        teardown()
         observed = false
-        scheduleInfo = nil
-        targetDeviceTime = nil
         previousTime = 0
-        let newPlayer = try AVAudioPlayer(contentsOf: url)
-        newPlayer.delegate = self
-        newPlayer.volume = volume
-        guard newPlayer.prepareToPlay() else { throw LabError.message("音频播放器准备失败") }
-        player = newPlayer
-        logger.log("播放器准备", "prepareToPlay 成功；时长=\(newPlayer.duration)s；deviceCurrentTime=\(newPlayer.deviceCurrentTime)；语音优化未用于此路径。")
-        setState(.prepared)
+        self.requestedDuration = requestedDuration
+        setState(.preparing)
+        do {
+            try validateEnvironment()
+            guard volume.isFinite, (0...1).contains(volume) else { throw LabError.message("播放器音量不合法") }
+            if let requestedDuration {
+                guard requestedDuration.isFinite, (0.1...600).contains(requestedDuration) else { throw LabError.invalidFormat }
+            }
+            let source = try AVAudioFile(forReading: url)
+            try AudioRuntimeValidation.validate(source.processingFormat)
+            guard source.length > 0 else { throw LabError.invalidFormat }
+            let playbackURL: URL
+            if let requestedDuration, requestedDuration < Double(source.length) / source.processingFormat.sampleRate {
+                let work = Task.detached(priority: .userInitiated) { try AudioProcessor.trimmedCopy(of: url, duration: requestedDuration) }
+                playbackURL = try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
+                processedURL = playbackURL
+            } else { playbackURL = url }
+            try Task.checkCancellation()
+            try validateEnvironment()
+            let newPlayer = try AVAudioPlayer(contentsOf: playbackURL)
+            newPlayer.delegate = self
+            newPlayer.volume = volume
+            player = newPlayer
+            guard newPlayer.prepareToPlay(), newPlayer.duration.isFinite, newPlayer.duration > 0 else { throw LabError.audioUnavailable }
+            logger.log("播放器准备", "prepareToPlay 成功；实际时长=\(newPlayer.duration)s；实际播放器音量=\(newPlayer.volume)。")
+            setState(.prepared)
+        } catch {
+            teardown()
+            throw error
+        }
     }
     func schedule(delay: TimeInterval, requestedTime: Date) throws -> PlaybackSchedule {
-        guard let player, state == .prepared else { throw LabError.message("播放器尚未准备") }
+        guard let player, state == .prepared, delay.isFinite, (0.1...60).contains(delay) else { throw LabError.audioUnavailable }
+        try validateEnvironment()
         let callTime = Date()
         let uptime = ProcessInfo.processInfo.systemUptime
         let deviceTime = player.deviceCurrentTime
         let target = deviceTime + delay
+        guard deviceTime.isFinite, target.isFinite else { throw LabError.invalidFormat }
         targetDeviceTime = target
-        logger.log("调度调用", "请求时间=\(requestedTime)；调用时间=\(callTime)；deviceCurrentTime=\(deviceTime)；延迟=\(delay)s；目标设备时间=\(target)")
+        logger.log("调度调用", "deviceCurrentTime=\(deviceTime)，延迟=\(delay)s，目标设备时间=\(target)")
         let accepted = player.play(atTime: target)
-        let result = PlaybackSchedule(requestedTime: requestedTime, scheduleCallTime: callTime,
-            requestedDelay: delay, targetUptime: uptime + delay, audioClock: "AVAudioPlayer.deviceCurrentTime",
-            scheduledAudioTime: String(format: "%.9f", target), accepted: accepted)
-        scheduleInfo = result
-        logger.log("调度返回", "play(atTime:) 返回=\(accepted)；isPlaying=\(player.isPlaying)。提前返回的 isPlaying 不能确认实际发声。无法直接确认实际扬声器起始时间。")
-        guard accepted else { setState(.failed); throw LabError.message("系统拒绝了未来时间播放请求") }
+        logger.log("调度返回", "play(atTime:) 返回=\(accepted)；提前的 isPlaying 不能证明发声；\(diagnosticState)")
+        guard accepted else { throw LabError.audioUnavailable }
         setState(.waiting)
-        return result
+        return PlaybackSchedule(requestedTime: requestedTime, scheduleCallTime: callTime,
+            requestedDelay: delay, targetUptime: uptime + delay, audioClock: "AVAudioPlayer.deviceCurrentTime",
+            scheduledAudioTime: String(format: "%.9f", target), accepted: accepted, requestedDuration: requestedDuration)
     }
     func observe() {
         guard let player, state == .waiting || state == .playing else { return }
         let current = player.currentTime
         if !observed, player.isPlaying, player.deviceCurrentTime >= (targetDeviceTime ?? .infinity), current > previousTime + 0.001 {
             observed = true
-            logger.log("可观察播放开始", "首次在前台采样观察到 isPlaying=true 且 currentTime 推进至 \(current)s；deviceCurrentTime=\(player.deviceCurrentTime)。采样可能晚于发声；无法直接确认实际扬声器起始时间。")
+            logger.log("可观察播放开始", "currentTime=\(current)s，deviceCurrentTime=\(player.deviceCurrentTime)；前台采样不能确定声学起始时间。")
             setState(.playing)
         }
         previousTime = current
     }
     func stop() {
-        userStopped = true
-        player?.stop()
-        logger.log("主动停止", diagnosticState)
-        setState(.stopped)
+        teardown()
+        logger.log("主动停止", "AVAudioPlayer 已取消，delegate 已解绑。")
+        setState(.cancelled)
     }
     func interruptionBegan() {
         guard state.canInterrupt else { return }
@@ -78,41 +103,57 @@ import AVFAudio
         setState(.interrupted)
     }
     func resumeIfPossible() throws -> Bool {
-        guard !userStopped, state == .interrupted, let player, player.currentTime < player.duration else { return false }
+        guard state == .interrupted, let player, player.currentTime < player.duration else { return false }
+        try validateEnvironment()
         let deviceTime = player.deviceCurrentTime
-        // 若原目标仍在未来，保留目标；否则明确记录恢复为新的立即播放尝试。
-        let result: Bool
-        if let targetDeviceTime, targetDeviceTime > deviceTime {
-            result = player.play(atTime: targetDeviceTime)
-            if result { setState(.waiting) }
-        } else {
-            result = player.play()
+        guard deviceTime.isFinite else { throw LabError.invalidFormat }
+        let accepted: Bool
+        if let targetDeviceTime, targetDeviceTime > deviceTime { accepted = player.play(atTime: targetDeviceTime) }
+        else {
+            accepted = player.play()
             targetDeviceTime = deviceTime
-            observed = false
-            previousTime = player.currentTime
-            if result { setState(.waiting) }
         }
-        logger.log("播放器恢复", "恢复返回=\(result)；\(diagnosticState)。恢复是新的播放尝试，不代表原调度连续执行。")
-        if !result { setState(.failed) }
-        return result
+        guard accepted else { throw LabError.audioUnavailable }
+        observed = false
+        previousTime = player.currentTime
+        logger.log("播放器恢复", "恢复调用返回=true；这是新的播放尝试，不代表原调度连续执行；\(diagnosticState)")
+        setState(.waiting)
+        return true
+    }
+    func teardown() {
+        player?.delegate = nil
+        player?.stop()
+        player = nil
+        targetDeviceTime = nil
+        if let processedURL {
+            do { try FileManager.default.removeItem(at: processedURL) }
+            catch { logger.log("临时音频清理失败", diagnosticError(error)) }
+        }
+        processedURL = nil
     }
     func mediaServicesLost() {
-        userStopped = true
+        player?.delegate = nil
         player = nil
+        if let processedURL { try? FileManager.default.removeItem(at: processedURL) }
+        processedURL = nil
         setState(.failed)
     }
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self, weak player] in
-            guard let self, let player, self.player === player, !self.userStopped else { return }
-            self.logger.log("播放完成回调", "AVAudioPlayer successfully=\(flag)；currentTime=\(player.currentTime)。回调不能证明微信录入成功。")
+            guard let self, let player, self.player === player,
+                self.state == .waiting || self.state == .playing else { return }
+            self.logger.log("播放完成回调", "AVAudioPlayer successfully=\(flag)；不能证明微信录入。")
+            self.teardown()
             self.setState(flag ? .completed : .failed)
         }
     }
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         let details = error.map(diagnosticError) ?? "系统未提供具体错误"
         Task { @MainActor [weak self, weak player] in
-            guard let self, let player, self.player === player else { return }
+            guard let self, let player, self.player === player,
+                self.state == .waiting || self.state == .playing || self.state == .prepared else { return }
             self.logger.log("解码失败", details)
+            self.teardown()
             self.setState(.failed)
         }
     }

@@ -8,6 +8,20 @@ struct AudioFileMetadata: Codable, Identifiable {
     let sampleRate: Double
     let channelCount: UInt32
     let byteCount: Int64
+    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount }
+}
+
+extension AudioFileMetadata {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        fileName = (try? c.decode(String.self, forKey: .fileName)) ?? "旧记录音频"
+        sandboxFileName = (try? c.decode(String.self, forKey: .sandboxFileName)) ?? ""
+        duration = (try? c.decode(Double.self, forKey: .duration)) ?? 0
+        sampleRate = (try? c.decode(Double.self, forKey: .sampleRate)) ?? 0
+        channelCount = (try? c.decode(UInt32.self, forKey: .channelCount)) ?? 0
+        byteCount = (try? c.decode(Int64.self, forKey: .byteCount)) ?? 0
+    }
 }
 
 enum AudioFileManager {
@@ -18,12 +32,17 @@ enum AudioFileManager {
         return folder
     }
     static func url(for metadata: AudioFileMetadata) throws -> URL {
-        try audioDirectory().appendingPathComponent(metadata.sandboxFileName)
+        let name = metadata.sandboxFileName
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\\") else {
+            throw LabError.message("记录中的音频文件路径无效，请重新导入音频")
+        }
+        return try audioDirectory().appendingPathComponent(metadata.sandboxFileName)
     }
     static func inspect(url: URL, displayName: String? = nil) throws -> AudioFileMetadata {
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
-        guard format.sampleRate > 0, format.channelCount > 0, file.length > 0 else {
+        guard format.sampleRate.isFinite, (8_000...384_000).contains(format.sampleRate),
+            (1...8).contains(format.channelCount), file.length > 0 else {
             throw LabError.message("音频文件为空或格式无法读取")
         }
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)

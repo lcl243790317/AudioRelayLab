@@ -13,13 +13,15 @@ concurrency:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     defaults:
       run:
         shell: bash
     steps:
       - name: 读取源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: 记录真实构建环境
         run: |
           set -euo pipefail
@@ -29,6 +31,8 @@ jobs:
             xcodebuild -version
             xcrun --sdk iphoneos --show-sdk-version
             swift --version
+            xcode-select -p
+            xcrun simctl list runtimes
             printf '源码提交：%s\n' "$GITHUB_SHA"
           } 2>&1 | tee build-environment.log
       - name: 安装 XcodeGen 并静态检查
@@ -54,6 +58,36 @@ jobs:
             -resultBundlePath build/simulator.xcresult \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             build 2>&1 | tee build-simulator.log
+      - name: 在真实 iPhone Simulator 中运行 XCTest
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available --json > build-simulators.json
+          SIMULATOR_UDID="$(python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          devices = json.loads(Path('build-simulators.json').read_text())['devices']
+          runtimes = sorted(devices, key=lambda name: tuple(map(int, re.findall(r'\d+', name))), reverse=True)
+          for runtime in runtimes:
+              if '.iOS-' not in runtime:
+                  continue
+              for device in devices[runtime]:
+                  if device.get('isAvailable') and device.get('name', '').startswith('iPhone'):
+                      print(device['udid'])
+                      raise SystemExit(0)
+          raise SystemExit('没有可用的 iPhone Simulator，不能宣称 XCTest 通过。')
+          PY
+          )"
+          printf 'XCTest iPhone Simulator UDID: %s\n' "$SIMULATOR_UDID" | tee build-test-destination.log
+          xcodebuild \
+            -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
+            -configuration Debug -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination-timeout 180 -parallel-testing-enabled NO \
+            -derivedDataPath build/simulator-tests \
+            -resultBundlePath build/unit-tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            test 2>&1 | tee build-xctest.log
       - name: 编译 iPhoneOS Release
         run: |
           set -euo pipefail
@@ -69,9 +103,10 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/package-ipa.sh 2>&1 | tee build-package.log
+          shasum -a 256 dist/AudioRelayLab-unsigned.ipa | tee dist/SHA256SUMS.txt
       - name: 上传构建与诊断文件
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: AudioRelayLab-iOS-Build
           if-no-files-found: warn
@@ -79,9 +114,12 @@ jobs:
           path: |
             dist/AudioRelayLab-unsigned.ipa
             dist/ipa-manifest.json
+            dist/SHA256SUMS.txt
             AudioRelayLab.xcodeproj/
             build-*.log
+            build-simulators.json
             build/*.xcresult/
+            BUILD-STATUS-ZH.txt
             README-BUILD-ZH.txt
             README-INSTALL-ZH.txt
             TEST-PROTOCOL-ZH.txt

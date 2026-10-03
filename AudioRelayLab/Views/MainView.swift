@@ -1,3 +1,4 @@
+import AVFAudio
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -6,102 +7,36 @@ struct MainView: View {
     @ObservedObject var session: AudioSessionManager
     @State private var importing = false
     @State private var showResult = false
+    @State private var showTechnicalDetails = false
     @State private var customDelay = false
 
     init(coordinator: ExperimentCoordinator) {
         self.coordinator = coordinator
         session = coordinator.session
     }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("当前音频") {
-                    if let audio = coordinator.audio {
-                        Text(audio.fileName).font(.headline)
-                        LabeledContent("时长", value: String(format: "%.2f 秒", audio.duration))
-                        LabeledContent("采样率", value: String(format: "%.0f Hz", audio.sampleRate))
-                        LabeledContent("声道", value: String(audio.channelCount))
-                        LabeledContent("大小", value: ByteCountFormatter.string(fromByteCount: audio.byteCount, countStyle: .file))
-                    } else { Text("尚未选择音频") }
-                    Button("导入音频") { importing = true }
-                        .disabled(coordinator.controlsLocked)
-                    Button("使用测试音频") { coordinator.useTestAudio() }
-                        .disabled(coordinator.controlsLocked)
-                }
-                Section("实验设置") {
-                    Picker("播放引擎", selection: $coordinator.engineKind) {
-                        ForEach(PlaybackEngineKind.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    Picker("音频模式", selection: $coordinator.profile) {
-                        ForEach(AudioSessionProfile.allCases) { Text("\($0.rawValue) · \($0.title)").tag($0) }
-                    }
-                    Toggle("自定义延迟", isOn: $customDelay)
-                    if customDelay {
-                        TextField("延迟秒数（0.1～60）", value: $coordinator.delay, format: .number)
-                            .keyboardType(.decimalPad)
-                    } else {
-                        Picker("延迟时间", selection: $coordinator.delay) {
-                            ForEach([1.0, 2, 3, 4, 5, 7, 10], id: \.self) { Text("\(Int($0)) 秒").tag($0) }
-                        }
-                    }
-                    Toggle("强制使用内置扬声器", isOn: $coordinator.speakerOverride)
-                        .disabled(!coordinator.profile.usesInput)
-                    if !coordinator.profile.usesInput {
-                        Text("扬声器覆盖仅用于播放和录音模式。").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Toggle("语音优化播放", isOn: $coordinator.voiceOptimized)
-                        .disabled(coordinator.engineKind != .audioEngine)
-                    Text(coordinator.engineKind == .audioEngine
-                         ? "优化使用单声道副本、保守动态处理和高低通滤波；原文件不变。"
-                         : "语音优化适用于 AVAudioEngine。AVAudioPlayer 使用原始音频。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.disabled(coordinator.controlsLocked)
-                Section("播放音量") {
-                    Slider(value: $coordinator.volume, in: 0...1)
-                        .accessibilityLabel("播放音量")
-                    Text("\(Int(coordinator.volume * 100))% · 只控制 App 播放器音量")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.disabled(coordinator.busy)
-                if session.snapshot.currentRoute.usesExternalDevice {
-                    Section {
-                        Label("当前实验建议使用 iPhone 自带扬声器和麦克风。", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text(session.snapshot.currentRoute.summary).font(.caption)
-                    }
-                }
-                if let warning = session.interruptionMessage {
-                    Section { Label(warning, systemImage: "waveform.slash").foregroundStyle(.orange) }
-                }
-                Section("播放实验") {
-                    if coordinator.busy { ProgressView("正在准备音频…") }
-                    Text(coordinator.state.title).font(.headline)
-                    if coordinator.state == .waiting {
-                        Text(coordinator.remaining > 0 ? "\(Int(ceil(coordinator.remaining)))" : "等待状态观察")
-                            .font(.system(size: coordinator.remaining > 0 ? 64 : 22, weight: .bold, design: .rounded))
-                            .frame(maxWidth: .infinity)
-                        Text("请立即切换到微信").font(.headline)
-                        Text("并在播放开始前按住微信语音消息按钮")
-                    }
-                    Text("倒计时仅作提示。后台调度、扬声器发声和微信收录结果需要真机确认。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("准备并开始") { coordinator.start() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(coordinator.controlsLocked || coordinator.audio == nil)
-                    Button("停止播放", role: .destructive) { coordinator.stop() }
-                        .disabled(!coordinator.isRunning && !coordinator.busy)
-                    Button("保存实验结果") { coordinator.checkpoint(); showResult = true }
-                        .disabled(coordinator.currentExperiment == nil || coordinator.busy)
+                sessionSection
+                audioSection
+                settingsSection
+                volumeSection
+                experimentSection
+                if coordinator.errorMessage != nil || coordinator.state == .failed {
+                    failureSection
                 }
                 Section {
-                    NavigationLink("查看诊断") { DiagnosticsView(coordinator: coordinator) }
+                    NavigationLink("查看诊断与导出日志") { DiagnosticsView(coordinator: coordinator) }
                     NavigationLink("实验历史") { HistoryView(coordinator: coordinator) }
                 }
             }
-            .navigationTitle("音频接力实验室")
+            .navigationTitle("AudioRelayLab")
             .navigationBarTitleDisplayMode(.inline)
             .fileImporter(isPresented: $importing, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
                 switch result {
-                case .success(let urls): if let url = urls.first { coordinator.importAudio(url) }
+                case .success(let urls):
+                    if let url = urls.first { coordinator.importAudio(url) }
                 case .failure(let error):
                     coordinator.logger.log("文件选择失败", diagnosticError(error))
                     coordinator.errorMessage = "音频文件选择失败，请重试。"
@@ -109,14 +44,228 @@ struct MainView: View {
             }
             .sheet(isPresented: $showResult) {
                 if let experiment = coordinator.currentExperiment {
-                    ExperimentResultView(experiment: experiment) { result, notes in coordinator.saveResult(result: result, notes: notes) }
+                    ExperimentResultView(experiment: experiment) { result, notes in
+                        coordinator.saveResult(result: result, notes: notes)
+                    }
                 }
             }
-            .alert("操作提示", isPresented: Binding(get: { coordinator.errorMessage != nil }, set: { if !$0 { coordinator.errorMessage = nil } })) {
-                Button("好", role: .cancel) { coordinator.errorMessage = nil }
-            } message: { Text(coordinator.errorMessage ?? "") }
-            .onChange(of: customDelay) { _, enabled in if !enabled { coordinator.delay = 3 } }
-            .onChange(of: coordinator.engineKind) { _, value in if value == .audioPlayer { coordinator.voiceOptimized = false } }
+            .sheet(isPresented: $showTechnicalDetails) {
+                NavigationStack {
+                    ScrollView {
+                        Text(coordinator.technicalDetails ?? "本次操作没有额外技术错误，请查看诊断日志。")
+                            .font(.callout.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle("技术详情")
+                    .toolbar { Button("完成") { showTechnicalDetails = false } }
+                }
+            }
+            .onChange(of: customDelay) { _, enabled in
+                if !enabled { coordinator.delay = 3 }
+            }
+            .onChange(of: coordinator.engineKind) { _, value in
+                if value == .audioPlayer { coordinator.voiceOptimized = false }
+            }
         }
+    }
+
+    private var sessionSection: some View {
+        Section("当前音频环境") {
+            LabeledContent("Audio Session", value: session.availabilityMessage)
+            LabeledContent("当前配置", value: "\(coordinator.profile.rawValue) · \(coordinator.profile.title)")
+            LabeledContent("实验状态", value: coordinator.state.title)
+            LabeledContent("当前输入", value: ports(session.snapshot.currentRoute.inputs))
+            LabeledContent("当前输出", value: ports(session.snapshot.currentRoute.outputs))
+            LabeledContent("系统输出音量（只读）", value: percentage(Double(session.snapshot.outputVolume)))
+            if coordinator.profile == .bluetooth {
+                let hfp = (session.snapshot.currentRoute.inputs + session.snapshot.currentRoute.outputs)
+                    .contains { $0.portType == AVAudioSession.Port.bluetoothHFP.rawValue }
+                Label(hfp ? "蓝牙 HFP 允许；当前实际路由包含 HFP。" : "蓝牙 HFP 允许；当前实际路由未使用 HFP。",
+                      systemImage: hfp ? "headphones" : "speaker.wave.2")
+                    .font(.caption)
+                Text("实际路由：\(ports(session.snapshot.currentRoute.inputs)) / \(ports(session.snapshot.currentRoute.outputs))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let warning = session.interruptionMessage {
+                Label(warning, systemImage: "waveform.slash").foregroundStyle(.orange)
+            }
+            Button("刷新音频环境") { session.capture("用户刷新首页"); coordinator.refresh() }
+            Text("通话或其他高优先级音频会话可能使实验不可用。系统通话状态与音频诊断不能可靠识别具体 App。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var audioSection: some View {
+        Section("测试音 / 音频文件") {
+            if let audio = coordinator.audio {
+                Text(audio.fileName).font(.headline).lineLimit(2)
+                LabeledContent("时长", value: String(format: "%.2f 秒", audio.duration))
+                LabeledContent("采样率", value: String(format: "%.0f Hz", audio.sampleRate))
+                LabeledContent("声道", value: String(audio.channelCount))
+                LabeledContent("大小", value: ByteCountFormatter.string(fromByteCount: audio.byteCount, countStyle: .file))
+            } else {
+                Text("尚未选择音频")
+            }
+            Button("导入音频") { importing = true }
+                .disabled(coordinator.controlsLocked)
+            Button("使用测试音频") { coordinator.useTestAudio() }
+                .disabled(coordinator.controlsLocked)
+        }
+    }
+
+    private var settingsSection: some View {
+        Section("实验参数") {
+            Picker("音频配置", selection: $coordinator.profile) {
+                ForEach(AudioSessionProfile.selectableCases) { profile in
+                    Text("\(profile.rawValue) · \(profile.title)").tag(profile)
+                }
+            }
+            Text(coordinator.profile.shortDescription).font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("A / C / D / E 配置说明") {
+                ForEach(AudioSessionProfile.selectableCases) { profile in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(profile.rawValue) · \(profile.title)").font(.subheadline.bold())
+                        Text(profile.shortDescription).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Picker("播放引擎", selection: $coordinator.engineKind) {
+                ForEach(PlaybackEngineKind.selectableCases) { Text($0.rawValue).tag($0) }
+            }
+            Toggle("自定义延迟", isOn: $customDelay)
+            if customDelay {
+                TextField("延迟秒数（0.1～60）", value: $coordinator.delay, format: .number)
+                    .keyboardType(.decimalPad)
+            } else {
+                Picker("延迟时间", selection: $coordinator.delay) {
+                    ForEach([1.0, 2, 3, 4, 5, 7, 10], id: \.self) { Text("\(Int($0)) 秒").tag($0) }
+                }
+            }
+            Toggle("限制播放时长", isOn: Binding(
+                get: { coordinator.requestedDuration != nil },
+                set: { coordinator.requestedDuration = $0 ? min(10, maximumDuration) : nil }
+            )).disabled((coordinator.audio?.duration ?? 0) < 0.1)
+            if coordinator.requestedDuration != nil {
+                TextField("播放秒数（0.1～\(String(format: "%.1f", maximumDuration))）", value: durationBinding, format: .number)
+                    .keyboardType(.decimalPad)
+                if maximumDuration > 0.1 {
+                    Slider(value: durationSliderBinding, in: 0.1...maximumDuration)
+                        .accessibilityLabel("限制播放时长")
+                }
+            }
+            Text(coordinator.requestedDuration == nil
+                 ? "播放完整音频。开启限制后，从文件开头播放指定时长。"
+                 : "限制时长须小于等于音频总时长且不超过 600 秒。无效参数会在准备前给出提示。")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("强制使用内置扬声器", isOn: $coordinator.speakerOverride)
+                .disabled(!coordinator.profile.usesInput)
+            Text("扬声器覆盖仅用于 C / D。关闭覆盖后，实际输出仍由配置、连接设备和系统决定。")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("语音优化播放", isOn: $coordinator.voiceOptimized)
+                .disabled(coordinator.engineKind != .audioEngine)
+            Text(coordinator.engineKind == .audioEngine
+                 ? "使用单声道副本、保守动态处理和高低通滤波；保留原文件。"
+                 : "AVAudioPlayer 使用原始音频；语音优化适用于 AVAudioEngine。")
+                .font(.caption).foregroundStyle(.secondary)
+        }.disabled(coordinator.controlsLocked)
+    }
+
+    private var volumeSection: some View {
+        Section("App 播放音量") {
+            Slider(value: Binding(
+                get: { coordinator.volume.isFinite ? min(1, max(0, coordinator.volume)) : 0 },
+                set: { coordinator.volume = $0 }
+            ), in: 0...1, step: 0.01)
+                .accessibilityLabel("App 播放音量")
+                .accessibilityValue(percentage(coordinator.volume))
+            Text("\(percentage(coordinator.volume)) · 0%～100%")
+            Text("仅控制本 App 播放器，系统音量在首页只读显示。真机测试已观察到降至约 4% 时声音明显变小。")
+                .font(.caption).foregroundStyle(.secondary)
+        }.disabled(coordinator.controlsLocked)
+    }
+
+    private var experimentSection: some View {
+        Section("播放实验") {
+            Label(coordinator.state.title, systemImage: stateIcon).font(.headline)
+            if coordinator.busy { ProgressView("正在准备或读取音频…") }
+            if coordinator.state == .prepared {
+                Text("音频已准备。点击“开始实验”后才计算延迟并提交未来播放请求。")
+                    .font(.callout)
+                Button("开始实验") { coordinator.startPrepared() }
+                    .buttonStyle(.borderedProminent)
+            } else if coordinator.state == .waiting {
+                Text(coordinator.remaining > 0 && coordinator.remaining.isFinite ? "\(Int(ceil(min(60, coordinator.remaining))))" : "等待状态观察")
+                    .font(.system(size: coordinator.remaining > 0 ? 64 : 22, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity)
+                Text("若测试微信语音消息，请切换到微信并在播放前按住录音。")
+                    .font(.callout)
+            } else if !coordinator.controlsLocked {
+                Button(coordinator.state == .failed ? "稍后重试：重新准备" : "准备实验") { coordinator.prepare() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(coordinator.audio == nil)
+            }
+            Button(coordinator.state == .preparing || coordinator.state == .prepared ? "取消准备" : "停止 / 取消实验", role: .destructive) {
+                coordinator.stop()
+            }
+                .disabled(!coordinator.isRunning && !coordinator.busy)
+            Button("填写并保存实验结果") { coordinator.checkpoint(); showResult = true }
+                .disabled(coordinator.currentExperiment == nil || coordinator.controlsLocked)
+            Text("后台音频资格、系统允许播放、扬声器发声与微信收录是不同证据。实时通话测试以安全失败和正确诊断为通过标准。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var failureSection: some View {
+        Section("本次操作未完成") {
+            Label(coordinator.errorMessage ?? "当前音频环境不允许开始实验。结束通话或其他高优先级音频后，可以重新准备。",
+                  systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+            Button("查看技术详情") { showTechnicalDetails = true }
+            if coordinator.state != .failed {
+                Button("收起提示") { coordinator.errorMessage = nil }
+            }
+        }
+    }
+
+    private var stateIcon: String {
+        switch coordinator.state {
+        case .preparing: return "hourglass"
+        case .prepared: return "checkmark.circle"
+        case .waiting: return "timer"
+        case .playing: return "waveform"
+        case .interrupted: return "waveform.slash"
+        case .failed: return "exclamationmark.triangle"
+        case .completed: return "checkmark.circle.fill"
+        case .cancelled, .stopped: return "stop.circle"
+        default: return "circle"
+        }
+    }
+
+    private var maximumDuration: Double {
+        let duration = coordinator.audio?.duration ?? 600
+        return duration.isFinite ? max(0.1, min(duration, 600)) : 600
+    }
+
+    private var durationBinding: Binding<Double> {
+        Binding(get: { coordinator.requestedDuration ?? min(10, maximumDuration) },
+                set: { coordinator.requestedDuration = $0 })
+    }
+
+    private var durationSliderBinding: Binding<Double> {
+        Binding(get: {
+            let value = coordinator.requestedDuration ?? min(10, maximumDuration)
+            return value.isFinite ? min(maximumDuration, max(0.1, value)) : 0.1
+        }, set: { coordinator.requestedDuration = $0 })
+    }
+
+    private func percentage(_ value: Double) -> String {
+        guard value.isFinite else { return "不可用" }
+        return "\(Int((min(1, max(0, value)) * 100).rounded()))%"
+    }
+
+    private func ports(_ values: [AudioPortSnapshot]) -> String {
+        values.isEmpty ? "无当前路由" : values.map { "\($0.portName)（\($0.portType)）" }.joined(separator: " / ")
     }
 }

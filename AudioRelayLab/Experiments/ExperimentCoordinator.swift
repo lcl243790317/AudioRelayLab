@@ -1,5 +1,6 @@
 import AVFAudio
 import SwiftUI
+import UIKit
 
 @MainActor final class ExperimentCoordinator: ObservableObject {
     let logger: DiagnosticsLogger
@@ -8,32 +9,26 @@ import SwiftUI
     @Published private(set) var audio: AudioFileMetadata?
     @Published var engineKind: PlaybackEngineKind = .audioPlayer
     @Published var profile: AudioSessionProfile = .mixingPlayback
-    @Published var delay: Double = 3
-    @Published var volume: Double = 0.5 {
-        didSet {
-            engine?.volume = Float(volume)
-            if currentExperiment != nil, isRunning {
-                logger.log("播放音量调整", "App 播放器音量=\(volume)；系统音量未修改。")
-            }
-        }
-    }
+    @Published var delay: Double = 5
+    @Published var volume: Double = 0.5
+    @Published var requestedDuration: Double?
     @Published var speakerOverride = false
     @Published var voiceOptimized = false
     @Published private(set) var state: PlaybackState = .idle
     @Published private(set) var currentExperiment: Experiment?
     @Published private(set) var remaining: Double = 0
     @Published private(set) var diagnosticState = "尚未创建播放器"
-    @Published private(set) var busy = false
+    @Published private(set) var isImporting = false
     @Published var errorMessage: String?
+    @Published private(set) var technicalDetails: String?
+    private var machine = ExperimentStateMachine()
     private var engine: (any PlaybackEngineProtocol)?
+    private var prepareTask: Task<Void, Never>?
+    private var importTask: Task<Void, Never>?
     private var timer: Timer?
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var logBoundary = 0
-    private var userStopped = false
-    private var attempt = UUID()
-    private var sceneIsActive = true
-    private var hasEnteredBackground = false
-    private var mediaAvailable = true
+    private var scenePhase: ScenePhase = .active
 
     init() {
         let logger = DiagnosticsLogger()
@@ -44,11 +39,11 @@ import SwiftUI
         session.onEvent = { [weak self] event in self?.handle(event) }
         for name in [UIApplication.didEnterBackgroundNotification, UIApplication.willEnterForegroundNotification] {
             lifecycleObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let background = note.name == UIApplication.didEnterBackgroundNotification
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    let background = note.name == UIApplication.didEnterBackgroundNotification
                     self.logger.log("生命周期", background ? "UIApplication：进入后台" : "UIApplication：进入前台")
-                    self.session.capture(background ? "background" : "foreground")
+                    self.capture(background ? "background" : "foreground")
                     self.logEngineState()
                     self.checkpoint()
                     self.logger.flush()
@@ -68,23 +63,30 @@ import SwiftUI
         }
     }
     deinit {
+        prepareTask?.cancel()
+        importTask?.cancel()
         timer?.invalidate()
         lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
     }
-    var isRunning: Bool { state == .prepared || state == .waiting || state == .playing || state == .interrupted }
-    var controlsLocked: Bool { busy || isRunning }
+    var isRunning: Bool { machine.isActive }
+    var busy: Bool { isImporting || state == .preparing }
+    var controlsLocked: Bool { isImporting || machine.isActive }
 
     func importAudio(_ url: URL) {
         guard !controlsLocked else { return }
-        busy = true
-        Task {
+        isImporting = true
+        importTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.isImporting = false; self.importTask = nil }
             do {
-                let metadata = try await Task.detached(priority: .userInitiated) { try AudioFileManager.importFile(from: url) }.value
-                audio = metadata
-                try rememberAudio(metadata)
-                logger.log("音频导入", "已完成安全作用域访问、Sandbox 复制并释放访问；\(metadata.fileName)，\(metadata.duration)s，\(metadata.sampleRate) Hz，\(metadata.channelCount) 声道，\(metadata.byteCount) 字节")
-            } catch { report(error, message: "音频导入失败，请选择可读取的 MP3、M4A、WAV 或 AAC 文件。") }
-            busy = false
+                let work = Task.detached(priority: .userInitiated) { try AudioFileManager.importFile(from: url) }
+                let metadata = try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
+                try Task.checkCancellation()
+                self.audio = metadata
+                self.requestedDuration = nil
+                try self.rememberAudio(metadata)
+                self.logger.log("音频导入", "已复制至沙盒并释放安全作用域；时长=\(metadata.duration)s，采样率=\(metadata.sampleRate)，声道=\(metadata.channelCount)，字节数=\(metadata.byteCount)；不记录私人源路径或文件名。")
+            } catch { self.report(error, message: "音频导入失败，请选择有效且可读取的音频文件。") }
         }
     }
     func useTestAudio() {
@@ -92,176 +94,260 @@ import SwiftUI
         do {
             let metadata = try AudioFileManager.generateTestAudio()
             audio = metadata
+            requestedDuration = nil
             try rememberAudio(metadata)
-            logger.log("测试音频", "已生成 \(metadata.duration)s、\(metadata.sampleRate) Hz、\(metadata.channelCount) 声道的测试 WAV；含 10 ms 淡入淡出、0.28 峰值与静音间隔。")
-        } catch { report(error, message: "测试音频生成失败，请检查设备存储空间。") }
+            logger.log("测试音频", "已生成 11.7s、44100Hz、单声道测试 WAV；10ms 淡入淡出，0.28 峰值。")
+        } catch { report(error, message: "测试音频生成失败，请检查存储空间。") }
     }
     private func rememberAudio(_ metadata: AudioFileMetadata) throws {
         UserDefaults.standard.set(try JSONEncoder().encode(metadata), forKey: "selectedAudio")
     }
-    func start() {
-        guard !controlsLocked, let audio else { return }
-        guard delay.isFinite, (0.1...60).contains(delay) else { errorMessage = "延迟必须在 0.1～60 秒之间。"; return }
+
+    func prepare() { beginPreparation(scheduleImmediately: false) }
+    func start() { beginPreparation(scheduleImmediately: true) }
+    private func beginPreparation(scheduleImmediately: Bool) {
+        guard !controlsLocked else {
+            logger.log("启动拒绝", "当前实验或文件导入尚未结束，拒绝重复准备。")
+            return
+        }
         checkpoint()
-        let settings = ExperimentSettings(engine: engineKind, profile: profile, delay: delay, volume: Float(volume),
-            voiceOptimized: voiceOptimized && engineKind == .audioEngine, speakerOverride: speakerOverride && profile.usesInput)
-        let token = UUID()
-        attempt = token
-        busy = true
-        userStopped = false
-        Task {
-            defer { busy = false }
-            if settings.profile.usesInput {
-                let granted = await withCheckedContinuation { continuation in
-                    AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
-                }
-                guard granted else { errorMessage = "此播放和录音配置需要麦克风权限，请在系统设置中允许，或改用播放模式。"; return }
-            }
-            guard attempt == token, !userStopped, sceneIsActive, mediaAvailable else {
-                errorMessage = "准备已取消。请在前台重新开始实验。"
-                return
-            }
-            engine?.onStateChange = nil
-            engine?.stop()
-            engine = nil
-            let requested = Date()
+        currentExperiment = nil
+        errorMessage = nil
+        technicalDetails = nil
+        do {
+            guard let audio else { throw LabError.message("请先选择有效的音频文件") }
+            try ExperimentParameters.validate(delay: delay, volume: volume, requestedDuration: requestedDuration, audioDuration: audio.duration)
+            guard profile.isSelectable, engineKind != .unknown else { throw LabError.message("旧版或未知配置不能用于新实验") }
+            let token = try machine.begin()
+            state = machine.state
+            let settings = ExperimentSettings(engine: engineKind, profile: profile, delay: delay, volume: Float(volume),
+                voiceOptimized: voiceOptimized && engineKind == .audioEngine,
+                speakerOverride: speakerOverride && profile.usesInput, requestedDuration: requestedDuration)
+            let id = UUID()
             logBoundary = logger.nextSequence
-            logger.log("实验请求", "实验开始；引擎=\(settings.engine.rawValue)，配置=\(settings.profile.rawValue)，延迟=\(settings.delay)s，音量=\(settings.volume)，优化=\(settings.voiceOptimized)，扬声器覆盖=\(settings.speakerOverride)")
-            currentExperiment = Experiment(id: UUID(), date: requested, device: DeviceInfo.current(), audio: audio,
-                settings: settings, schedule: nil, finalState: .idle, result: .uncertain, resultReviewed: false,
-                notes: "", finishedAt: nil, logs: [])
-            do {
-                if settings.engine == .audioPlayer { engine = AVAudioPlayerPlaybackEngine(logger: logger) }
-                else { engine = AVAudioEnginePlaybackEngine(logger: logger) }
-                engine?.onStateChange = { [weak self] value in self?.engineStateChanged(value) }
-                engine?.volume = settings.volume
-                try session.configure(profile: settings.profile, speakerOverride: settings.speakerOverride)
-                let url = try AudioFileManager.url(for: audio)
-                try engine?.prepare(url: url, voiceOptimized: settings.voiceOptimized)
-                session.capture("schedule 前")
-                currentExperiment?.schedule = try engine?.schedule(delay: settings.delay, requestedTime: requested)
-                session.capture("schedule 后")
-                logEngineState()
-                remaining = settings.delay
-                checkpoint()
-            } catch {
-                engine?.onStateChange = nil
-                engine?.stop()
-                state = .failed
-                currentExperiment?.finalState = .failed
-                currentExperiment?.finishedAt = Date()
-                report(error, message: (error as? LabError)?.errorDescription ?? "音频准备或调度失败，请查看诊断日志。")
-                session.deactivate()
-                checkpoint()
+            logger.setExperimentID(id)
+            currentExperiment = Experiment(id: id, date: Date(), device: DeviceInfo.current(), audio: audio, settings: settings,
+                schedule: nil, finalState: .preparing, result: .uncertain, resultReviewed: false, notes: "", finishedAt: nil, logs: [])
+            logger.log("实验请求", "开始准备；引擎=\(settings.engine.rawValue)，配置=\(settings.profile.rawValue)，延迟=\(settings.delay)s，时长=\(settings.requestedDuration.map { String($0) } ?? "完整文件")，App音量=\(settings.volume)")
+            capture("prepare request")
+            checkpoint()
+            prepareTask = Task { [weak self] in
+                guard let self else { return }
+                var localEngine: (any PlaybackEngineProtocol)?
+                defer { if self.machine.generation == token { self.prepareTask = nil } }
+                do {
+                    try self.session.ensureCanActivate()
+                    if settings.profile.usesInput {
+                        let granted = await withCheckedContinuation { continuation in
+                            AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
+                        }
+                        guard granted else { throw LabError.message("此配置需要麦克风权限；请在系统设置允许，或改用 A / E。") }
+                    }
+                    try Task.checkCancellation()
+                    guard self.machine.generation == token, self.machine.state == .preparing,
+                        self.scenePhase != .background else { throw CancellationError() }
+                    try self.session.configure(profile: settings.profile, speakerOverride: settings.speakerOverride)
+                    self.capture("session activated")
+                    let validate: () throws -> Void = { [weak session = self.session] in
+                        guard let session else { throw LabError.audioUnavailable }
+                        try session.validateForPlayback()
+                    }
+                    let newEngine: any PlaybackEngineProtocol
+                    switch settings.engine {
+                    case .audioPlayer: newEngine = AVAudioPlayerPlaybackEngine(logger: self.logger, validateEnvironment: validate)
+                    case .audioEngine: newEngine = AVAudioEnginePlaybackEngine(logger: self.logger, validateEnvironment: validate)
+                    case .unknown: throw LabError.message("未知播放引擎不能用于新实验")
+                    }
+                    localEngine = newEngine
+                    self.engine = newEngine
+                    newEngine.volume = settings.volume
+                    newEngine.onStateChange = { [weak self] value in self?.engineStateChanged(value, token: token) }
+                    let url = try AudioFileManager.url(for: audio)
+                    try await newEngine.prepare(url: url, voiceOptimized: settings.voiceOptimized, requestedDuration: settings.requestedDuration)
+                    try Task.checkCancellation()
+                    guard self.machine.generation == token, self.machine.state == .prepared else { throw CancellationError() }
+                    try self.session.validateForPlayback()
+                    self.capture("prepare complete")
+                    self.checkpoint()
+                    if scheduleImmediately, self.scenePhase == .active { self.startPrepared() }
+                } catch {
+                    localEngine?.onStateChange = nil
+                    localEngine?.teardown()
+                    guard self.machine.generation == token, self.machine.isActive else { return }
+                    if error is CancellationError { self.stop() }
+                    else { self.fail(error, token: token) }
+                }
             }
+        } catch {
+            if let token = try? machine.begin() { fail(error, token: token) }
+            else { report(error, message: userFacingAudioError(error)) }
         }
     }
+    func startPrepared() {
+        guard state == .prepared, let engine, let experiment = currentExperiment else { return }
+        let token = machine.generation
+        do {
+            guard scenePhase == .active else { throw LabError.message("请回到前台后再开始实验") }
+            try session.validateForPlayback()
+            capture("schedule 前")
+            currentExperiment?.schedule = try engine.schedule(delay: experiment.settings.delay, requestedTime: Date())
+            remaining = experiment.settings.delay
+            capture("schedule 后")
+            logEngineState()
+            checkpoint()
+        } catch { fail(error, token: token) }
+    }
     func stop() {
-        userStopped = true
-        attempt = UUID()
+        guard machine.isActive else { return }
+        prepareTask?.cancel()
+        prepareTask = nil
+        engine?.onStateChange = nil
         engine?.stop()
-        state = .stopped
+        engine?.teardown()
+        engine = nil
+        machine.cancel()
+        state = machine.state
         remaining = 0
+        finish()
+    }
+    private func fail(_ error: Error, token: UUID) {
+        guard machine.generation == token, machine.isActive else { return }
+        prepareTask?.cancel()
+        prepareTask = nil
+        engine?.onStateChange = nil
+        engine?.teardown()
+        engine = nil
+        guard machine.transition(to: .failed, for: token) else { return }
+        state = machine.state
+        technicalDetails = diagnosticError(error)
+        errorMessage = userFacingAudioError(error)
+        currentExperiment?.errorDetails.append(diagnosticError(error))
+        logger.log("实验错误", diagnosticError(error))
+        remaining = 0
+        finish()
+    }
+    private func finish() {
+        currentExperiment?.finishedAt = Date()
+        capture("experiment finish")
         session.deactivate()
+        currentExperiment?.sessionSnapshots.append(session.capture("cleanup complete"))
+        logger.log("实验结束", "最终状态=\(state.rawValue)")
         checkpoint()
+        logger.flush()
+        logger.setExperimentID(nil)
+        diagnosticState = "本次实验已结束，播放对象已释放；可重新准备。"
+    }
+    private func engineStateChanged(_ value: PlaybackState, token: UUID) {
+        guard token == machine.generation, machine.isActive else { return }
+        if value == .preparing, machine.state == .preparing { return }
+        if value == .failed { fail(LabError.message("当前播放路径已失效，实验已安全结束。请查看诊断后重新准备。"), token: token); return }
+        guard machine.transition(to: value, for: token) else {
+            logger.log("状态转换拒绝", "\(machine.state.rawValue) → \(value.rawValue)")
+            return
+        }
+        state = machine.state
+        diagnosticState = engine?.diagnosticState ?? "播放对象已释放"
+        if value == .completed {
+            engine?.onStateChange = nil
+            engine?.teardown()
+            engine = nil
+            remaining = 0
+            finish()
+        } else { checkpoint() }
     }
     func saveResult(result: ExperimentResult, notes: String) {
-        guard currentExperiment != nil else { return }
+        guard let id = currentExperiment?.id else { return }
         currentExperiment?.result = result
         currentExperiment?.resultReviewed = true
         currentExperiment?.notes = notes
-        logger.log("用户实验结果", "结果=\(result.title)；备注=\(notes)")
-        session.capture("experiment finish / result save")
+        logger.log("用户实验结果", "结果=\(result.title)；备注已保存在实验记录，不复制到自动诊断。", explicitExperimentID: id)
         checkpoint(reportFailure: true)
     }
     func sceneChanged(_ phase: ScenePhase) {
+        scenePhase = phase
         switch phase {
-        case .active:
-            sceneIsActive = true
-            logger.log("生命周期", hasEnteredBackground ? "Scene active / foreground" : "Scene active")
-            hasEnteredBackground = false
-            session.capture("foreground")
-            refresh()
-        case .inactive:
-            sceneIsActive = false
-            logger.log("生命周期", "Scene inactive")
+        case .active: logger.log("生命周期", "Scene active / foreground"); capture("foreground"); refresh()
+        case .inactive: logger.log("生命周期", "Scene inactive")
         case .background:
-            sceneIsActive = false
-            hasEnteredBackground = true
             logger.log("生命周期", "Scene background")
-            session.capture("background")
-        @unknown default:
-            logger.log("生命周期", "未知 Scene 状态")
+            capture("background")
+            if state == .preparing || state == .prepared {
+                logger.log("准备取消", "尚未调度的实验进入后台，释放准备资源。")
+                stop()
+            }
+        @unknown default: logger.log("生命周期", "未知 Scene 状态")
         }
         logEngineState()
         checkpoint()
         logger.flush()
     }
     func refresh() {
-        // 仅观察和更新 UI；此定时器从不调用 play、schedule 或 resume。
-        guard sceneIsActive else { return }
+        guard scenePhase == .active else { return }
+        // UI Timer 只观察，绝不调用 play / schedule / resume。
         engine?.observe()
-        diagnosticState = engine?.diagnosticState ?? "尚未创建播放器"
-        if state == .waiting, let target = currentExperiment?.schedule?.targetUptime {
-            remaining = max(0, target - ProcessInfo.processInfo.systemUptime)
-        } else { remaining = 0 }
+        if let engine { diagnosticState = engine.diagnosticState }
+        if state == .waiting, let target = currentExperiment?.schedule?.targetUptime { remaining = max(0, target - ProcessInfo.processInfo.systemUptime) }
+        else { remaining = 0 }
     }
     func checkpoint(reportFailure: Bool = false) {
         guard var experiment = currentExperiment else { return }
         experiment.finalState = state
-        experiment.logs = logger.entries(since: logBoundary)
+        experiment.logs = logger.entries(since: logBoundary).filter { $0.experimentID == experiment.id }
         currentExperiment = experiment
         do { try store.save(experiment) }
-        catch { if reportFailure { errorMessage = "实验保存失败，请导出日志。" } }
+        catch { if reportFailure { errorMessage = "实验保存失败，请导出诊断日志。"; technicalDetails = diagnosticError(error) } }
     }
-    private func engineStateChanged(_ value: PlaybackState) {
-        state = value
-        diagnosticState = engine?.diagnosticState ?? "尚未创建播放器"
-        if value == .completed || value == .failed || value == .stopped {
-            currentExperiment?.finishedAt = Date()
-            session.capture("experiment finish")
-            if value == .completed { session.deactivate() }
-        }
-        checkpoint()
+    private func capture(_ reason: String) {
+        let snapshot = session.capture(reason)
+        if machine.isActive || reason == "experiment finish" { currentExperiment?.sessionSnapshots.append(snapshot) }
     }
     private func handle(_ event: AudioSessionEvent) {
+        let token = machine.generation
         logEngineState()
         switch event {
-        case .interruptionBegan: engine?.interruptionBegan()
+        case .interruptionBegan:
+            capture("interruption began")
+            if state == .preparing || state == .prepared { fail(LabError.audioUnavailable, token: token) }
+            else if machine.isActive { engine?.interruptionBegan() }
         case .interruptionEnded(let shouldResume):
-            guard shouldResume, !userStopped, engine?.state == .interrupted, mediaAvailable else {
-                logger.log("恢复决策", "不恢复：系统未建议恢复、用户已停止、媒体服务不可用，或状态不允许。")
-                checkpoint()
+            capture("interruption ended")
+            guard state == .interrupted else { break }
+            guard shouldResume, machine.claimRecovery(for: token) else {
+                logger.log("恢复决策", "不再恢复：系统未建议恢复或本实验已用完一次恢复预算。")
+                fail(LabError.audioUnavailable, token: token)
                 return
             }
+            logger.log("恢复尝试", "第 1 次也是本实验唯一一次自动恢复尝试")
             do {
                 try session.reactivate()
-                let resumed = try engine?.resumeIfPossible() ?? false
-                logger.log("恢复结果", "恢复调用结果=\(resumed)")
-            } catch {
-                logger.log("恢复失败", diagnosticError(error))
-                errorMessage = "中断后的恢复尝试失败，请保存结果并查看日志。"
+                guard try engine?.resumeIfPossible() == true else { throw LabError.audioUnavailable }
+                capture("recovery complete")
+                logger.log("恢复结果", "恢复调用成功；实际发声仍需观察。")
+            } catch { logger.log("恢复失败", diagnosticError(error)); fail(error, token: token) }
+        case .routeChanged:
+            capture("route changed")
+            if state == .prepared || state == .waiting || state == .playing {
+                do { try session.validateForPlayback() }
+                catch { fail(error, token: token) }
             }
-        case .mediaLost:
-            mediaAvailable = false
-            engine?.mediaServicesLost()
-        case .mediaReset:
-            mediaAvailable = true
-            engine?.mediaServicesLost()
+        case .mediaLost, .mediaReset:
             engine?.onStateChange = nil
+            engine?.mediaServicesLost()
             engine = nil
-            diagnosticState = "媒体服务已重置，等待重新准备"
-        case .routeChanged, .silenceHint: break
+            if machine.isActive { fail(LabError.audioUnavailable, token: token) }
+        case .environmentUnavailable:
+            if machine.isActive { fail(LabError.audioUnavailable, token: token) }
+        case .silenceHint: capture("silence hint")
         }
-        logEngineState()
         checkpoint()
     }
     private func logEngineState() {
-        diagnosticState = engine?.diagnosticState ?? "尚未创建播放器"
+        if let engine { diagnosticState = engine.diagnosticState }
         logger.log("播放状态快照", diagnosticState)
     }
     private func report(_ error: Error, message: String) {
         logger.log("操作失败", diagnosticError(error))
+        technicalDetails = diagnosticError(error)
         errorMessage = message
     }
 }

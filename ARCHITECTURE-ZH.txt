@@ -1,37 +1,111 @@
-音频接力实验室 — 实现与诊断边界
+AudioRelayLab — 架构、稳定性与证据边界
 
-主线程协调：ExperimentCoordinator / AudioSessionManager / 两套播放引擎维护音频控制状态。
-非主线程 delegate 与节点完成通知通过 MainActor 交接；DiagnosticsLogger 使用锁保护记录和文件写入。
-导入复制在工作任务执行，安全作用域覆盖复制与检查，随后释放。
-测试 WAV 在沙盒生成，16 位 PCM、单声道、44.1 kHz、11.7 秒、峰值 0.28、10 ms 淡入淡出。
-导入文件以 UUID 命名，用户显示原始文件名，后续仅使用沙盒副本。
+1. 现有工程与职责
+保留现有 Swift / SwiftUI / AVFAudio、XcodeGen、Git 与 macOS CI。
+MainView 显示音频环境、A / C / D / E 参数及两阶段“准备实验 → 开始实验”。
+ExperimentCoordinator 统一控制实验状态、任务、会话、引擎与历史 checkpoint。
+AudioSessionManager 负责公开会话调用、只读系统通话观察、路由快照和通知。
+AVAudioPlayerPlaybackEngine / AVAudioEnginePlaybackEngine 分别实现播放器生命周期。
+DiagnosticsLogger 记录审计事件，ExperimentStore 隔离加载与持久化失败。
+ExportManager / ShareSheet 通过公开系统分享 UI 导出真实数据。
 
+2. 状态与串行控制
+音频控制在 MainActor 串行执行。状态明确包含 idle / preparing / prepared / waiting /
+playing / interrupted / failed / completed / cancelled / stopped。
+状态机对重复准备、重复开始、终态后的过期回调等做合法性判断。
+prepare() 只准备；startPrepared() 才提交未来调度；start() 保留快捷准备并调度接口。
+参数和 settings 在本轮开始固定，准备或运行时 UI 锁定。
+任务取消与 experiment token / engine generation 必须在权限返回、异步准备返回、
+状态通知和完成回调处重新校验，stop 后旧回调不得重启播放或覆盖新实验。
+
+正常路径：idle → preparing → prepared → waiting → playing → completed。
+准备失败、激活失败、格式或引擎错误进入 failed，并清理本轮资源。
+准备 / 等待阶段取消进入 cancelled，播放中用户停止安全结束。
+中断进入 interrupted，仅按受限恢复策略决定新尝试或安全终止。
+前台 Timer 每 250 ms 只采样时间线和更新 UI，永不负责触发 play / schedule / resume。
+前后台切换记录、checkpoint 和 flush；进入后台不新增静音音频或隐藏任务。
+
+3. C 通话准备闪退的防御与已知边界
+用户报告旧版 C 在正在进行的电话 / 微信实时语音通话中点击准备曾闪退。
+当前没有对应 crash report / 符号化调用栈，因此无法把风险点认定为唯一根因。
+代码审查重点包括：激活被拒绝后是否仍操作引擎、路由 / format 是否为 0、
+非法 engine graph 操作、通知重入、media reset 后旧对象和过期回调。
+
+新实现将可观察系统通话、已知中断、会话激活、实际路由、采样率及声道作为前置防御。
+公开 CXCallObserver 只读观察系统报告的 call，既不提供具体 App 身份，也不保证覆盖所有 VoIP。
+无法安全激活时立即终止准备，不继续建立或启动引擎；不轮询抢占高优先级音频。
+在有效会话和输出路由下再检查文件 / 硬件格式并构建 graph。
+本 App 的播放链不需要输入 tap；不为读取诊断而无条件创建 inputNode。
+Swift do/catch 处理 NSError / throwing API；它不能安全恢复 AVAudioEngine 的 Objective-C exception。
+因此策略是避免非法状态调用，而非安装私有 exception catcher 或把 assertion 包装成可恢复错误。
+前置检查与系统路由变化之间仍可能存在时序窗口，是否避免旧闪退必须真机回归验证。
+
+官方依据：
+https://developer.apple.com/documentation/callkit/cxcallobserver
+https://developer.apple.com/documentation/swift/handling-cocoa-errors-in-swift
+未获取 crash report 前，不能宣称所有通话 / 路由场景已彻底排除崩溃。
+
+4. 会话与错误处理
+A=playback + mixWithOthers；
+C=playAndRecord + mixWithOthers + defaultToSpeaker；
+D=C + allowBluetoothHFP（旧 SDK 使用等价公开名称）；
+E=ambient。
+B 保留兼容历史值但不属于 selectableCases，新实验参数验证也拒绝 B。
+“混音”与“后台音频资格”均不保证高优先级通话允许 App 播放。
+D 记录 availableInputs / currentRoute.inputs / outputs / port type，
+同时显示 HFP 已允许与实际路由是否使用 HFP，不能假设蓝牙已连接。
+
+setCategory、setMode、setActive、overrideOutputAudioPort 和引擎启动可失败。
+用户界面显示友好错误和稍后重试；技术详情保存 error domain / code / 安全消息 /
+有意义的 OSStatus / fourCC，使用公开错误枚举而非魔术数字。
+自动日志不 dump userInfo，不输出完整路径、设备 UID 或私人蓝牙设备名称。
+完成、失败、取消和停止都停下并释放本轮播放器，并尽力停用会话通知其他音频。
+cleanup 自身失败也记录诊断，不能通过强制解包或 assertion 处理可恢复音频错误。
+
+5. 两套引擎
 AVAudioPlayer：prepareToPlay → deviceCurrentTime + delay → play(atTime:)。
-AVAudioEngine：配置 node / mixer / 可选 EQ → prepare / start → scheduleSegment → 未来 hostTime 的 play(at:)。
-scheduleSegment 排队到播放器时间线的开始，未来启动由 AVAudioTime(hostTime:) 负责。
-不使用静音循环、不使用后台定时器触发播放、不控制微信。
-Engine 使用 dataPlayedBack 完成回调；stop / 中断 / 重准备都会改变 generation，拒绝旧队列回调。
-Engine 配置改变后如果已停止，标记中断并保留最近可观察帧，等待合法恢复或用户停止。
-媒体服务丢失/重置会让本轮失败，下一轮重新创建所有音频对象。
+需要指定 duration 时播放独立截断副本；完整音频不依赖后台 Timer 停止。
+委托回调须同时匹配当前播放器、token 和允许状态，释放旧 delegate 关系。
 
-语音优化：不写回原文件，以 8192 帧块扫描并制作浮点单声道 CAF 临时副本。
-归一化只衰减到峰值不超过 0.7，0.45 以上使用轻量 3:1 压缩，并钳位幅值。
-引擎 EQ 设 120 Hz 高通、7.5 kHz 低通（按低采样率降低）、-2 dB 输出余量。
-优化限制最长 10 分钟，导入限制文件小于等于 256 MB，避免第一版不必要的内存开销。
-原始 Engine 调度的总帧数不超过 UInt32.max。
+AVAudioEngine：文件和输出格式检查 → 配置 node / mixer / 可选 EQ → prepare / start →
+scheduleSegment → 未来 AVAudioTime(hostTime:) 的 play(at:)。
+节点队列使用 dataPlayedBack，generation 阻止停止触发的旧 completion 标记自然完成。
+音频 frames / hostTime 加法进行边界校验，不能从 NaN、负数或极端值直接转换整数。
+语音优化用块处理生成独立单声道 CAF，峰值只衰减不放大，轻量动态压缩、
+120 Hz 高通 / 最高 7.5 kHz 低通与 -2 dB 余量；原文件不改。
+优化上限 10 分钟，导入上限 256 MB。处理失败清理临时文件。
 
-诊断：完整记录会话参数、路由端口、关键快照、生命周期、通知、播放状态和调度时钟。
-前台 250 ms 的状态采样与 UI 倒计时从不触发播放。
-数据中可能缺少后台阶段的状态采样；返回前台的首次观察可能晚于真正开始。
-日志不声称能精确测量实际扬声器起始时间。
-系统 mixWithOthers / background audio 不保证其他 App 的录音会话允许此播放。
-注入能力只读，18.2 availability 和 SDK 编译保护均保留。
-用户停止后禁止自动恢复；恢复是新播放尝试，明确写入日志。
+6. 中断 / 路由 / 重置
+interruption begin / end 保存通知时间、选项、会话 / 路由 / engine 状态。
+用户停止优先；恢复必须系统建议、状态可恢复、无已知通话占用，并有有限次数预算。
+一次恢复失败就进入安全终态，不反复 setActive，不无限循环。
+Engine 恢复会重建或重新排队，日志说明这是新尝试，不代表原调度连续执行。
+路由变化检查当前实际路由与格式，切断无效输出，避免继续使用旧图。
+media services lost / reset 废弃本轮对象，下次手动准备重建，不自动恢复旧实验。
+observer 只注册一次，重建 graph 时移除旧观察者，deinit 移除通知；Timer 与 Task 可取消。
 
-持久化：每次启动一个 JSONL 诊断日志；每次实验一个 UUID.json。
-历史 JSON 原子写入，损坏文件保留并提示，不因单个损坏文件清空全部历史。
-实验开始固定 settings，播放中调整音量保留事件，settings.volume 表示初始值。
-实验草稿默认 uncertain / resultReviewed=false，用户回听填写后才标记已判断。
-清空日志页面不会删除审计记录；所有导出为真实数据。
-导出 JSON、CSV、文本到临时 Exports 目录，UIKit 系统分享菜单可保存到文件。
-App 无网络请求、无账号、无证书配置、无额外 entitlement。
+7. 参数、数据与历史兼容
+App 音量有限且在 0.0...1.0，首页显示 0%～100%，不修改系统音量。
+延迟有限且在 0.1...60 秒；requestedDuration 为 nil 表示全文件。
+显式 duration 在 0.1...min(音频真实时长,600) 秒，开始前统一校验。
+原有音频以 UUID 命名沙盒副本，安全作用域只覆盖必要复制与检查，之后释放。
+每条实验含 UUID、设备 / OS、固定 settings、开始 / 结束、schedule、状态、结果、
+session snapshots、关键事件日志和技术错误；requestedDuration 旧记录缺失时按 nil 处理。
+未知 enum 以兼容值显示，不用错误 default 冒充 A；非法记录单独隔离。
+旧历史缺少字段可按安全默认值恢复；损坏记录保留并提示，不清空数据库。
+历史文件逐条原子写入；JSON 导入逐条处理，旧 B 可以查看和导出，不能新建。
+
+8. 日志与证据
+每条诊断含 sequence、timestamp、monotonic uptime、elapsed、experiment ID、category、message。
+每次启动保留 JSONL；清空页面只改变显示边界，完整实验审计日志保留。
+诊断导出 TXT / JSON；历史导出 JSON / CSV，CSV 有引号和公式起始字符保护。
+人工备注与旧历史由用户决定，可能有本人内容；自动事件避免把备注全文再复制到日志。
+App 不联网、不读取微信、不抓取电话音频，不使用私有注入或系统音量技巧。
+
+可观察播放开始只是前台采样第一次看到时间线推进，可能晚于发声；
+后台缺采样不能证明没播放，完成回调也不能证明微信收录。
+用户已有 iOS 18.1.1 观察：A 普通语音消息收录成功，4% App 音量明显变小；
+微信实时通话 / 系统电话下 A / C / D 无目标播放，旧 C 准备有闪退。
+这些既不等于新版本真机稳定性结果，也不等于 Xcode 编译结果。
+本轮编译证据见 BUILD-STATUS-ZH.txt；C 通话准备回归见 TEST-PROTOCOL-ZH.txt，
+未通过真机回归前保留为 release blocker。

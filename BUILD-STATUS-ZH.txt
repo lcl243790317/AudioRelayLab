@@ -1,86 +1,59 @@
-AudioRelayLab / 音频接力实验室 — 实际交付结果
+AudioRelayLab 1.1.0 / build 2 — 本轮验证状态
 
-项目根目录：
-D:\Codex projectless\Wechat delay playback app
+项目根目录：D:\Codex projectless\Wechat delay playback app
+现有仓库：https://github.com/lcl243790317/AudioRelayLab
+Bundle ID：com.audiorelaylab.AudioRelayLab
+最低系统：iOS 17.0，仅 iPhone。
+继续使用原有 SwiftUI / XcodeGen / Git 历史 / macOS Actions 工程，没有重建仓库。
 
-Git Repository：
-D:\Codex projectless\Wechat delay playback app\.git
-main 与 origin/main 的历史已通过 Git 对象 SHA 校验同步，工作区干净。
-Windows 初始提交保存在 windows-initial 分支。
-本次使用已授权 GitHub 连接器提交，没有导出或保存连接器认证秘密。
+本轮修改：
+A/C/D/E 可新建；B 仅保留 legacy decode/history display，不可开始实验。
+公开 CXCallObserver 只读可见通话状态前置检查，不识别具体 App、不获取号码。
+会话激活成功后验证路由、输入可用性、有限采样率/声道，再创建播放器和 Engine 图。
+本应用不使用 inputNode，不用 Swift catch 假装可以捕获 Objective-C assertion。
+准备与开始分成两阶段；UUID token 状态机拒绝重复启动、取消后回调与过期任务。
+中断最多自动恢复一次，失败即结束并清理；媒体服务和 Engine 配置改变不复用旧图。
+App 音量保留 0...1，实际播放器音量回读；系统音量只读。
+可选播放时长：AVAudioPlayer 真实裁剪 CAF，Engine 使用调度帧数限制，nil 为完整文件。
+JSON schemaVersion=2；损坏单条隔离、缺失字段修复提示、未知值只用于历史。
+真实 JSON 导入与 TXT/JSON/CSV 导出；自动日志含 UUID/sequence/uptime。
+自动诊断不记录个人路由名、UID、私人路径；用户备注保留在用户控制的实验记录。
 
-GitHub Repository：
-https://github.com/lcl243790317/AudioRelayLab
-私有仓库，源码、资源和常规只读构建工作流均已提交。
+已证明：
+- Windows 静态检查通过。
+- 5 项 Python IPA 校验器测试通过。
+- 此前 1.0.0 曾真实 Simulator / iPhoneOS 构建成功；
+  https://github.com/lcl243790317/AudioRelayLab/actions/runs/37072473308
+  这不是当前 1.1.0 源码的编译证据。
 
-Bundle ID：
-com.audiorelaylab.AudioRelayLab
+待本轮真实 CI 更新：
+- 新增 XCTest：状态机、参数、历史迁移、真实 WAV/CAF 文件与错误诊断测试。
+- XcodeGen、Simulator Debug、iPhone Simulator XCTest、iPhoneOS Release。
+- 最终 IPA 文件大小、SHA-256、run/commit/artifact 和实际 Xcode/SDK/Swift 版本。
+只有 xcodebuild 返回 0 才记录该步骤成功；本段尚不宣称新版已编译。
 
-Deployment Target：
-iOS 17.0；目标设备 iPhone；主要实验系统 iOS 18.1.1。
+真机已有观察（来自用户，不是本轮独立复测）：
+- iPhone17,1 / iOS 18.1.1：A 的多次微信语音消息收录成功，曾与本人讲话共同收录。
+- C/D 普通语音消息环境曾工作；D 导出成功实验实际使用内置路由，不等于蓝牙验证。
+- App 音量降到约 4% 后明显变小，音量控制有效。
+- 微信实时语音通话中 A/C/D 未实现目标播放，系统电话期间同样未实现。
+- 旧版 C 在电话或微信实时通话中点击准备曾闪退。
 
-Windows 开发状态：
-21 个 Swift 文件，音频导入与沙盒副本、测试 WAV、两套真实未来时间调度、
-会话配置、扬声器覆盖、中断与路由诊断、语音优化、历史、分享与导出均已实现。
-中文 UI、中文文档、工程配置和诊断脚本已完成。
-静态检查通过；IPA 校验器 5 项测试通过；Python 脚本语法检查通过。
+闪退根因证据边界：
+没有 crash report / exception backtrace，不能宣称已定位唯一触发栈。
+代码审查确认了激活前创建 Engine、缺少硬件格式前置验证、
+准备阶段中断/取消和恢复失败清理不足等风险，本轮已修复这些风险路径。
+Swift do/catch 只处理可抛出 Error，不能替代对 Objective-C 异常触发条件的前置防御。
 
-XcodeGen：
-成功，在 macOS 上实际生成 AudioRelayLab.xcodeproj 并完成 xcodebuild -list。
+尚未验证：
+- 新版在真实系统电话/微信实时通话中选择 C 并准备是否完全不闪退。
+  这是产品发布前必须完成的真机 release blocker；自动测试和编译不能替代。
+- 结束通话后重新准备 A/C/D/E 的真机行为。
+- 特定耳机实际 Bluetooth HFP 路由、不同 iOS/微信版本。
+- 新版本真实人声收录质量、后台调度和音量稳定性。
 
-Simulator Build：
-成功，Debug / generic iOS Simulator，真实 xcodebuild 返回 0，日志含 BUILD SUCCEEDED。
-
-iPhoneOS Release Build：
-成功，Release / generic iOS，真实 xcodebuild 返回 0，日志含 BUILD SUCCEEDED。
-
-GitHub Actions Run：
-最终源码验证：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37072473308
-编译提交：749b4b9a65a9b1605a41ec2890a95e53bf0042a4。
-首轮成功：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37071810125
-环境：macOS 26.6.2；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；
-Swift 6.3.3；XcodeGen 2.46.0。
-本记录更新仅改变文档，不改变最后已编译的 Swift 源码或工程配置。
-
-unsigned IPA：
-成功，真实存在于最终 Artifact，已下载到本机并独立重新校验。
-本地：D:\Codex projectless\Wechat delay playback app\dist\AudioRelayLab-unsigned.ipa
-大小：313151 字节。
-SHA-256：5d61b4d8c91bf71cab650a9bc5eb4951a873d46f09767d4f03879c198727f3c0。
-
-Artifact：
-AudioRelayLab-iOS-Build；编号：11255780715。
-下载：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37072473308/artifacts/11255780715
-保存期 14 天，至 2026-10-16；本地下载副本不受云端保存期影响。
-包含 IPA、SHA-256 清单、Xcode 工程、构建与环境日志、xcresult 和中文文档。
-本地完整副本：dist/ci-run-37072473308。
-最终外层 ZIP：dist/AudioRelayLab-iOS-Build-final.zip。
-
-IPA 文件名：
-AudioRelayLab-unsigned.ipa
-
-Background Audio：
-已配置，project.yml 与真实 IPA 的 Info.plist 均包含 UIBackgroundModes = [audio]。
-已核对 arm64 Mach-O、iPhoneOS 平台、最低版本 17.0 与 Bundle ID。
-已确认没有 LC_CODE_SIGNATURE、embedded.mobileprovision 或 _CodeSignature。
-
-剩余编译错误：
-无。旧蓝牙选项别名的弃用警告已修正，第二轮不再出现。
-Xcode 仍提示未依赖 AppIntents 时跳过该模块元数据提取；这不是编译失败。
-GitHub 对旧 Actions Node 运行时有平台提示，已实际使用兼容运行时成功执行。
-
-需要用户人工完成的步骤：
-1. 使用自己的有效 Apple 证书和兼容的 provisioning profile 在本地重新签名。
-2. 安装到 iPhone，按 TEST-PROTOCOL-ZH.txt 做前台控制与微信真机实验。
-不需要再创建仓库或手动触发本次构建。
-后续若使用本机 Git CLI 推送，需完成自己的正常 GitHub Git 登录；连接器已可提交。
-
-真机实验尚需验证的 iOS 行为：
-后台预调度是否继续执行，微信录音是否导致 interruption，路由是否变化，
-扬声器是否真实发声，同机麦克风是否收录，预设音频与本人讲话能否共同进入语音。
-尚未执行真机安装或声学实验，不宣称微信收录成功。
-
-权限处理记录：
-一次性使用 Actions 写权限导入源码的方案被自动审批以权限扩张风险拒绝，未执行。
-用户授权新仓库给 GitHub 连接器后，正常提交完成；CI 始终为 contents: read。
-没有 Apple 证书、P12、密码、描述文件或 Apple 云端签名配置。
+签名：
+当前工程未配置 Apple 证书/私钥/provisioning profile，也不读取或提交此类秘密。
+CI 保持 contents: read，通过正常授权连接器提交源码。
+本轮将输出 AudioRelayLab-unsigned.ipa，需要用户自己的有效证书重新签名安装。
+无私有 API、hook、通话音频抓取、注入启用、系统音量修改、静音保活或隐藏后台技巧。

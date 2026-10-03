@@ -9,7 +9,7 @@ struct ExperimentResultView: View {
     init(experiment: Experiment, onSave: @escaping (ExperimentResult, String) -> Void) {
         self.experiment = experiment
         self.onSave = onSave
-        _result = State(initialValue: experiment.result)
+        _result = State(initialValue: experiment.result == .unknown ? .uncertain : experiment.result)
         _notes = State(initialValue: experiment.notes)
     }
     var body: some View {
@@ -17,18 +17,41 @@ struct ExperimentResultView: View {
             Form {
                 Section("实验配置") {
                     Text(experiment.audio.fileName)
-                    Text("\(experiment.settings.engine.rawValue) · \(experiment.settings.profile.title)")
+                    Text("\(experiment.settings.engine.rawValue) · \(experiment.settings.profile.historyTitle)")
                     Text("延迟 \(experiment.settings.delay, specifier: "%.1f") 秒 · 初始音量 \(Int(experiment.settings.volume * 100))%")
+                    Text(experiment.settings.requestedDuration.map { "请求播放 \(String(format: "%.1f", $0)) 秒" } ?? "播放完整文件")
+                    Text("最终状态：\(experiment.finalState.title)")
                     Text("\(experiment.device.modelIdentifier) · iOS \(experiment.device.systemVersion)").font(.caption)
                 }
-                Section("听取微信语音后的判断") {
+                Section("实验后的人工判断") {
                     Picker("实验结果", selection: $result) {
-                        ForEach(ExperimentResult.allCases) { Text($0.title).tag($0) }
+                        ForEach(ExperimentResult.selectableCases) { Text($0.title).tag($0) }
                     }.pickerStyle(.inline)
-                    Text("失败和不确定都是有效实验结果。请根据真实听到的内容填写。")
+                    Text("失败和不确定都是有效实验结果。请根据真实观察填写；未检查时可暂时不保存人工判断。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("备注") { TextEditor(text: $notes).frame(minHeight: 120).accessibilityLabel("实验备注") }
+                if !experiment.sessionSnapshots.isEmpty {
+                    Section("音频会话快照") {
+                        ForEach(Array(experiment.sessionSnapshots.enumerated()), id: \.offset) { item in
+                            DisclosureGroup(item.element.date.formatted(date: .numeric, time: .standard)) {
+                                Text(item.element.summary).font(.caption.monospaced()).textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                if !experiment.errorDetails.isEmpty {
+                    Section("技术详情") {
+                        ForEach(Array(experiment.errorDetails.enumerated()), id: \.offset) { item in
+                            Text(item.element).font(.caption.monospaced()).textSelection(.enabled)
+                        }
+                    }
+                }
+                if !experiment.migrationWarnings.isEmpty {
+                    Section("旧历史兼容提示") {
+                        ForEach(experiment.migrationWarnings, id: \.self) { Text($0).font(.caption) }
+                    }
+                }
             }
             .navigationTitle("保存实验结果")
             .toolbar {
