@@ -155,6 +155,7 @@ struct VoiceAIView: View {
 }
 
 struct AIConnectionView: View {
+    @FocusState private var focusedInput:String?
     @ObservedObject var ai:AIConversionController
     @Environment(\.dismiss) private var dismiss
     var body: some View {
@@ -163,13 +164,13 @@ struct AIConnectionView: View {
                 PaperHeader(title:"连接电脑",subtitle:"手机录音，电脑生成。",symbol:"desktopcomputer")
                 PaperCard("一次设置") {
                     PaperCaption("电脑运行 server/run.ps1，在 server/CONNECTION-ZH.txt 中复制地址与连接密钥。手机与电脑需在同一网络。")
-                    TextField("http://192.168.1.8:7867",text:$ai.address)
+                    TextField("http://192.168.1.8:7867",text:$ai.address).focused($focusedInput,equals:"address")
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .textFieldStyle(.roundedBorder).disabled(ai.connecting || ai.busy)
-                        .submitLabel(.done).onSubmit { KeyboardDismiss.perform() }
-                    SecureField("连接密钥",text:$ai.key).textFieldStyle(.roundedBorder).disabled(ai.connecting || ai.busy)
-                        .submitLabel(.done).onSubmit { KeyboardDismiss.perform() }
-                    Button("连接并读取音色") { KeyboardDismiss.perform(); ai.connect() }.buttonStyle(PaperButtonStyle(primary:true))
+                        .submitLabel(.done).onSubmit { focusedInput = nil; KeyboardDismiss.perform() }
+                    SecureField("连接密钥",text:$ai.key).focused($focusedInput,equals:"key").textFieldStyle(.roundedBorder).disabled(ai.connecting || ai.busy)
+                        .submitLabel(.done).onSubmit { focusedInput = nil; KeyboardDismiss.perform() }
+                    Button("连接并读取音色") { focusedInput = nil; KeyboardDismiss.perform(); ai.connect() }.buttonStyle(PaperButtonStyle(primary:true))
                         .disabled(ai.connecting || ai.busy)
                     if ai.connecting { ProgressView("正在连接…") }
                     PaperCaption(ai.status)
@@ -177,7 +178,7 @@ struct AIConnectionView: View {
                     if let error = ai.errorMessage { Text(error).foregroundStyle(.orange) }
                 }
                 PaperCaption("只有点击“生成 AI 声音”才发送所选录音到此电脑。音色参考和生成结果保留在你的设备。")
-            }.keyboardDone().navigationTitle("电脑 AI").navigationBarTitleDisplayMode(.inline)
+            }.keyboardDone { focusedInput = nil }.navigationTitle("电脑 AI").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("完成") { dismiss() } }
         }
     }

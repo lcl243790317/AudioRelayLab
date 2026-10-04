@@ -19,9 +19,10 @@ struct StablePicker<Value: Hashable>: View {
     @Binding var selection: Value
     let choices: [SelectionChoice<Value>]
     @State private var snapshot: SelectionSnapshot<Value>?
+    @Environment(\.keyboardDismissAction) private var clearFocus
     var body: some View {
         Button {
-            KeyboardDismiss.perform()
+            if let clearFocus { clearFocus() } else { KeyboardDismiss.perform() }
             snapshot = .init(choices: choices, selected: selection)
         } label: {
             HStack {
@@ -64,20 +65,33 @@ struct StablePicker<Value: Hashable>: View {
 @MainActor enum KeyboardDismiss {
     static func perform() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            for window in scene.windows { window.endEditing(true) }
+        }
+    }
+}
+
+private struct KeyboardDismissKey: EnvironmentKey { static let defaultValue:(()->Void)? = nil }
+extension EnvironmentValues {
+    var keyboardDismissAction:(()->Void)? {
+        get { self[KeyboardDismissKey.self] }
+        set { self[KeyboardDismissKey.self] = newValue }
     }
 }
 
 private struct KeyboardDone: ViewModifier {
+    let clearFocus:(()->Void)?
     func body(content: Content) -> some View {
         content.scrollDismissesKeyboard(.interactively)
+            .environment(\.keyboardDismissAction,{ clearFocus?(); KeyboardDismiss.perform() })
             .toolbar { ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("完成") { KeyboardDismiss.perform() }
+                Button("完成") { clearFocus?(); KeyboardDismiss.perform() }
                     .buttonStyle(.plain).accessibilityIdentifier("keyboard.done")
             } }
     }
 }
 
 extension View {
-    func keyboardDone() -> some View { modifier(KeyboardDone()) }
+    func keyboardDone(onDismiss:(()->Void)? = nil) -> some View { modifier(KeyboardDone(clearFocus:onDismiss)) }
 }

@@ -26,7 +26,8 @@ final class InteractionUITests: XCTestCase {
         XCTAssertFalse(app.keyboards.firstMatch.exists); XCTAssertEqual(editor.value as? String,"first\nsecond")
         editor.tap(); XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3))
         app.buttons["select.背景音乐"].tap()
-        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        let hidden = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.keyboards.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for:[hidden],timeout:3),.completed)
         app.buttons["取消"].tap()
         XCTAssertEqual(editor.value as? String,"first\nsecond")
     }

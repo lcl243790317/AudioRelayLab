@@ -59,6 +59,8 @@ import UIKit
         if let job = transfers?.pending {
             pendingJobID = job.id; restoreDraft(job)
             status = "发现未完成的配音任务，将继续取回"
+        } else if let job = transfers?.store.all().first(where: { $0.isUnfinished && $0.expiresAt <= Date() }) {
+            restoreDraft(job); status = "任务已过期，文字已保留，可以重新生成"
         }
 
     }

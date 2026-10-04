@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct MainView: View {
+    @FocusState private var focusedInput:String?
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var session: AudioSessionManager
     @ObservedObject var voice: RawVoiceRecorder
@@ -37,7 +38,7 @@ struct MainView: View {
                     }
                 }
             }
-            .keyboardDone()
+            .keyboardDone { focusedInput = nil }
             .navigationTitle("AudioRelayLab")
             .buttonStyle(PaperButtonStyle())
             .navigationBarTitleDisplayMode(.inline)
@@ -128,7 +129,7 @@ struct MainView: View {
                 Text("尚未选择音频")
             }
             HStack {
-                Button("导入音频") { importing = true }.buttonStyle(PaperButtonStyle(primary:true))
+                Button("导入音频") { focusedInput = nil; KeyboardDismiss.perform(); importing = true }.buttonStyle(PaperButtonStyle(primary:true))
 
             }.disabled(coordinator.controlsLocked)
             PaperCaption("支持 WAV、MP3、M4A、AAC、AIFF、AIFC、CAF、FLAC；其他类型在文件选择器中显示为灰色。")
@@ -160,6 +161,7 @@ struct MainView: View {
             Toggle("自定义延迟", isOn: $customDelay)
             if customDelay {
                 TextField("延迟秒数（0.1～60）", value: $coordinator.delay, format: .number)
+                    .focused($focusedInput,equals:"delay")
                     .keyboardType(.decimalPad)
             } else {
                 StablePicker(title:"延迟时间",selection:$coordinator.delay,
@@ -171,6 +173,7 @@ struct MainView: View {
             )).disabled((coordinator.audio?.duration ?? 0) < 0.1)
             if coordinator.requestedDuration != nil {
                 TextField("播放秒数（0.1～\(String(format: "%.1f", maximumDuration))）", value: durationBinding, format: .number)
+                    .focused($focusedInput,equals:"duration")
                     .keyboardType(.decimalPad)
                 if maximumDuration > 0.1 {
                     Slider(value: durationSliderBinding, in: 0.1...maximumDuration)

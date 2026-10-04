@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ExperimentResultView: View {
+    @FocusState private var editingNotes = false
     let experiment: Experiment
     let onSave: (ExperimentResult, String) -> Void
     @State private var result: ExperimentResult
@@ -29,7 +30,7 @@ struct ExperimentResultView: View {
                     Text("失败和不确定都是有效实验结果。请根据真实观察填写；未检查时可暂时不保存人工判断。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("备注") { TextEditor(text: $notes).frame(minHeight: 120).accessibilityLabel("实验备注") }
+                Section("备注") { TextEditor(text: $notes).focused($editingNotes).frame(minHeight: 120).accessibilityLabel("实验备注") }
                 if !experiment.sessionSnapshots.isEmpty {
                     Section("音频会话快照") {
                         ForEach(Array(experiment.sessionSnapshots.enumerated()), id: \.offset) { item in
@@ -52,7 +53,7 @@ struct ExperimentResultView: View {
                     }
                 }
             }
-            .keyboardDone()
+            .keyboardDone { editingNotes = false }
             .navigationTitle("保存实验结果")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }

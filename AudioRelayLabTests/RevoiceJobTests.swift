@@ -184,4 +184,19 @@ final class RevoiceJobTests:XCTestCase {
         for _ in 0..<100 { coordinator.refresh() }
         XCTAssertEqual(updates,0); token.cancel()
     }
+    @MainActor func testExpiredTaskUnlocksGenerationAndKeepsEditableDraft() async throws {
+        let store = try store(), original = context()
+        let expired = RevoiceSaveContext(id:original.id,createdAt:Date().addingTimeInterval(-25*3600),choice:original.choice,
+            voiceName:original.voiceName,instruction:original.instruction,fixedReferenceID:nil,recognizedText:original.recognizedText,
+            text:original.text,sourceAudioID:nil)
+        var job = try pending(expired); job.reply = try reply(expired); try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        let controller = RevoiceController(connection:nil,backgroundTransfers:manager)
+        XCTAssertEqual(controller.text,expired.text)
+        await manager.restore()
+        XCTAssertNil(manager.pending); XCTAssertFalse(controller.hasPendingJob); XCTAssertFalse(controller.busy)
+        XCTAssertEqual(controller.text,expired.text); XCTAssertEqual(store.job(job.id)?.phase,.failed)
+        XCTAssertTrue(controller.status.contains("24 小时"))
+    }
 }

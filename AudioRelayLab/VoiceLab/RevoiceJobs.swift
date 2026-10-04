@@ -67,7 +67,8 @@ struct PendingRevoiceJob: Codable, Sendable, Identifiable {
     var id:UUID { context.id }
     var networkID:String { id.uuidString.replacingOccurrences(of:"-",with:"").lowercased() }
     var expiresAt:Date { reply.map { Date(timeIntervalSince1970:$0.expiresAt) } ?? context.createdAt.addingTimeInterval(86400) }
-    var isPending:Bool { [.submitting,.downloading,.suspended].contains(phase) && expiresAt > Date() }
+    var isUnfinished:Bool { [.submitting,.downloading,.suspended].contains(phase) }
+    var isPending:Bool { isUnfinished && expiresAt > Date() }
 }
 
 struct RevoiceDownloadEnvelope: Codable, Sendable {
@@ -146,9 +147,9 @@ struct PendingRevoiceStore: Sendable {
         try? FileManager.default.removeItem(at:target.appendingPathExtension("json"))
     }
     func cleanup() {
-        for job in all() where job.expiresAt <= Date() {
+        for job in all() where !job.isUnfinished && job.context.createdAt.addingTimeInterval(7*86400) <= Date() {
             try? FileManager.default.removeItem(at:directory.appendingPathComponent(job.id.uuidString+".job.json"))
         }
-        for envelope in envelopes() where job(envelope.id) == nil { remove(envelope) }
+        for envelope in envelopes() where job(envelope.id) == nil || (job(envelope.id)?.expiresAt ?? .distantPast) <= Date() { remove(envelope) }
     }
 }

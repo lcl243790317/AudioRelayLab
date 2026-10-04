@@ -66,6 +66,7 @@ import UIKit
         Task { await restore(retrySuspended:false) }
     }
     func restore(retrySuspended:Bool = true) async {
+        for job in store.all() where job.isUnfinished && job.expiresAt <= Date() { expire(job) }
         store.cleanup()
         // Incoming files were moved out of URLSession's temporary location before
         // its delegate returned. A crash during saving can therefore be recovered.
@@ -111,7 +112,8 @@ import UIKit
     }
     func invalidateForTesting() { session.invalidateAndCancel() }
     private func suspend(_ id:UUID,message:String,terminal:Bool) {
-        guard var job = store.job(id),job.isPending else { return }
+        guard var job = store.job(id),job.isUnfinished else { return }
+        if job.expiresAt <= Date() { expire(job); return }
         job.phase = terminal ? .failed : .suspended; job.lastError = message
         try? store.save(job); scheduled.remove(id); onChange?(job,message,nil)
     }
@@ -125,7 +127,8 @@ import UIKit
                 self.completeEventsIfPossible()
             }
             self.scheduled.remove(envelope.id)
-            guard let job = self.store.job(envelope.id),job.isPending,!self.abandoned.contains(job.id) else { return }
+            guard let job = self.store.job(envelope.id),job.isUnfinished,!self.abandoned.contains(job.id) else { return }
+            if job.expiresAt <= Date() { self.expire(job); return }
             guard let origin = job.downloadOrigin,CloudJobEndpoint.sameOrigin(envelope.url,origin),
                   envelope.url.path == job.reply?.downloadURL.path,let response = envelope.response else {
                 self.suspend(job.id,message:"下载来源不匹配，已拒绝保存",terminal:true); return
@@ -170,6 +173,12 @@ import UIKit
     private func completeEventsIfPossible() {
         guard eventsFinished,processing.isEmpty,let handler = completion else { return }
         completion = nil; eventsFinished = false; handler()
+    }
+    private func expire(_ value:PendingRevoiceJob) {
+        var job = value; job.phase = .failed; job.reply = nil
+        job.lastError = "任务已超过 24 小时取回窗口，文字已保留，可以重新生成"
+        try? store.save(job); scheduled.remove(job.id)
+        onChange?(job,job.lastError ?? "任务已过期",nil)
     }
     nonisolated func urlSession(_ session:URLSession,downloadTask:URLSessionDownloadTask,didFinishDownloadingTo location:URL) {
         guard let value = downloadTask.taskDescription,let id = UUID(uuidString:value),

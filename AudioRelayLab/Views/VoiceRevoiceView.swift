@@ -6,6 +6,7 @@ struct VoiceRevoiceView: View {
     @ObservedObject var ai:RevoiceController
     @ObservedObject var voice:RawVoiceRecorder
     @State private var showConnection = false
+    @FocusState private var focusedInput:String?
     @State private var showLibrary = false
     init(coordinator:ExperimentCoordinator) {
         self.coordinator = coordinator; ai = coordinator.revoice; voice = coordinator.rawRecorder
@@ -28,20 +29,22 @@ struct VoiceRevoiceView: View {
                         choices:(ai.speakers.isEmpty ? RevoiceSpeaker.all : ai.speakers).map { .init(id:$0.id,title:$0.displayName) }).disabled(ai.busy || ai.hasPendingJob || voice.isActive)
                     Text("Instruction · 表达指令").font(.subheadline)
                     TextField("例如：自然放松，语速稍慢，带一点慵懒",text:$ai.instruction,axis:.vertical)
+                        .focused($focusedInput,equals:"instruction")
                         .textFieldStyle(.roundedBorder).lineLimit(2...5).disabled(ai.busy || ai.hasPendingJob || voice.isActive)
                     PaperCaption("\(ai.instruction.unicodeScalars.count)/500 字符 · 留空采用 speaker 的自然表达。")
                     PaperCaption("语音输入后先校对文字，再点击生成。可以自由改变表达指令，不改动前面的预设。")
                 }
                 DisclosureGroup(ai.configured ? "云端连接设置" : "首次使用：连接云端") {
-                    Button(ai.configured ? "导入或更换连接配置" : "导入云端连接配置") { showConnection = true }
+                    Button(ai.configured ? "导入或更换连接配置" : "导入云端连接配置") { focusedInput = nil; KeyboardDismiss.perform(); showConnection = true }
                         .disabled(ai.busy || ai.hasPendingJob || voice.isActive)
                     if ai.configured { Button("重新连接") { ai.connect() }.disabled(ai.busy || ai.hasPendingJob || voice.isActive) }
                     PaperCaption("电脑关机后仍可配音。录音在手机识别，云端只接收文字和声线参数。")
                 }
-                if !ai.configured { Button("设置云端连接") { showConnection = true }.buttonStyle(PaperButtonStyle(primary:true)) }
+                if !ai.configured { Button("设置云端连接") { focusedInput = nil; KeyboardDismiss.perform(); showConnection = true }.buttonStyle(PaperButtonStyle(primary:true)) }
             }
             PaperCard("要说的话") {
                 TextEditor(text:$ai.text).frame(minHeight:100,maxHeight:180).accessibilityIdentifier("revoice.text")
+                    .focused($focusedInput,equals:"text")
                     .scrollContentBackground(.hidden).padding(8)
                     .background(Color.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:10))
                     .disabled(ai.busy || ai.hasPendingJob || voice.isActive)
@@ -56,14 +59,14 @@ struct VoiceRevoiceView: View {
                 } else {
                     HStack {
                         Button("语音输入") {
-                            KeyboardDismiss.perform(); ai.selectInput(nil); voice.start(.revoice)
+                            focusedInput = nil; KeyboardDismiss.perform(); ai.selectInput(nil); voice.start(.revoice)
                         }.disabled(coordinator.controlsLocked)
-                        Button("从库选择录音") { KeyboardDismiss.perform(); showLibrary = true }.disabled(coordinator.controlsLocked || coordinator.library.isEmpty)
+                        Button("从库选择录音") { focusedInput = nil; KeyboardDismiss.perform(); showLibrary = true }.disabled(coordinator.controlsLocked || coordinator.library.isEmpty)
                     }
                 }
                 PaperCaption("录音 0.3–60 秒；满 60 秒自动停止。成品由目标声线决定节奏，最长 180 秒。")
                 if !voice.isActive {
-                    Button(generateTitle) { KeyboardDismiss.perform(); ai.generate() }.buttonStyle(PaperButtonStyle(primary:true))
+                    Button(generateTitle) { focusedInput = nil; KeyboardDismiss.perform(); ai.generate() }.buttonStyle(PaperButtonStyle(primary:true))
                         .disabled(coordinator.controlsLocked || (!ai.configured && !ai.text.isEmpty) || (ai.text.isEmpty && ai.input == nil))
                 }
                 if ai.busy {
@@ -73,7 +76,7 @@ struct VoiceRevoiceView: View {
                 } else {
                     PaperCaption(ai.status)
                     if ai.hasPendingJob {
-                        Button("取回未完成配音") { KeyboardDismiss.perform(); ai.resumePending() }
+                        Button("取回未完成配音") { focusedInput = nil; KeyboardDismiss.perform(); ai.resumePending() }
                         Button("停止等待") { ai.cancel() }
                     }
                 }
@@ -82,7 +85,7 @@ struct VoiceRevoiceView: View {
             }
             if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result) }
         }
-        .keyboardDone()
+        .keyboardDone { focusedInput = nil }
         .sheet(isPresented:$showConnection) { CloudConnectionView(ai:ai) }
         .sheet(isPresented:$showLibrary) {
             NavigationStack {
@@ -103,6 +106,7 @@ struct CloudConnectionView:View {
     @ObservedObject var ai:RevoiceController
     @Environment(\.dismiss) private var dismiss
     @State private var configuration = ""
+    @FocusState private var editingConfiguration = false
     @State private var importFile = false
     @State private var fileError:String?
     var body:some View {
@@ -111,12 +115,12 @@ struct CloudConnectionView:View {
                 PaperHeader(title:"连接云端",subtitle:"一次设置，随时重新配音。",symbol:"cloud")
                 PaperCard("导入连接配置") {
                     PaperCaption("导入电脑上的 modal-client.json，或复制其中的完整 JSON。配置包含你的私有密钥，请只保存在自己的设备上。")
-                    Button("从文件导入") { KeyboardDismiss.perform(); importFile = true }.disabled(ai.busy)
-                    SecureField("粘贴完整连接 JSON",text:$configuration)
+                    Button("从文件导入") { editingConfiguration = false; KeyboardDismiss.perform(); importFile = true }.disabled(ai.busy)
+                    SecureField("粘贴完整连接 JSON",text:$configuration).focused($editingConfiguration)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder).disabled(ai.busy)
-                        .submitLabel(.done).onSubmit { KeyboardDismiss.perform() }
+                        .submitLabel(.done).onSubmit { editingConfiguration = false; KeyboardDismiss.perform() }
                     Button("保存并连接") {
-                        KeyboardDismiss.perform(); ai.configure(Data(configuration.utf8)); configuration = ""; fileError = nil
+                        editingConfiguration = false; KeyboardDismiss.perform(); ai.configure(Data(configuration.utf8)); configuration = ""; fileError = nil
                     }.buttonStyle(PaperButtonStyle(primary:true)).disabled(ai.busy || configuration.isEmpty)
                     if ai.connecting { ProgressView("正在连接云端…") }
                     PaperCaption(ai.status)
@@ -124,7 +128,7 @@ struct CloudConnectionView:View {
                     if let error = ai.errorMessage ?? fileError { Text(error).font(.callout).foregroundStyle(.orange) }
                     PaperCaption("连接配置保存在本机钥匙串。重新签名、重装或更换密钥后，可以再次导入。")
                 }
-            }.keyboardDone().navigationTitle("云端连接").navigationBarTitleDisplayMode(.inline)
+            }.keyboardDone { editingConfiguration = false }.navigationTitle("云端连接").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("完成") { configuration = ""; dismiss() } }
         }
         .sheet(isPresented:$importFile) {
