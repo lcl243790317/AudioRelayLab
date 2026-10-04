@@ -69,7 +69,7 @@
 
 ## 验证证据
 
-1.5.0 / build 8 的 [真实 Actions 构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37144884794) 已通过：158 项 iPhone Simulator XCTest、30 项 Python、Swift 警告 0；下载 IPA 后再次核对版本、arm64/iPhoneOS、unsigned 与 SHA-256。
+1.5.0 / build 8 的 [真实 Actions 构建](https://github.com/lcl243790317/AudioRelayLab-private-history/actions/runs/37144884794) 已通过：158 项 iPhone Simulator XCTest、30 项 Python、Swift 警告 0；下载 IPA 后再次核对版本、arm64/iPhoneOS、unsigned 与 SHA-256。
 
 实际录音自动保存为 60 秒，上传编码后仍为 60 秒；覆盖 22.05/44.1/48 kHz 与末 20 ms 可听音频。编码按转换器请求分块读取，并使用离线正常预充，依据 [Apple AVAudioConverterPrimeMethod.normal](https://developer.apple.com/documentation/avfaudio/avaudioconverterprimemethod/normal) 与 [priming 信息](https://developer.apple.com/documentation/avfaudio/avaudioconverterprimeinfo)。
 

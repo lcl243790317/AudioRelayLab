@@ -23,3 +23,5 @@ server/.runtime/
 server/.logs/
 server/.private/
 server/CONNECTION-ZH.txt
+/HANDOFF-ZH.md
+/modal-client.json
