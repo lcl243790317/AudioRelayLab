@@ -28,7 +28,8 @@ def with_source(image):
     # Exact allowlist; never mount the workspace, .private, models or audition recordings.
     for name in SOURCE_FILES:
         image = image.add_local_file(ROOT/name, '/opt/audiolab/'+name, copy=True)
-    return image.env({'PYTHONPATH':'/opt/audiolab'})
+    # Module globals are imported again inside remote containers; persist the selected deployment mode.
+    return image.env({'PYTHONPATH':'/opt/audiolab', 'AUDIOLAB_GPU_SNAPSHOT':'1' if GPU_SNAPSHOT else '0'})
 
 
 cpu_image = with_source(modal.Image.debian_slim(python_version='3.12')

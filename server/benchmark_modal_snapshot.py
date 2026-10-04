@@ -91,6 +91,22 @@ def run(folder,phase):
                 b=math_stats.median(v['totalSeconds'] for v in report['snapshot'] if v['voice']==voice and v.get('confirmedRestore'))
                 results[voice]=dict(baselineMedianSeconds=a,snapshotMedianSeconds=b,reduction=1-b/a,passed=b<=a*.7)
             report['comparison']=results;report['enableSnapshot']=all(v['passed'] for v in results.values())
+            # Reuse the final live Base session for voice smoke; this creates no second GPU pool.
+            final_session=report['snapshot'][-1]['sessionID']
+            smoke_folder=folder/'voices';smoke_folder.mkdir(exist_ok=True)
+            for voice in ('cute-design','vivian-original','ancient-dylan','cool-serena'):
+                if any(v.get('voice')==voice for v in report['smoke']):continue
+                item=generate(config,voice,'preset-'+voice,smoke_folder,started)
+                if item['sessionID']!=final_session:raise RuntimeError('Smoke unexpectedly created a new GPU session')
+                report['smoke'].append(item);save(path,report)
+            for speaker in SPEAKERS:
+                if any(v.get('speaker')==speaker and v.get('generationMode')=='custom' for v in report['smoke']):continue
+                item=synthesize_custom(speaker,TEXT,'',smoke_folder/('speaker-'+speaker+'.wav'),config)
+                item['runtime']=collect_gpu_evidence(started,[item['requestID']])[item['requestID']]
+                if item['sessionID']!=final_session or item['runtime']['residentModelCount']!=1:
+                    raise RuntimeError('Custom smoke did not reuse the single GPU session')
+                report['smoke'].append(dict(**item,passed=True));save(path,report)
+                print(json.dumps(dict(test='speaker-smoke',speaker=speaker,totalSeconds=item['totalSeconds'])),flush=True)
         wait_zero(report,path,'phase-final-idle')
         report[phase+'BillingAfter']=dataclasses.asdict(modal.Workspace.from_context().billing.summary())
         report['status']=phase+'-passed';save(path,report)

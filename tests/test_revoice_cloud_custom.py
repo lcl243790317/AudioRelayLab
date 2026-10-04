@@ -123,6 +123,7 @@ class SnapshotStateTests(unittest.TestCase):
         self.assertEqual(source.count('scaledown_window=120'),2)
         self.assertIn("gpu='L4'",source);self.assertNotIn('@modal.parameter',source)
         self.assertIn('enable_memory_snapshot=GPU_SNAPSHOT',source)
+        self.assertIn("'AUDIOLAB_GPU_SNAPSHOT':'1' if GPU_SNAPSHOT else '0'",source)
         self.assertIn('max_inputs=1',source);self.assertIn('retries=0',source)
 
 

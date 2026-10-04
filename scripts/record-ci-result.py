@@ -119,7 +119,7 @@ def replace_status(text, evidence):
 def record(root, environ):
     if environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("只允许在真实 GitHub Actions 的成功步骤之后记录构建证据")
-    sha = environ.get("GITHUB_SHA", "")
+    sha = environ.get("AUDIOLAB_SOURCE_COMMIT", environ.get("GITHUB_SHA", ""))
     repository = environ.get("GITHUB_REPOSITORY", "")
     run_id = environ.get("GITHUB_RUN_ID", "")
     server = environ.get("GITHUB_SERVER_URL", "").rstrip("/")

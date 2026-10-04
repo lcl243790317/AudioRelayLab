@@ -52,6 +52,15 @@ final class CloudRevoiceClient: @unchecked Sendable {
         return try RevoiceWAV.validate(data,response:response,choice:choice,totalSeconds:seconds)
     }
     private func request(_ connection:CloudConnection, path:String, body:Data? = nil) async throws -> (Data,HTTPURLResponse,Double) {
+        try await withThrowingTaskGroup(of:(Data,HTTPURLResponse,Double).self) { group in
+            group.addTask { try await self.requestWithinDeadline(connection,path:path,body:body) }
+            group.addTask { try await Task.sleep(for:.seconds(900)); throw URLError(.timedOut) }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else { throw CancellationError() }
+            return result
+        }
+    }
+    private func requestWithinDeadline(_ connection:CloudConnection, path:String, body:Data?) async throws -> (Data,HTTPURLResponse,Double) {
         let base = try connection.validate(), started = Date()
         var url = base.appendingPathComponent(path), method = body == nil ? "GET" : "POST", payload = body
         for _ in 0..<8 {

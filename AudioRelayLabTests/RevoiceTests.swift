@@ -34,7 +34,8 @@ private final class RevoiceHTTPState: @unchecked Sendable {
     var customSupported = true
     var methods:[String] = []
     var responseStatus = 200
-    func reset() { lock.lock();defer{lock.unlock()};data = RevoiceTestAudio.wav(seconds:1);submissions=[];failNext=false;redirect=nil;customSupported=true;methods=[];responseStatus=200 }
+    var responseDelay = 0.0
+    func reset() { lock.lock();defer{lock.unlock()};data = RevoiceTestAudio.wav(seconds:1);submissions=[];failNext=false;redirect=nil;customSupported=true;methods=[];responseStatus=200;responseDelay=0 }
     func respond(_ request:URLRequest) throws -> (Data,Int,[String:String]) {
         lock.lock();defer{lock.unlock()}
         let path = request.url?.path ?? ""
@@ -78,17 +79,24 @@ private extension CloudRevoiceClient {
 
 private final class RevoiceHTTPProtocol:URLProtocol,@unchecked Sendable {
     static let state = RevoiceHTTPState()
+    private var completion:DispatchWorkItem?
     override class func canInit(with request:URLRequest) -> Bool { true }
     override class func canonicalRequest(for request:URLRequest) -> URLRequest { request }
     override func startLoading() {
         do {
             let (data,status,headers) = try Self.state.respond(request)
             let response = try XCTUnwrap(HTTPURLResponse(url:try XCTUnwrap(request.url),statusCode:status,httpVersion:nil,headerFields:headers))
-            client?.urlProtocol(self,didReceive:response,cacheStoragePolicy:.notAllowed)
-            client?.urlProtocol(self,didLoad:data);client?.urlProtocolDidFinishLoading(self)
+            let delivery = DispatchWorkItem { [weak self] in
+                guard let self, self.completion?.isCancelled != true else { return }
+                self.client?.urlProtocol(self,didReceive:response,cacheStoragePolicy:.notAllowed)
+                self.client?.urlProtocol(self,didLoad:data);self.client?.urlProtocolDidFinishLoading(self)
+            }
+            completion = delivery
+            if Self.state.responseDelay > 0 { DispatchQueue.global().asyncAfter(deadline:.now()+Self.state.responseDelay,execute:delivery) }
+            else { delivery.perform() }
         } catch { client?.urlProtocol(self,didFailWithError:error) }
     }
-    override func stopLoading() {}
+    override func stopLoading() { completion?.cancel() }
 }
 
 @MainActor private final class RevoiceTestRecognizer:RevoiceTranscribing {
@@ -252,6 +260,17 @@ final class RevoiceTests:XCTestCase {
             ai.text="不能截断的完整话语。";ai.generate();try await self.settle(ai)
             XCTAssertNil(ai.result);XCTAssertNotNil(ai.errorMessage)
             XCTAssertEqual(ai.text,"不能截断的完整话语。")
+        }
+    }
+    @MainActor func testStopWaitingDiscardsLateGenerationAndNextRequestWorks() async throws {
+        try await exercise { ai,_,_ in
+            RevoiceHTTPProtocol.state.responseDelay=0.5;ai.text="停止等待后的文字仍保留。";ai.generate()
+            for _ in 0..<100 where RevoiceHTTPProtocol.state.submissions.isEmpty { try await Task.sleep(for:.milliseconds(10)) }
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1)
+            ai.cancel();try await Task.sleep(for:.milliseconds(700))
+            XCTAssertNil(ai.result);XCTAssertFalse(ai.busy);XCTAssertEqual(ai.text,"停止等待后的文字仍保留。")
+            RevoiceHTTPProtocol.state.responseDelay=0;ai.generate();try await self.settle(ai)
+            XCTAssertNotNil(ai.result);XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,2)
         }
     }
     @MainActor func testNinetySecondOutputSavesWithMetadataAndCanMixInFull() async throws {
