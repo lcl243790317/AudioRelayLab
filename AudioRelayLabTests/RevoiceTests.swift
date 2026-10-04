@@ -32,15 +32,17 @@ private final class RevoiceHTTPState: @unchecked Sendable {
     var failNext = false
     var redirect:String?
     var customSupported = true
+    var asyncJobs = false
+    var failAfterSubmission = false
     var methods:[String] = []
     var responseStatus = 200
     var responseDelay = 0.0
-    func reset() { lock.lock();defer{lock.unlock()};data = RevoiceTestAudio.wav(seconds:1);submissions=[];failNext=false;redirect=nil;customSupported=true;methods=[];responseStatus=200;responseDelay=0 }
+    func reset() { lock.lock();defer{lock.unlock()};data = RevoiceTestAudio.wav(seconds:1);submissions=[];failNext=false;redirect=nil;customSupported=true;methods=[];responseStatus=200;responseDelay=0;asyncJobs=false;failAfterSubmission=false }
     func respond(_ request:URLRequest) throws -> (Data,Int,[String:String]) {
         lock.lock();defer{lock.unlock()}
         let path = request.url?.path ?? ""
         if path == "/v1/health" {
-            return (try JSONSerialization.data(withJSONObject:["status":"ok","capabilities":["customTTS":customSupported,"textOnly":true]]),200,[:])
+            return (try JSONSerialization.data(withJSONObject:["status":"ok","capabilities":["customTTS":customSupported,"textOnly":true,"asyncJobs":asyncJobs],"jobDownloadOrigin":"https://unit-download.modal.run"]),200,[:])
         }
         if path == "/v1/voices" {
             return (try JSONEncoder().encode(CloudRevoiceClient.VoicesForTests()),200,[:])
@@ -60,7 +62,15 @@ private final class RevoiceHTTPState: @unchecked Sendable {
             }
             let values = try XCTUnwrap(try JSONSerialization.jsonObject(with:body) as? [String:String])
             submissions.append(values)
+            if failAfterSubmission { failAfterSubmission=false; throw URLError(.networkConnectionLost) }
             if let redirect { return (Data(),303,["Location":redirect]) }
+        }
+        if path.hasPrefix("/v1/jobs"),let value = submissions.last?["requestID"],let id = UUID(uuidString:value) {
+            let networkID = id.uuidString.replacingOccurrences(of:"-",with:"").lowercased(), now = Date().timeIntervalSince1970
+            let reply = CloudJobReply(id:networkID,state:"queued",createdAt:now,expiresAt:now+86400,
+                downloadURL:try XCTUnwrap(URL(string:"https://unit-download.modal.run/v1/jobs/"+networkID+"/audio")),
+                downloadToken:String(repeating:"a",count:64),error:nil)
+            return (try JSONEncoder().encode(reply),request.httpMethod == "POST" ? 202 : 200,[:])
         }
         if responseStatus != 200 { return (Data(),responseStatus,[:]) }
         let values = submissions.last ?? [:]
@@ -113,6 +123,26 @@ private final class RevoiceHTTPProtocol:URLProtocol,@unchecked Sendable {
 }
 
 final class RevoiceTests:XCTestCase {
+    func testAsyncSubmissionResponseLossRecoversSameIDAndFrozenTextOnlyParameters() async throws {
+        RevoiceHTTPProtocol.state.reset(); RevoiceHTTPProtocol.state.asyncJobs = true
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [RevoiceHTTPProtocol.self]
+        let session = URLSession(configuration:config); defer { session.invalidateAndCancel(); RevoiceHTTPProtocol.state.reset() }
+        let client = CloudRevoiceClient(session:session)
+        let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",
+            proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
+        _ = try await client.connect(connection)
+        let context = RevoiceSaveContext(id:UUID(),createdAt:Date(),choice:.custom(speaker:"Serena",instruction:"  慵懒  "),
+            voiceName:"Serena",instruction:"  慵懒  ",fixedReferenceID:nil,recognizedText:"原识别文字",text:"嗯，我，我没连上 Wi-Fi。",sourceAudioID:UUID())
+        RevoiceHTTPProtocol.state.failAfterSubmission = true
+        do { _ = try await client.submitJob(connection,context:context); XCTFail("Response loss must be surfaced") }
+        catch { XCTAssertTrue(error is URLError) }
+        let recovered = try await client.submitJob(connection,context:context)
+        let queried = try await client.job(connection,id:context.id)
+        XCTAssertEqual(recovered.id,queried.id); XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,2)
+        let bodies = RevoiceHTTPProtocol.state.submissions
+        XCTAssertEqual(bodies[0],bodies[1]); XCTAssertEqual(Set(bodies[0].keys),["mode","requestID","speaker","instruction","text"])
+        XCTAssertEqual(bodies[0]["instruction"],"  慵懒  "); XCTAssertEqual(bodies[0]["text"],context.text)
+    }
     func testConnectionFormatAndOriginValidation() throws {
         XCTAssertNoThrow(try CloudEndpoint.validate("https://unit-tests.modal.run"))
         for address in ["http://test.modal.run","https://modal.run.evil.example","https://a:b@test.modal.run","https://test.modal.run/?key=x","https://test.modal.run/path","file:///tmp"] {

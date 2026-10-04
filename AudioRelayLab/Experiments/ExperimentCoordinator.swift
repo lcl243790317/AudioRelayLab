@@ -185,6 +185,7 @@ import UniformTypeIdentifiers
         var checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
             id: asset.id, source: asset.source, presetName: asset.presetName)
         checked.aiConversion = asset.aiConversion
+        checked.mixSource = asset.mixSource
         checked.revoice = asset.revoice
         checked.addedAt = asset.addedAt ?? checked.addedAt
         preview.reset()

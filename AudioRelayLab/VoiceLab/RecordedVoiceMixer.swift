@@ -54,6 +54,8 @@ enum RecordedVoiceMixer {
             }
           }
             var asset = try AudioFileManager.inspect(url:destination,displayName:name,id:id,source:.mixedRecording)
+            asset.revoice = revoice
+            asset.aiConversion = voiceAsset?.aiConversion
             if let voiceAsset, let musicAsset {
                 asset.mixSource = .init(voiceAssetID:voiceAsset.id,musicAssetID:musicAsset.id,
                     revoice:voiceAsset.revoice,settings:settings,volumes:volumes)
@@ -61,6 +63,10 @@ enum RecordedVoiceMixer {
             asset.addedAt = Date()
             try AudioFileManager.register(asset)
             return asset
-        } catch { try? FileManager.default.removeItem(at:destination); throw error }
+        } catch {
+            try? FileManager.default.removeItem(at:destination)
+            try? FileManager.default.removeItem(at:destination.appendingPathExtension("metadata.json"))
+            throw error
+        }
     }
 }

@@ -118,10 +118,10 @@ class SnapshotStateTests(unittest.TestCase):
         engine.synthesize_custom.assert_called_once_with('Serena','你好，我们开始吧。','','snapshot-warmup')
         engine.reset_session.assert_called_once();self.assertEqual(len(engine.snapshot_marker),32)
 
-    def test_deployment_keeps_one_unparameterized_l4_pool_and_120_second_window(self):
+    def test_deployment_keeps_one_unparameterized_l4_pool_and_75_second_window(self):
         source=(Path(__file__).resolve().parents[1]/'server/modal_app.py').read_text(encoding='utf-8')
         gpu = source[source.index('@app.cls('):source.index('class QwenWorker:')]
-        self.assertIn('scaledown_window=120',gpu)
+        self.assertIn('scaledown_window=75',gpu)
         self.assertIn('min_containers=0',gpu); self.assertIn('max_containers=1',gpu)
         self.assertIn('buffer_containers=0',gpu)
         self.assertEqual(source.count("gpu='L4'"),1)

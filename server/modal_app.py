@@ -55,7 +55,7 @@ def job_service(mounted=False):
 
 
 @app.function(image=cpu_image,secrets=[modal.Secret.from_name(SECRET_NAME)],volumes={'/results':results},
-              cpu=.25,memory=512,timeout=1050,scaledown_window=120,
+              cpu=.25,memory=512,timeout=1050,scaledown_window=75,
               min_containers=0,max_containers=1,buffer_containers=0,retries=0,include_source=False)
 @modal.concurrent(max_inputs=1)
 async def execute_job(identity):
@@ -66,7 +66,7 @@ async def execute_job(identity):
 
 
 @app.function(image=cpu_image,secrets=[modal.Secret.from_name(SECRET_NAME)],volumes={'/results':results},
-              cpu=.25,memory=512,timeout=150,scaledown_window=120,
+              cpu=.25,memory=512,timeout=150,scaledown_window=75,
               min_containers=0,max_containers=1,buffer_containers=0,include_source=False)
 @modal.concurrent(max_inputs=16)
 @modal.asgi_app(requires_proxy_auth=False)
@@ -112,7 +112,7 @@ def prepare_models():
 
 
 @app.cls(image=gpu_image, gpu='L4', cpu=2, memory=12288, volumes={'/assets':assets},
-         min_containers=0, max_containers=1, buffer_containers=0, scaledown_window=120,
+         min_containers=0, max_containers=1, buffer_containers=0, scaledown_window=75,
          enable_memory_snapshot=GPU_SNAPSHOT,
          experimental_options={'enable_gpu_snapshot': True} if GPU_SNAPSHOT else None,
          timeout=660, startup_timeout=300, retries=0, block_network=True, include_source=False)
@@ -150,7 +150,7 @@ class QwenWorker:
 
 
 @app.function(image=cpu_image, secrets=[modal.Secret.from_name(SECRET_NAME)], cpu=.25, memory=512,
-              min_containers=0, max_containers=1, buffer_containers=0, scaledown_window=120,
+              min_containers=0, max_containers=1, buffer_containers=0, scaledown_window=75,
               timeout=900, include_source=False)
 @modal.concurrent(max_inputs=16)
 @modal.asgi_app(requires_proxy_auth=True)
