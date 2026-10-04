@@ -4,8 +4,22 @@ AudioRelayLab 1.6.2 / build 12 — 签名测试版验证状态
 Modal 模型/参考/snapshot 不变，GPU 与常规 CPU scaledown_window=75 秒。
 分支 feature/revoice-ios-1.6.0；main 合并等待用户签名验收。详见 REVOICE-1.6.2-ZH.md。
 
-待本轮真实 CI 更新：
-- 新版本尚未完成真实 macOS 构建与模拟器验证；旧版结果不作为本轮通过证据。
+本轮真实 CI 证据：
+- 源码提交：14574ae3b20a284672bb3835f46f08ad1c71cb6b
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37188923638
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：191 项，0 失败，TEST SUCCEEDED。
+- UI 测试：6 项通过；真实录屏见 build/ui-interaction.mp4。
+- 隔离 HTTPS 下载：6 次成功，202 续取回已验证；未发送长期密钥。
+- Python 自检：89 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1320394 字节。
+- SHA-256：aa293585dcea1812cb89d4cfec8e45b8379ca8ec16978c3093e138701b1a6ab9
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1 的微信普通语音消息曾收录播放音频，约 4% App 音量有效。

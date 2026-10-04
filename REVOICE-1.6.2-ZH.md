@@ -17,6 +17,6 @@
 
 参数测试捕获请求正文，覆盖 9 个 speaker、修改文字和指令、预设切换、恢复旧任务不覆盖草稿、取消连接及旧回调不覆盖新状态。页面把当前输入移入首屏，待取回任务单独展示；新增浅色、深色、大字体截图和 UI 测试。
 
-已使用 Build iOS Apps 的 ios-debugger-agent、swiftui-performance-audit、swiftui-ui-patterns、swiftui-view-refactor 技能进行代码审查。当前 Windows 无 Apple 工具链，真实编译与模拟器验证由 macOS CI 执行。构建结果以随包的 build-evidence.json 与后续测试报告为准，本文不提前宣称测试通过。
+已使用 Build iOS Apps 的 ios-debugger-agent、swiftui-performance-audit、swiftui-ui-patterns、swiftui-view-refactor 技能进行代码审查。当前 Windows 无 Apple 工具链，真实编译与模拟器验证由 macOS CI 执行。最终 89 项 Python、191 项 XCTest、6 项 UI 测试均通过，Swift 编译警告为 0；精确提交、SHA256、截图与测试范围见 REVOICE-1.6.2-TEST-REPORT-ZH.md 和随包的 build-evidence.json。
 
 用户真机的原始 NSError 尚未取得：已确认代码中的临时文件权限依赖和旧参数覆盖问题，不能把某一权限错误表述为已证实的真机根因。重签名后的后台唤醒、锁屏保存和恢复体验仍需用户设备验收。
