@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ExperimentResultView: View {
-    @FocusState private var editingNotes = false
+    @FocusState private var editingNotes: Bool
     let experiment: Experiment
     let onSave: (ExperimentResult, String) -> Void
     @State private var result: ExperimentResult

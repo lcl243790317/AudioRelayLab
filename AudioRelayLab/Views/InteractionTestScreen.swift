@@ -3,7 +3,7 @@ import SwiftUI
 /// Debug-only harness uses the same production selection and keyboard controls.
 struct InteractionTestScreen: View {
     @State private var text = ""
-    @FocusState private var editing = false
+    @FocusState private var editing: Bool
     @State private var selected = 0
     @State private var tick = 0
     @State private var expanded = false

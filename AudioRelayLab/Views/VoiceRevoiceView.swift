@@ -106,7 +106,7 @@ struct CloudConnectionView:View {
     @ObservedObject var ai:RevoiceController
     @Environment(\.dismiss) private var dismiss
     @State private var configuration = ""
-    @FocusState private var editingConfiguration = false
+    @FocusState private var editingConfiguration: Bool
     @State private var importFile = false
     @State private var fileError:String?
     var body:some View {
