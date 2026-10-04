@@ -31,7 +31,7 @@ A/B 结束后继续在同一热 session 补测声线，延长了活动时间，�
 
 ## iOS 构建与交付
 
-构建提交 `8d80b9b6ffc8f5556a1902206b3059f3af5c471b`，分支 `feature/revoice-ios-1.6.0`。由于浏览器工具不可用、本机没有 GitHub CLI 登录，使用[草稿 PR](https://github.com/lcl243790317/AudioRelayLab/pull/1)的现有 CI 触发；checkout 显式选择 feature head，构建证据使用实际源码 SHA，main 未合并。[实际构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37171526393)通过 **179 XCTest / 72 Python**、Simulator Debug 与 iPhoneOS Release，Swift 编译警告 0。预设与自定义页面的实际截图已检查。
+构建提交 `8d80b9b6ffc8f5556a1902206b3059f3af5c471b`，分支 `feature/revoice-ios-1.6.0`。由于浏览器工具不可用、本机没有 GitHub CLI 登录，使用[草稿 PR](https://github.com/lcl243790317/AudioRelayLab-private-history/pull/1)的现有 CI 触发；checkout 显式选择 feature head，构建证据使用实际源码 SHA，main 未合并。[实际构建](https://github.com/lcl243790317/AudioRelayLab-private-history/actions/runs/37171526393)通过 **179 XCTest / 72 Python**、Simulator Debug 与 iPhoneOS Release，Swift 编译警告 0。预设与自定义页面的实际截图已检查。
 
 无签名 IPA：`dist/AudioRelayLab-1.6.0-unsigned.ipa`，1.6.0/build 10，1211400 字节。SHA256：`0dfbd163cb66b766ad46b363a8050096aed530f785e9f0b2e92ce51599f3a4cf`。重新检查 arm64 iPhoneOS、最低 iOS 17、无签名、后台音频、麦克风/语音识别用途描述；逐值扫描真实凭据均未命中，包内无模型权重。
 

@@ -1,6 +1,6 @@
 # AudioRelayLab 1.6.2 / build 12 测试与交付记录
 
-交付 `dist/AudioRelayLab-1.6.2-unsigned.ipa`，需要用户重新签名。源码提交：`14574ae3b20a284672bb3835f46f08ad1c71cb6b`；[真实 Actions 构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37188923638)。功能分支 `feature/revoice-ios-1.6.0`，main 未合并。
+交付 `dist/AudioRelayLab-1.6.2-unsigned.ipa`，需要用户重新签名。源码提交：`14574ae3b20a284672bb3835f46f08ad1c71cb6b`；[真实 Actions 构建](https://github.com/lcl243790317/AudioRelayLab-private-history/actions/runs/37188923638)。功能分支 `feature/revoice-ios-1.6.0`，main 未合并。
 
 SHA256：`aa293585dcea1812cb89d4cfec8e45b8379ca8ec16978c3093e138701b1a6ab9`。IPA 1,320,394 字节；可执行文件 4,732,712 字节。版本、build、iPhoneOS Mach-O、未签名状态及权限说明均重新检查，实际文件与 CI manifest 完全一致。
 

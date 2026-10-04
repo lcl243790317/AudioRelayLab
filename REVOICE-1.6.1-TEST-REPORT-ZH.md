@@ -7,8 +7,8 @@
 - 无签名 IPA：本地 `dist/AudioRelayLab-1.6.1-unsigned.ipa`，1,248,459 字节；iPhoneOS arm64，最低 iOS 17.0。
 - SHA256：`c6fec1db0f2227d0bd5925bf4d32912c42094d9013cc1ddfae1fe67b442e4553`。
 - 实际编译源码：`a1c47fdf3f5eb5aa1d4b6db75f99a53697815fc7`。
-- [成功的 Actions run 27](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37183804352)：从 `feature/revoice-ios-1.6.0` 的确切 head 编译，由现有草稿 PR 同步触发；未使用 main 产物。
-- [草稿 PR #1](https://github.com/lcl243790317/AudioRelayLab/pull/1) 等待签名验收，main 仍为 `ddcac1e0e4ee41673893e262b5dedf6fe1d1660f`。后续文档提交不改变上述 IPA 对应的源码。
+- [成功的 Actions run 27](https://github.com/lcl243790317/AudioRelayLab-private-history/actions/runs/37183804352)：从 `feature/revoice-ios-1.6.0` 的确切 head 编译，由现有草稿 PR 同步触发；未使用 main 产物。
+- [草稿 PR #1](https://github.com/lcl243790317/AudioRelayLab-private-history/pull/1) 等待签名验收，main 仍为 `ddcac1e0e4ee41673893e262b5dedf6fe1d1660f`。后续文档提交不改变上述 IPA 对应的源码。
 
 ## 本轮改动
 
