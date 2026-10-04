@@ -3,8 +3,8 @@ import Combine
 import UIKit
 
 @MainActor final class RevoiceController: ObservableObject {
-    enum Kind:String,CaseIterable { case preset, custom }
-    enum Stage { case idle, recognizing, generating, saving }
+    enum Kind:String,CaseIterable,Hashable { case preset, custom }
+    enum Stage:Equatable { case idle, recognizing, generating, saving }
     @Published var kind:Kind = .preset
     @Published var selectedPreset = "serena-original"
     @Published var selectedSpeaker = "Serena"
@@ -26,6 +26,15 @@ import UIKit
     var beforeGenerate:(()->Void)?
     @Published private(set) var pendingJobID:UUID?
     var hasPendingJob:Bool { pendingJobID != nil }
+    var pendingContext:RevoiceSaveContext? {
+#if DEBUG
+        if let previewPendingContext { return previewPendingContext }
+#endif
+        return transfers?.pending?.context
+    }
+    var canGenerateDraft:Bool {
+        !connecting && stage != .recognizing && stage != .saving && (stage == .idle || hasPendingJob)
+    }
     private let transfers:BackgroundRevoiceTransfers?
     private var foreground = true
     private var pendingRecognition = false
@@ -36,6 +45,12 @@ import UIKit
     private var connection:CloudConnection?
     private var task:Task<Void,Never>?
     private var generation = UUID()
+    private var observedJobID:UUID?
+    private var connectionTask:Task<Void,Never>?
+    private var connectionGeneration = UUID()
+#if DEBUG
+    private var previewPendingContext:RevoiceSaveContext?
+#endif
     init(logger:DiagnosticsLogger? = nil, client:CloudRevoiceClient = CloudRevoiceClient(),
          recognizer:(any RevoiceTranscribing)? = nil,
          connection:CloudConnection? = CloudConnectionStore.load(),
@@ -46,8 +61,10 @@ import UIKit
         self.connection = connection; configured = connection != nil; self.saveConnection = saveConnection
         transfers?.onChange = { [weak self] job,message,asset in
             guard let self else { return }
+            guard self.observedJobID == job.id else { return }
             self.pendingJobID = job.isPending ? job.id : nil
-            self.status = message; self.errorMessage = job.lastError
+            self.status = message
+            self.errorMessage = [.suspended,.failed].contains(job.phase) ? job.lastError : nil
             if job.phase == .downloading || job.phase == .submitting { self.stage = message == "保存中" ? .saving : .generating }
             else { self.stage = .idle }
             if let asset {
@@ -57,14 +74,14 @@ import UIKit
         }
         transfers?.onNeedsSubmission = { [weak self] job in self?.resumeSubmission(job) }
         if let job = transfers?.pending {
-            pendingJobID = job.id; restoreDraft(job)
+            observedJobID = job.id; pendingJobID = job.id; restoreDraft(job)
             status = "发现未完成的配音任务，将继续取回"
         } else if let job = transfers?.store.all().first(where: { $0.isUnfinished && $0.expiresAt <= Date() }) {
             restoreDraft(job); status = "任务已过期，文字已保留，可以重新生成"
         }
 
     }
-    deinit { task?.cancel() }
+    deinit { task?.cancel(); connectionTask?.cancel() }
     func configure(_ data:Data) {
         guard !busy else { return }
         do {
@@ -76,32 +93,37 @@ import UIKit
         } catch { errorMessage = RevoiceError.message(error) }
     }
     func connect() {
-        guard !busy, let connection else { return }
-        let token = UUID(); generation = token; connecting = true; errorMessage = nil; status = "正在检查云端连接"
-        task = Task { [weak self] in
+        guard !connecting, stage == .idle || hasPendingJob, let connection else { return }
+        let token = UUID(); connectionGeneration = token; connecting = true
+        let reportsConnectionStatus = !hasPendingJob
+        if reportsConnectionStatus { errorMessage = nil; status = "正在检查云端连接" }
+        connectionTask = Task { [weak self] in
             guard let self else { return }
-            defer { if self.generation == token { self.connecting = false; self.task = nil } }
+            defer { if self.connectionGeneration == token { self.connecting = false; self.connectionTask = nil } }
             do {
                 let (voices,speakers) = try await self.client.connect(connection)
-                try Task.checkCancellation(); guard self.generation == token else { return }
+                try Task.checkCancellation(); guard self.connectionGeneration == token else { return }
                 self.voices = voices; self.speakers = speakers
                 if !voices.contains(where:{$0.id == self.selectedPreset}) { self.selectedPreset = voices[0].id }
-                self.status = speakers.isEmpty ? "云端已连接 · 此服务暂未提供自定义配音" : "云端已连接 · 录音在手机转为文字"
+                if reportsConnectionStatus && !self.hasPendingJob && self.stage == .idle {
+                    self.status = speakers.isEmpty ? "云端已连接 · 此服务暂未提供自定义配音" : "云端已连接 · 录音在手机转为文字"
+                }
                 self.logger?.log("重新配音连接", "云端连接成功；预设数=\(voices.count)，speaker 数=\(speakers.count)")
             } catch {
-                guard self.generation == token else { return }
+                guard self.connectionGeneration == token else { return }
                 self.voices = []; self.speakers = []; self.errorMessage = RevoiceError.message(error)
-                self.status = "云端连接未完成，文字已保留"
+                if reportsConnectionStatus && !self.hasPendingJob && self.stage == .idle { self.status = "云端连接未完成，文字已保留" }
             }
         }
     }
-    func selectInput(_ asset:AudioAsset?) {
-        cancel()
+    @discardableResult func selectInput(_ asset:AudioAsset?) -> Bool {
+        guard cancel() else { return false }
         input = asset; recognizedText = nil; text = ""; result = nil; errorMessage = nil
         status = asset == nil ? "可以录音或直接输入文字" : "录音已选择，点击识别文字或生成配音"
+        return true
     }
     func recorded(_ asset:AudioAsset) {
-        selectInput(asset)
+        guard selectInput(asset) else { return }
         if foreground { recognize(autoGenerate:kind == .preset) }
         else { pendingRecognition = true; status = "原声已保存，返回 App 后识别" }
     }
@@ -111,6 +133,7 @@ import UIKit
     }
     func recognize(autoGenerate:Bool = false, start:Double = 0, limit:Double? = nil) {
         guard !busy, let input else { return }
+        let textAtStart = text
         let token = UUID(); generation = token; stage = .recognizing; errorMessage = nil; status = "识别中 · 在手机处理录音"
         task = Task { [weak self] in
             guard let self else { return }
@@ -126,10 +149,12 @@ import UIKit
                 try Task.checkCancellation(); guard self.generation == token, let prepared else { return }
                 let recognized = try await self.recognizer.transcribe(url:prepared)
                 try Task.checkCancellation(); guard self.generation == token, self.input?.id == input.id else { return }
-                self.text = recognized; self.recognizedText = recognized
+                let draftWasEdited = self.text != textAtStart
+                if !draftWasEdited { self.text = recognized }
+                self.recognizedText = recognized
                 _ = try RevoiceLimits.text(recognized)
                 self.stage = .idle; self.task = nil; self.status = "识别完成，可以修改文字后重新生成"
-                if autoGenerate { self.task = nil; self.generate() }
+                if autoGenerate && !draftWasEdited && self.kind == .preset { self.task = nil; self.generate() }
             } catch {
                 guard self.generation == token else { return }
                 if !Task.isCancelled { self.errorMessage = RevoiceError.message(error); self.status = "识别未完成，原录音已保留" }
@@ -137,9 +162,9 @@ import UIKit
         }
     }
     func generate() {
-        guard !busy else { return }
-        if hasPendingJob { resumePending(); return }
+        guard canGenerateDraft else { return }
         if text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, input != nil {
+            if hasPendingJob, !cancel() { return }
             recognize(autoGenerate:kind == .preset); return
         }
         do {
@@ -158,11 +183,16 @@ import UIKit
             let context = RevoiceSaveContext(id:UUID(),createdAt:Date(),choice:choice,voiceName:label,
                 instruction:effectiveInstruction,fixedReferenceID:reference,recognizedText:recognizedText,
                 text:usedText,sourceAudioID:input?.id)
+            // A new generation always freezes the current draft with a new ID.
+            // Recovering a previous ID is only the explicit resume action.
+            if hasPendingJob, !cancel() { return }
+            observedJobID = nil
             beforeGenerate?()
             result = nil; errorMessage = nil
             if let transfers,client.downloadOrigin(for:connection) != nil {
                 let job = PendingRevoiceJob(context:context,primaryOrigin:try connection.validate(),
                     connectionFingerprint:connection.fingerprint)
+                observedJobID = job.id
                 try transfers.begin(job); pendingJobID = job.id; resumeSubmission(job)
             } else {
                 let token = UUID(); generation = token; stage = .generating
@@ -193,12 +223,13 @@ import UIKit
         if let source = job.context.sourceAudioID { input = (try? AudioFileManager.listLocalAudio())?.first { $0.id == source } }
     }
     private func resumeSubmission(_ job:PendingRevoiceJob) {
-        guard task == nil,let transfers else { return }
+        guard task == nil,let transfers,job.isPending,transfers.store.job(job.id)?.isPending == true else { return }
+        if let current = pendingJobID, current != job.id { return }
         guard let connection,connection.fingerprint == job.connectionFingerprint else {
             transfers.submissionFailed(job.id,message:"连接配置已变化，请恢复原配置后取回；也可以停止等待")
             return
         }
-        pendingJobID = job.id; restoreDraft(job); errorMessage = nil; stage = .generating
+        observedJobID = job.id; pendingJobID = job.id; errorMessage = nil; stage = .generating
         let token = UUID(); generation = token
         let lease = RevoiceSubmissionLease { [weak self] in
             guard let self,self.generation == token else { return }
@@ -217,9 +248,18 @@ import UIKit
             }
             do {
                 if self.client.downloadOrigin(for:connection) == nil {
-                    let (voices,speakers) = try await self.client.connect(connection)
-                    self.voices = voices; self.speakers = speakers
+                    if let catalog = self.connectionTask { await catalog.value }
+                    try Task.checkCancellation()
+                    guard self.generation == token else { return }
+                    if self.client.downloadOrigin(for:connection) == nil {
+                        let (voices,speakers) = try await self.client.connect(connection)
+                        try Task.checkCancellation()
+                        guard self.generation == token else { return }
+                        self.voices = voices; self.speakers = speakers
+                    }
                 }
+                try Task.checkCancellation()
+                guard self.generation == token, transfers.store.job(job.id)?.isPending == true else { return }
                 guard let origin = self.client.downloadOrigin(for:connection) else { throw LabError.message("请升级云端服务以取回后台任务") }
                 let reply = try await self.client.submitJob(connection,context:job.context)
                 try Task.checkCancellation(); guard self.generation == token else { return }
@@ -232,11 +272,13 @@ import UIKit
     }
     func resumePending() {
         guard let transfers else { return }
-        if let job = transfers.pending { pendingJobID = job.id; restoreDraft(job) }
+        if let job = transfers.pending { observedJobID = job.id; pendingJobID = job.id }
+        if configured && voices.isEmpty && !connecting { connect() }
         Task { await transfers.restore() }
     }
     func foregroundChanged(_ active:Bool) {
         foreground = active
+        transfers?.setForeground(active)
         if !active,stage == .recognizing {
             generation = UUID(); task?.cancel(); task = nil; recognizer.cancel(); stage = .idle
             pendingRecognition = true; status = "原声已保留，返回 App 后继续识别"
@@ -246,12 +288,25 @@ import UIKit
             resumePending()
         }
     }
-    func cancel() {
-        pendingRecognition = false; transfers?.cancel(); pendingJobID = nil
-        generation = UUID(); task?.cancel(); task = nil; recognizer.cancel(); stage = .idle; connecting = false
+    @discardableResult func cancel() -> Bool {
+        guard transfers?.cancel() != false else {
+            pendingJobID = transfers?.pending?.id
+            errorMessage = "停止等待标记无法保存，请保持 App 打开后重试"
+            return false
+        }
+        pendingRecognition = false; observedJobID = nil; pendingJobID = nil
+#if DEBUG
+        previewPendingContext = nil
+#endif
+        generation = UUID(); task?.cancel(); task = nil; recognizer.cancel(); stage = .idle
+        connectionGeneration = UUID(); connectionTask?.cancel(); connectionTask = nil; connecting = false
         status = "已停止等待 · 已提交的云端任务可能继续完成"
+        return true
     }
     func preparePreview(custom:Bool) {
+#if DEBUG
+        previewPendingContext = nil
+#endif
         kind = custom ? .custom : .preset; configured = false
         voices = [.init(id:"serena-original",displayName:"Serena · 认可原版",variant:"custom"),
                   .init(id:"vivian-original",displayName:"Vivian · 认可原版",variant:"custom"),
@@ -262,4 +317,18 @@ import UIKit
         speakers = RevoiceSpeaker.all; text = "今天的天气不错，我们出去走走吧。"
         status = "界面预览 · 未连接云端"
     }
+#if DEBUG
+    func preparePreviewRecovery() {
+        preparePreview(custom:true)
+        let context = RevoiceSaveContext(id:UUID(uuidString:"16620000-0000-4000-8000-000000000012") ?? UUID(),
+            createdAt:Date(timeIntervalSince1970:1_790_000_000),
+            choice:.custom(speaker:"Serena",instruction:"轻柔、语速稍慢"),voiceName:"Serena",
+            instruction:"轻柔、语速稍慢",fixedReferenceID:nil,recognizedText:nil,
+            text:"这是之前已提交的配音，恢复时请继续取回这一份。",sourceAudioID:nil)
+        previewPendingContext = context; pendingJobID = context.id; configured = true
+        selectedSpeaker = "Vivian"; instruction = "自然明亮"; text = "这是我现在编辑的新内容。"
+        stage = .idle; status = "配音仍在云端执行，可以继续取回"
+        errorMessage = "下载暂存未完成，任务已保留"
+    }
+#endif
 }

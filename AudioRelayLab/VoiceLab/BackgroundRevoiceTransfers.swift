@@ -13,6 +13,8 @@ import UIKit
     private var processing:Set<UUID> = []
     private var scheduled:Set<UUID> = []
     private var abandoned:Set<UUID> = []
+    private var foregroundRecoveries:[UUID:Task<Void,Never>] = [:]
+    private var isForeground = UIApplication.shared.applicationState == .active
     private var eventsFinished = false
     private var completion:(()->Void)?
     var onChange:((PendingRevoiceJob,String,AudioAsset?)->Void)?
@@ -42,23 +44,35 @@ import UIKit
         guard var job = store.job(id), job.isPending,!abandoned.contains(id) else { return }
         _ = try reply.validated(requestID:id,origin:origin)
         job.reply = reply; job.downloadOrigin = origin; job.phase = .downloading; job.lastError = nil
+        job.lastTransferFailure = nil
         try store.save(job)
         if reply.state == "failed" { suspend(id,message:"云端生成失败，文字已保留",terminal:true); return }
         schedule(job)
     }
     func submissionFailed(_ id:UUID,message:String) { suspend(id,message:message,terminal:false) }
-    func cancel() {
+    @discardableResult func cancel() -> Bool {
         for var job in store.all() where job.isPending {
-            abandoned.insert(job.id)
+            let previous = job
             job.phase = .abandoned; job.lastError = nil
             do { try store.save(job) }
-            catch { onChange?(job,"停止等待标记无法保存，请保持 App 打开后重试",nil); return }
+            catch { onChange?(previous,"停止等待标记无法保存，请保持 App 打开后重试",nil); return false }
+            abandoned.insert(job.id)
             scheduled.remove(job.id)
+            foregroundRecoveries.removeValue(forKey:job.id)?.cancel()
             let id = job.id
             session.getAllTasks { tasks in
                 for task in tasks where task.taskDescription == id.uuidString { task.cancel() }
             }
             onChange?(job,"已停止等待 · 云端可能继续完成，迟到结果不会保存",nil)
+        }
+        return true
+    }
+    func setForeground(_ active:Bool) {
+        isForeground = active
+        if !active {
+            // The cloud job continues. A foreground recovery never pretends to
+            // be an iOS background transfer, and may be resumed on the next open.
+            for task in foregroundRecoveries.values { task.cancel() }
         }
     }
     func handleEvents(_ handler:@escaping ()->Void) {
@@ -68,20 +82,23 @@ import UIKit
     func restore(retrySuspended:Bool = true) async {
         for job in store.all() where job.isUnfinished && job.expiresAt <= Date() { expire(job) }
         store.cleanup()
-        // Incoming files were moved out of URLSession's temporary location before
+        // Incoming files were copied out of URLSession's temporary location before
         // its delegate returned. A crash during saving can therefore be recovered.
         for envelope in store.envelopes() { process(envelope) }
         let tasks = await session.allTasks
         scheduled = Set(tasks.compactMap { task in
             guard task.state != .completed, let value = task.taskDescription else { return nil }
             return UUID(uuidString:value)
-        })
+        }).union(foregroundRecoveries.keys)
         for job in store.all() where job.isPending && !abandoned.contains(job.id) && !processing.contains(job.id) {
             if job.reply == nil { onNeedsSubmission?(job) }
             else if !scheduled.contains(job.id) {
                 if !retrySuspended && (job.phase == .suspended || job.attempts >= 8) { continue }
                 var resumed = job; resumed.attempts = 0; resumed.phase = .downloading
-                try? store.save(resumed); schedule(resumed)
+                do { try store.save(resumed) }
+                catch { suspend(job.id,message:"任务记录暂时无法写入，请保持 App 打开后重试",terminal:false); continue }
+                if retrySuspended && isForeground && Self.needsForegroundRecovery(job) { recoverInForeground(resumed) }
+                else { schedule(resumed) }
             } else { onChange?(job,"配音中 · 可切换 App 或锁屏",nil) }
         }
         completeEventsIfPossible()
@@ -89,6 +106,7 @@ import UIKit
     private func schedule(_ value:PendingRevoiceJob,after seconds:Double = 0) {
         guard !scheduled.contains(value.id),value.isPending,var job = store.job(value.id),job.isPending,
               !abandoned.contains(job.id),let reply = job.reply, let origin = job.downloadOrigin else { return }
+        if isForeground && Self.needsForegroundRecovery(job) { recoverInForeground(job,after:seconds); return }
         do {
             _ = try reply.validated(requestID:job.id,origin:origin)
             if job.attempts >= 8 { suspend(job.id,message:"云端任务已保留，返回 App 后继续取回",terminal:false); return }
@@ -110,11 +128,78 @@ import UIKit
         request.setValue("Bearer "+reply.downloadToken,forHTTPHeaderField:"Authorization")
         return request
     }
-    func invalidateForTesting() { session.invalidateAndCancel() }
-    private func suspend(_ id:UUID,message:String,terminal:Bool) {
+    private static func needsForegroundRecovery(_ job:PendingRevoiceJob) -> Bool {
+        job.lastTransferFailure != nil || job.lastError?.contains("下载文件无法暂存") == true
+    }
+    private func recoverInForeground(_ value:PendingRevoiceJob,after seconds:Double = 0) {
+        guard isForeground,foregroundRecoveries[value.id] == nil,!scheduled.contains(value.id),
+              var job = store.job(value.id),job.isPending,!abandoned.contains(job.id),
+              let reply = job.reply,let origin = job.downloadOrigin else { return }
+        if job.attempts >= 8 { suspend(job.id,message:"任务已保留，稍后可继续取回",terminal:false); return }
+        do {
+            _ = try reply.validated(requestID:job.id,origin:origin)
+            job.attempts += 1; job.phase = .downloading; try store.save(job)
+        } catch { suspend(job.id,message:"无法恢复结果下载，文字和任务已保留",terminal:false); return }
+        scheduled.insert(job.id); onChange?(job,"正在前台取回配音 · 无需重新生成",nil)
+        foregroundRecoveries[job.id] = Task { [weak self, job] in
+            guard let self else { return }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.httpCookieStorage = nil; configuration.urlCache = nil
+            configuration.timeoutIntervalForRequest = 180; configuration.timeoutIntervalForResource = 180
+            let resultSession = URLSession(configuration:configuration)
+            defer {
+                resultSession.invalidateAndCancel(); self.foregroundRecoveries.removeValue(forKey:job.id)
+                self.scheduled.remove(job.id)
+            }
+            do {
+                if seconds > 0 { try await Task.sleep(for:.seconds(seconds)) }
+                try Task.checkCancellation()
+                let request = try Self.request(reply:reply,id:job.id,origin:origin)
+                // Streaming bypasses daemon-owned download files, and keeps the
+                // same 10 MiB cap even if Content-Length is absent or dishonest.
+                let (bytes,response) = try await resultSession.bytes(for:request,delegate:RevoiceResultRedirectBlocker())
+                guard let response = response as? HTTPURLResponse,
+                      let url = response.url,CloudJobEndpoint.sameOrigin(url,origin),url.path == reply.downloadURL.path,
+                      response.expectedContentLength <= 10*1024*1024 else { throw URLError(.badServerResponse) }
+                let data = try await Self.readResultBytes(bytes,expectedLength:response.expectedContentLength)
+                try Task.checkCancellation()
+                guard self.isForeground,let current = self.store.job(job.id),current.isPending,
+                      !self.abandoned.contains(job.id) else { return }
+                let envelope = try self.store.stage(data,id:job.id,response:response)
+                self.process(envelope)
+            } catch {
+                if Task.isCancelled {
+                    self.suspend(job.id,message:"任务已保留，返回 App 后继续取回",terminal:false)
+                } else {
+                    let failure = (error as? RevoiceTransferError)?.failure ?? RevoiceTransferFailure(operation:"foreground-retrieve",error:error)
+                    self.suspend(job.id,message:"暂时无法取回配音，任务已保留（\(failure.summary)）",terminal:false,failure:failure)
+                }
+            }
+        }
+    }
+    private nonisolated static func readResultBytes(_ bytes:URLSession.AsyncBytes,expectedLength:Int64) async throws -> Data {
+        try await withTaskCancellationHandler {
+            // This helper runs off MainActor. Buffered byte iteration and large
+            // WAV accumulation must not stall editing, scrolling or Stop.
+            var data = Data()
+            if expectedLength > 0 { data.reserveCapacity(Int(expectedLength)) }
+            for try await byte in bytes {
+                guard data.count < 10*1024*1024 else { throw URLError(.dataLengthExceedsMaximum) }
+                if data.count%65536 == 0 { try Task.checkCancellation() }
+                data.append(byte)
+            }
+            return data
+        } onCancel: { bytes.task.cancel() }
+    }
+    func invalidateForTesting() {
+        for task in foregroundRecoveries.values { task.cancel() }
+        session.invalidateAndCancel()
+    }
+    private func suspend(_ id:UUID,message:String,terminal:Bool,failure:RevoiceTransferFailure? = nil) {
         guard var job = store.job(id),job.isUnfinished else { return }
         if job.expiresAt <= Date() { expire(job); return }
         job.phase = terminal ? .failed : .suspended; job.lastError = message
+        if let failure { job.lastTransferFailure = failure }
         try? store.save(job); scheduled.remove(id); onChange?(job,message,nil)
     }
     func process(_ envelope:RevoiceDownloadEnvelope) {
@@ -163,6 +248,7 @@ import UIKit
                 self.onChange?(current,"保存中",nil)
                 let asset = try RevoiceSaving.save(audio,context:current.context,jobID:current.networkID)
                 current.phase = .completed; current.reply = nil; current.lastError = nil
+                current.lastTransferFailure = nil
                 try self.store.save(current)
                 self.onChange?(current,"已保存 · 成品 \(AudioPlaybackSettings.time(asset.duration))",asset)
             } catch {
@@ -187,7 +273,10 @@ import UIKit
             let envelope = try store.stage(location,id:id,response:response)
             Task { @MainActor [weak self] in self?.process(envelope) }
         } catch {
-            Task { @MainActor [weak self] in self?.suspend(id,message:"下载文件无法暂存，任务已保留",terminal:false) }
+            let failure = (error as? RevoiceTransferError)?.failure ?? RevoiceTransferFailure(operation:"stage-download",error:error)
+            Task { @MainActor [weak self] in
+                self?.suspend(id,message:"下载文件无法暂存，任务已保留；可在前台取回（\(failure.summary)）",terminal:false,failure:failure)
+            }
         }
     }
     nonisolated func urlSession(_ session:URLSession,downloadTask:URLSessionDownloadTask,
@@ -202,6 +291,15 @@ import UIKit
         Task { @MainActor [weak self] in
             self?.eventsFinished = true; self?.completeEventsIfPossible()
         }
+    }
+}
+
+/// Async result endpoints are direct URLs. Redirecting the job token is never
+/// necessary, so foreground recovery rejects redirects before another request.
+private final class RevoiceResultRedirectBlocker:NSObject,URLSessionTaskDelegate,@unchecked Sendable {
+    func urlSession(_ session:URLSession,task:URLSessionTask,willPerformHTTPRedirection response:HTTPURLResponse,
+                    newRequest request:URLRequest,completionHandler:@escaping (URLRequest?)->Void) {
+        completionHandler(nil)
     }
 }
 

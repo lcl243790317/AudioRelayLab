@@ -100,6 +100,38 @@ jobs:
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           xcrun simctl install "$SIMULATOR_UDID" build/simulator/Build/Products/Debug-iphonesimulator/AudioRelayLab.app
           xcrun simctl privacy "$SIMULATOR_UDID" grant microphone com.audiorelaylab.AudioRelayLab
+          # Native URLSession tests use trusted loopback HTTPS, never the live GPU or production credentials.
+          cat > build/revoice-fixture-openssl.cnf <<'CONF'
+          [req]
+          distinguished_name = subject
+          x509_extensions = extensions
+          prompt = no
+          [subject]
+          CN = AudioRelayLab disposable CI fixture
+          [extensions]
+          basicConstraints = critical,CA:TRUE
+          keyUsage = critical,digitalSignature,keyEncipherment,keyCertSign
+          extendedKeyUsage = serverAuth
+          subjectAltName = @names
+          [names]
+          IP.1 = 127.0.0.1
+          DNS.1 = localhost
+          CONF
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 \
+            -config build/revoice-fixture-openssl.cnf -keyout build/revoice-fixture.key \
+            -out build/revoice-fixture.crt 2> build/revoice-fixture-certificate.log
+          xcrun simctl keychain "$SIMULATOR_UDID" add-root-cert build/revoice-fixture.crt
+          python3 -u scripts/run-revoice-download-fixture.py --certificate build/revoice-fixture.crt \
+            --private-key build/revoice-fixture.key --report build/revoice-download-fixture-report.json \
+            > build-revoice-network.log 2>&1 &
+          DOWNLOAD_FIXTURE_PID=$!
+          cleanup_download_fixture() {
+            kill -TERM "$DOWNLOAD_FIXTURE_PID" 2>/dev/null || true
+            wait "$DOWNLOAD_FIXTURE_PID" || true
+          }
+          trap cleanup_download_fixture EXIT
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
+            --cacert build/revoice-fixture.crt https://127.0.0.1:8765/ready
           # Capture real, rendered SwiftUI pages from the installed app, before tests change its library.
           xcrun simctl ui "$SIMULATOR_UDID" appearance light
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
@@ -117,6 +149,15 @@ jobs:
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot night-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-custom-dark.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot voice-large-type day-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-custom-large.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot voice-large-type night-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-custom-large-dark.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot voice-recovery-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-recovery.png
           xcrun simctl terminate "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
           printf 'XCTest iPhone Simulator UDID: %s; architecture: %s\n' "$SIMULATOR_UDID" "$SIMULATOR_ARCH" | tee build-test-destination.log
           xcodebuild \
@@ -131,7 +172,7 @@ jobs:
           # Record actual selection scrolling while the same parent updates four times per second.
           xcrun simctl io "$SIMULATOR_UDID" recordVideo --codec=h264 build/ui-interaction.mp4 > build-ui-recording.log 2>&1 &
           RECORD_PID=$!
-          trap 'kill -INT "$RECORD_PID" 2>/dev/null || true' EXIT
+          trap 'kill -INT "$RECORD_PID" 2>/dev/null || true; cleanup_download_fixture' EXIT
           xcodebuild \
             -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
             -configuration Debug -sdk iphonesimulator \
@@ -142,6 +183,7 @@ jobs:
             test -only-testing:AudioRelayLabUITests 2>&1 | tee build-uitest.log
           kill -INT "$RECORD_PID" 2>/dev/null || true
           wait "$RECORD_PID" || true
+          cleanup_download_fixture
           trap - EXIT
       - name: 编译 iPhoneOS Release
         run: |
@@ -190,6 +232,8 @@ jobs:
             REVOICE-1.6-ZH.md
             MODAL-DEPLOYMENT-ZH.md
             REVOICE-1.6.1-ZH.md
+            REVOICE-1.6.2-ZH.md
+            build/revoice-download-fixture-report.json
             build/ui-*.mp4
       - name: 记录最终状态
         if: always()

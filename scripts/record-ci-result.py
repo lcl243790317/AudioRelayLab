@@ -49,6 +49,14 @@ def validate_manifest(recorded, actual):
         raise ValueError("IPA manifest 与重新验证的实际文件大小、SHA-256 或结构不一致")
 
 
+def validate_download_fixture(report):
+    if (report.get("successfulDownloads", 0) < 4 or report.get("pendingResponses", 0) < 1
+            or report.get("longTermCredentialHeadersSeen") is not False
+            or report.get("fixtureOnly") is not True or report.get("productionTLSChanged") is not False):
+        raise ValueError("缺少真实 HTTPS 下载/202 恢复证据，或下载请求暴露长期凭据")
+    return report
+
+
 def environment_info(environment_text, xcodegen_text):
     patterns = {
         "macOS": r"^ProductVersion:\s*(.+)$",
@@ -100,6 +108,7 @@ def replace_status(text, evidence):
         "- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。\n"
         f"- 实际 iPhone Simulator XCTest：{evidence['xctestCount']} 项，0 失败，TEST SUCCEEDED。\n"
         f"- UI 测试：{evidence.get('uiTestCount',0)} 项通过；真实录屏见 build/ui-interaction.mp4。\n"
+        f"- 隔离 HTTPS 下载：{evidence.get('downloadFixture',{}).get('successfulDownloads',0)} 次成功，202 续取回已验证；未发送长期密钥。\n"
         f"- Python 自检：{evidence['pythonTestCount']} 项通过。\n"
         "- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。\n"
         f"- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；{ipa['bytes']} 字节。\n"
@@ -145,6 +154,7 @@ def record(root, environ):
     expected_ui = sum(len(re.findall(r"\bfunc\s+test\w+", path.read_text(encoding="utf-8")))
                       for path in (root / "AudioRelayLabUITests").glob("*.swift"))
     ui_count = parse_xctest(logs["build-uitest.log"],expected_ui)
+    download_fixture = validate_download_fixture(json.loads((root / "build/revoice-download-fixture-report.json").read_text(encoding="utf-8")))
     if not (root / "build/ui-interaction.mp4").is_file(): raise ValueError("缺少真实 UI 测试录屏")
     if "静态检查通过：" not in logs["build-static.log"]:
         raise ValueError("缺少静态检查通过结果")
@@ -164,6 +174,7 @@ def record(root, environ):
         "xctestCount": count,
         "uiTestCount": ui_count,
         "uiTestFailures": 0,
+        "downloadFixture": download_fixture,
         "expectedXCTestCount": expected_count,
         "xctestFailures": 0,
         "pythonTestCount": parse_python_tests(logs["build-tests.log"]),

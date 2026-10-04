@@ -5,9 +5,36 @@ import UIKit
 import XCTest
 @testable import AudioRelayLab
 
+/// Uses Foundation's actual download task/delegate temporary-file lifecycle.
+/// All requests target the CI's isolated HTTPS loopback fixture, never Modal.
+private final class RevoiceDownloadProbe:NSObject,URLSessionDownloadDelegate,@unchecked Sendable {
+    let manager:BackgroundRevoiceTransfers
+    let removeBorrowedFile:Bool
+    private let lock = NSLock()
+    private var location:URL?
+    private var completionError:String?
+    init(manager:BackgroundRevoiceTransfers,removeBorrowedFile:Bool = false) {
+        self.manager = manager; self.removeBorrowedFile = removeBorrowedFile
+    }
+    var downloadedLocation:URL? { lock.lock(); defer { lock.unlock() }; return location }
+    var errorCode:String? { lock.lock(); defer { lock.unlock() }; return completionError }
+    func urlSession(_ session:URLSession,downloadTask:URLSessionDownloadTask,didFinishDownloadingTo url:URL) {
+        lock.lock(); location = url; lock.unlock()
+        if removeBorrowedFile { try? FileManager.default.removeItem(at:url) }
+        manager.urlSession(session,downloadTask:downloadTask,didFinishDownloadingTo:url)
+    }
+    func urlSession(_ session:URLSession,task:URLSessionTask,didCompleteWithError error:Error?) {
+        if let error {
+            let value = error as NSError
+            lock.lock(); completionError = "\(value.domain):\(value.code)"; lock.unlock()
+        }
+        manager.urlSession(session,task:task,didCompleteWithError:error)
+    }
+}
+
 final class RevoiceJobTests:XCTestCase {
-    private func context(seconds:Double = 1,instruction:String = "  轻声自然  ") -> RevoiceSaveContext {
-        .init(id:UUID(),createdAt:Date(),choice:.custom(speaker:"Serena",instruction:instruction),
+    private func context(id:UUID = UUID(),seconds:Double = 1,instruction:String = "  轻声自然  ") -> RevoiceSaveContext {
+        .init(id:id,createdAt:Date(),choice:.custom(speaker:"Serena",instruction:instruction),
             voiceName:"Serena",instruction:instruction,fixedReferenceID:nil,recognizedText:"嗯，我，我知道。",
             text:"嗯，我，我知道。",sourceAudioID:nil)
     }
@@ -37,6 +64,153 @@ final class RevoiceJobTests:XCTestCase {
         XCTAssertTrue(restored.isPending); XCTAssertEqual(restored.reply?.id,job.networkID)
         job.phase = .abandoned; try store.save(job)
         XCTAssertFalse(try XCTUnwrap(store.job(context.id)).isPending)
+    }
+    func testReadOnlyBorrowedDownloadIsCopiedWithoutMovingOrChangingSource() throws {
+        let store = try store(), job = try pending(context())
+        try store.prepare()
+        let borrowed = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString,isDirectory:true)
+        try FileManager.default.createDirectory(at:borrowed,withIntermediateDirectories:true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions:0o755],ofItemAtPath:borrowed.path)
+            try? FileManager.default.removeItem(at:borrowed)
+        }
+        let source = borrowed.appendingPathComponent("download.tmp"), data = RevoiceTestAudio.wav(seconds:1)
+        try data.write(to:source)
+        try FileManager.default.setAttributes([.posixPermissions:0o444],ofItemAtPath:source.path)
+        try FileManager.default.setAttributes([.posixPermissions:0o555],ofItemAtPath:borrowed.path)
+        // This fixture reproduces the permission distinction hidden by the old
+        // app-owned writable .tmp tests: reading is allowed; unlinking is not.
+        XCTAssertThrowsError(try FileManager.default.moveItem(at:source,to:store.directory.appendingPathComponent("old-move.download")))
+        let response = try RevoiceTestAudio.response(data,choice:job.context.choice,duration:1)
+        let receipt = try store.stage(source,id:job.id,response:response)
+        XCTAssertEqual(try Data(contentsOf:source),data)
+        XCTAssertEqual(try Data(contentsOf:store.directory.appendingPathComponent(receipt.fileName)),data)
+        XCTAssertEqual(store.envelopes().count,1)
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath:source.path)[.posixPermissions] as? NSNumber)?.intValue,0o444)
+    }
+    func testMissingBorrowedDownloadKeepsJobAndReportsOnlySafeFailureIdentifiers() throws {
+        let store = try store(), job = try pending(context()); try store.save(job)
+        let missing = store.directory.appendingPathComponent("private-token-and-text.tmp")
+        let response = try RevoiceTestAudio.response(RevoiceTestAudio.wav(seconds:1),choice:job.context.choice,duration:1)
+        do { _ = try store.stage(missing,id:job.id,response:response); XCTFail("Missing file must not stage") }
+        catch let failure as RevoiceTransferError {
+            XCTAssertEqual(failure.failure.operation,"read-download")
+            XCTAssertFalse(failure.failure.summary.contains("private-token"))
+        }
+        XCTAssertEqual(store.job(job.id)?.phase,.downloading)
+        XCTAssertTrue(store.envelopes().isEmpty)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(at:store.directory,includingPropertiesForKeys:nil).count,1)
+        let error = NSError(domain:NSCocoaErrorDomain,code:513,userInfo:[
+            NSFilePathErrorKey:missing.path,NSLocalizedDescriptionKey:"secret spoken text",
+            NSUnderlyingErrorKey:NSError(domain:NSPOSIXErrorDomain,code:13)])
+        let diagnostic = try JSONEncoder().encode(RevoiceTransferFailure(operation:"write-download",error:error))
+        XCTAssertFalse(String(decoding:diagnostic,as:UTF8.self).contains("secret"))
+        XCTAssertFalse(String(decoding:diagnostic,as:UTF8.self).contains(missing.path))
+    }
+    func testOldPersistedTaskWithoutDiagnosticStillDecodesAndRetainsDraft() throws {
+        let job = try pending(context())
+        var object = try XCTUnwrap(try JSONSerialization.jsonObject(with:JSONEncoder().encode(job)) as? [String:Any])
+        object.removeValue(forKey:"lastTransferFailure")
+        object["phase"] = "suspended"; object["lastError"] = "下载文件无法暂存，任务已保留"
+        let restored = try JSONDecoder().decode(PendingRevoiceJob.self,from:JSONSerialization.data(withJSONObject:object))
+        XCTAssertNil(restored.lastTransferFailure); XCTAssertTrue(restored.isPending)
+        XCTAssertEqual(restored.context.text,job.context.text)
+    }
+    private func fixtureJob(id:UUID = UUID()) throws -> PendingRevoiceJob {
+        guard let endpoint = ProcessInfo.processInfo.environment["REVOICE_DOWNLOAD_FIXTURE_URL"] else {
+            throw XCTSkip("Requires the CI's local trusted HTTPS download fixture")
+        }
+        let origin = try CloudJobEndpoint.origin(endpoint), context = context(id:id)
+        var job = PendingRevoiceJob(context:context,primaryOrigin:origin,connectionFingerprint:"loopback-only")
+        job.reply = try reply(context,origin:endpoint); job.downloadOrigin = origin; job.phase = .downloading
+        return job
+    }
+    @MainActor func testRealURLSessionDelegateCopiesTemporaryFileBeforeReturnAndSavesWAV() async throws {
+        let store = try store(), job = try fixtureJob(); try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        let probe = RevoiceDownloadProbe(manager:manager), session = URLSession(configuration:.ephemeral,delegate:probe,delegateQueue:nil)
+        defer { session.invalidateAndCancel(); manager.invalidateForTesting() }
+        let request = try BackgroundRevoiceTransfers.request(reply:XCTUnwrap(job.reply),id:job.id,origin:XCTUnwrap(job.downloadOrigin))
+        let download = session.downloadTask(with:request); download.taskDescription = job.id.uuidString; download.resume()
+        for _ in 0..<500 where store.job(job.id)?.phase != .completed && probe.errorCode == nil {
+            try await Task.sleep(for:.milliseconds(20))
+        }
+        XCTAssertNil(probe.errorCode)
+        XCTAssertEqual(store.job(job.id)?.phase,.completed)
+        let asset = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == job.id })
+        defer { try? AudioFileManager.removeAudio(asset) }
+        XCTAssertEqual(asset.revoice?.speakerID,"Serena"); XCTAssertEqual(asset.duration,1,accuracy:1/24000.0)
+        let borrowed = try XCTUnwrap(probe.downloadedLocation)
+        for _ in 0..<50 where FileManager.default.fileExists(atPath:borrowed.path) { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath:borrowed.path))
+        XCTAssertTrue(store.envelopes().isEmpty)
+    }
+    @MainActor func testRealDownloadFailureRecoversRetainedJobThenGeneratesFreshJob() async throws {
+        let store = try store(), job = try fixtureJob(); try store.save(job)
+        let initial = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        let probe = RevoiceDownloadProbe(manager:initial,removeBorrowedFile:true)
+        let session = URLSession(configuration:.ephemeral,delegate:probe,delegateQueue:nil)
+        defer { session.invalidateAndCancel(); initial.invalidateForTesting() }
+        let request = try BackgroundRevoiceTransfers.request(reply:XCTUnwrap(job.reply),id:job.id,origin:XCTUnwrap(job.downloadOrigin))
+        let download = session.downloadTask(with:request); download.taskDescription = job.id.uuidString; download.resume()
+        for _ in 0..<500 where store.job(job.id)?.phase == .downloading && probe.errorCode == nil {
+            try await Task.sleep(for:.milliseconds(20))
+        }
+        XCTAssertNil(probe.errorCode); XCTAssertEqual(store.job(job.id)?.phase,.suspended)
+        XCTAssertEqual(store.job(job.id)?.lastTransferFailure?.operation,"read-download")
+        XCTAssertFalse(try AudioFileManager.listLocalAudio().contains { $0.id == job.id })
+        initial.invalidateForTesting()
+        // Simulate reopening an upgraded app: the cloud ID and draft survive,
+        // and result retrieval uses GET only, bypassing the missing temp file.
+        let restored = BackgroundRevoiceTransfers(store:PendingRevoiceStore(directory:store.directory),
+            identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { restored.invalidateForTesting() }
+        restored.setForeground(true); await restored.restore(); await restored.restore()
+        for _ in 0..<500 where store.job(job.id)?.phase != .completed { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(job.id)?.phase,.completed); XCTAssertNil(restored.pending)
+        let recovered = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == job.id })
+        defer { try? AudioFileManager.removeAudio(recovered) }
+        XCTAssertEqual(recovered.revoice?.synthesisText,job.context.text)
+        let fresh = try fixtureJob(); try restored.begin(fresh)
+        try restored.attach(XCTUnwrap(fresh.reply),origin:XCTUnwrap(fresh.downloadOrigin),id:fresh.id)
+        for _ in 0..<500 where store.job(fresh.id)?.phase != .completed { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(fresh.id)?.phase,.completed); XCTAssertNil(restored.pending)
+        let newAsset = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == fresh.id })
+        defer { try? AudioFileManager.removeAudio(newAsset) }
+        XCTAssertNotEqual(recovered.id,newAsset.id)
+    }
+    @MainActor func testLegacyStagingFailureCanBeRetrievedAfterUpgrade() async throws {
+        let store = try store(); var job = try fixtureJob()
+        job.phase = .suspended; job.lastError = "下载文件无法暂存，任务已保留"; job.lastTransferFailure = nil
+        try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        manager.setForeground(true); await manager.restore()
+        for _ in 0..<500 where store.job(job.id)?.phase != .completed { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(job.id)?.phase,.completed)
+        let asset = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == job.id })
+        defer { try? AudioFileManager.removeAudio(asset) }
+        XCTAssertNil(store.job(job.id)?.lastTransferFailure)
+        XCTAssertEqual(asset.revoice?.instruction,job.context.instruction)
+    }
+    @MainActor func testForegroundRecoveryRetriesPending202AndCoalescesRepeatedRestore() async throws {
+        let store = try store()
+        let id = try XCTUnwrap(UUID(uuidString:"20200000"+String(UUID().uuidString.dropFirst(8))))
+        var job = try fixtureJob(id:id)
+        job.phase = .suspended; job.lastError = "下载文件无法暂存，任务已保留"
+        try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        manager.setForeground(true); await manager.restore(); await manager.restore()
+        // The HTTPS fixture returns running/202 for this ID's first GET. It
+        // returns WAV on the next GET, after the production five-second wait.
+        for _ in 0..<700 where store.job(job.id)?.phase != .completed { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(job.id)?.phase,.completed)
+        XCTAssertEqual(store.job(job.id)?.attempts,2)
+        XCTAssertNil(manager.pending)
+        let asset = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == job.id })
+        defer { try? AudioFileManager.removeAudio(asset) }
+        XCTAssertEqual(asset.revoice?.jobID,job.networkID)
     }
     @MainActor func testBackgroundRequestHasOnlyJobCredentialAndFixedHTTPSOrigin() throws {
         let context = context(), reply = try reply(context)

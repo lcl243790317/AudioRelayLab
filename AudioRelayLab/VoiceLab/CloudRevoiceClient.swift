@@ -39,7 +39,6 @@ final class CloudRevoiceClient: @unchecked Sendable {
             guard let value = health.jobDownloadOrigin else { throw LabError.message("云端没有提供后台下载来源") }
             origin = try CloudJobEndpoint.origin(value)
         } else { origin = nil }
-        capabilityLock.withLock { jobOrigin = origin; jobFingerprint = connection.fingerprint }
         let (voiceData,_,_) = try await request(connection,path:"v1/voices")
         let voices = try JSONDecoder().decode(Voices.self,from:voiceData).voices
         guard !voices.isEmpty, Set(voices.map(\.id)).count == voices.count,
@@ -54,6 +53,8 @@ final class CloudRevoiceClient: @unchecked Sendable {
                 throw LabError.message("云端 speaker 列表与当前模型不匹配")
             }
         }
+        try Task.checkCancellation()
+        capabilityLock.withLock { jobOrigin = origin; jobFingerprint = connection.fingerprint }
         return (voices,speakers)
     }
     func downloadOrigin(for connection:CloudConnection) -> URL? {

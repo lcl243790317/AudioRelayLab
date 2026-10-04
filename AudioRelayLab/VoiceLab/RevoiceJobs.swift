@@ -64,11 +64,39 @@ struct PendingRevoiceJob: Codable, Sendable, Identifiable {
     var downloadOrigin:URL?
     var attempts = 0
     var lastError:String?
+    var lastTransferFailure:RevoiceTransferFailure?
     var id:UUID { context.id }
     var networkID:String { id.uuidString.replacingOccurrences(of:"-",with:"").lowercased() }
     var expiresAt:Date { reply.map { Date(timeIntervalSince1970:$0.expiresAt) } ?? context.createdAt.addingTimeInterval(86400) }
     var isUnfinished:Bool { [.submitting,.downloading,.suspended].contains(phase) }
     var isPending:Bool { isUnfinished && expiresAt > Date() }
+}
+
+/// Only fixed operation names and Foundation error identifiers are retained.
+/// NSError descriptions/userInfo can include download URLs, tokens or paths.
+struct RevoiceTransferFailure: Codable, Sendable {
+    let operation:String
+    let domain:String
+    let code:Int
+    let underlyingDomain:String?
+    let underlyingCode:Int?
+    init(operation:String,error:Error) {
+        let value = error as NSError
+        self.operation = operation; domain = Self.safeDomain(value.domain); code = value.code
+        let underlying = value.userInfo[NSUnderlyingErrorKey] as? NSError
+        underlyingDomain = underlying.map { Self.safeDomain($0.domain) }; underlyingCode = underlying?.code
+    }
+    private static func safeDomain(_ value:String) -> String {
+        [NSCocoaErrorDomain,NSPOSIXErrorDomain,NSURLErrorDomain].contains(value) ? value : "Error"
+    }
+    var summary:String {
+        let underlying = underlyingDomain.flatMap { domain in underlyingCode.map { " / \(domain):\($0)" } } ?? ""
+        return "\(operation) · \(domain):\(code)\(underlying)"
+    }
+}
+
+struct RevoiceTransferError: Error, Sendable {
+    let failure:RevoiceTransferFailure
 }
 
 struct RevoiceDownloadEnvelope: Codable, Sendable {
@@ -90,6 +118,8 @@ struct PendingRevoiceStore: Sendable {
     func prepare() throws {
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true,
             attributes:[.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication])
+        try FileManager.default.setAttributes([.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath:directory.path)
         var target = directory; var values = URLResourceValues(); values.isExcludedFromBackup = true
         try target.setResourceValues(values)
     }
@@ -112,23 +142,60 @@ struct PendingRevoiceStore: Sendable {
             }.sorted { $0.context.createdAt > $1.context.createdAt }
     }
     func stage(_ temporary:URL,id:UUID,response:HTTPURLResponse) throws -> RevoiceDownloadEnvelope {
-        try prepare()
-        guard let url = response.url else { throw URLError(.badServerResponse) }
+        // A URLSession temporary file is only borrowed for this delegate callback.
+        // Read it synchronously; moving/unlinking it or changing its attributes can
+        // require permissions the download daemon does not grant to a signed app.
+        // Atomic writes create our own protected files without inheriting the
+        // daemon file's owner, protection class or read-only access capability.
+        let operation = "read-download"
         let name = id.uuidString+"_"+UUID().uuidString+".download"
         let target = directory.appendingPathComponent(name)
-        try FileManager.default.moveItem(at:temporary,to:target)
-        try FileManager.default.setAttributes([.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication],ofItemAtPath:target.path)
-        let allowed = ["Content-Type","Content-Range","X-Audio-SHA256","X-Audio-Sample-Rate","X-Audio-Duration",
+        do {
+            let reader = try FileHandle(forReadingFrom:temporary)
+            defer { try? reader.close() }
+            var data = Data()
+            while let chunk = try reader.read(upToCount:512*1024),!chunk.isEmpty {
+                guard data.count+chunk.count <= 10*1024*1024 else { throw URLError(.dataLengthExceedsMaximum) }
+                data.append(chunk)
+            }
+            return try stage(data,id:id,response:response,fileName:name)
+        } catch let error as RevoiceTransferError { throw error }
+        catch {
+            // A failed copy never destroys the borrowed source or a previous
+            // successful download. Only this attempt's app-owned files are removed.
+            try? FileManager.default.removeItem(at:target)
+            throw RevoiceTransferError(failure:.init(operation:operation,error:error))
+        }
+    }
+    func stage(_ data:Data,id:UUID,response:HTTPURLResponse,fileName:String? = nil) throws -> RevoiceDownloadEnvelope {
+        var operation = "prepare-staging"
+        let name = fileName ?? id.uuidString+"_"+UUID().uuidString+".download"
+        guard name == URL(fileURLWithPath:name).lastPathComponent,name.hasPrefix(id.uuidString+"_") else {
+            throw RevoiceTransferError(failure:.init(operation:operation,error:URLError(.badServerResponse)))
+        }
+        let target = directory.appendingPathComponent(name)
+        do {
+            try prepare()
+            guard let url = response.url, !data.isEmpty,data.count <= 10*1024*1024 else {
+                throw URLError(.badServerResponse)
+            }
+            operation = "write-download"
+            try data.write(to:target,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+            let allowed = ["Content-Type","Content-Range","X-Audio-SHA256","X-Audio-Sample-Rate","X-Audio-Duration",
                        "X-Generation-Seconds","X-Model-Load-Seconds","X-Worker-Session","X-Model-Variant",
                        "X-Voice-ID","X-Speaker-ID","X-Generation-Mode","X-Model-Revision","X-Request-ID"]
-        var headers:[String:String] = [:]
-        for key in allowed { if let value = response.value(forHTTPHeaderField:key) { headers[key] = value } }
-        let envelope = RevoiceDownloadEnvelope(id:id,fileName:name,url:url,status:response.statusCode,headers:headers)
-        do {
+            var headers:[String:String] = [:]
+            for key in allowed { if let value = response.value(forHTTPHeaderField:key) { headers[key] = value } }
+            let envelope = RevoiceDownloadEnvelope(id:id,fileName:name,url:url,status:response.statusCode,headers:headers)
+            operation = "write-receipt"
             try JSONEncoder().encode(envelope).write(to:target.appendingPathExtension("json"),
                 options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
-        } catch { try? FileManager.default.removeItem(at:target); throw error }
-        return envelope
+            return envelope
+        } catch {
+            try? FileManager.default.removeItem(at:target)
+            try? FileManager.default.removeItem(at:target.appendingPathExtension("json"))
+            throw RevoiceTransferError(failure:.init(operation:operation,error:error))
+        }
     }
     func envelopes() -> [RevoiceDownloadEnvelope] {
         ((try? FileManager.default.contentsOfDirectory(at:directory,includingPropertiesForKeys:nil)) ?? [])
@@ -150,6 +217,7 @@ struct PendingRevoiceStore: Sendable {
         for job in all() where !job.isUnfinished && job.context.createdAt.addingTimeInterval(7*86400) <= Date() {
             try? FileManager.default.removeItem(at:directory.appendingPathComponent(job.id.uuidString+".job.json"))
         }
-        for envelope in envelopes() where job(envelope.id) == nil || (job(envelope.id)?.expiresAt ?? .distantPast) <= Date() { remove(envelope) }
+        for envelope in envelopes() where job(envelope.id) == nil || job(envelope.id)?.isUnfinished == false
+            || (job(envelope.id)?.expiresAt ?? .distantPast) <= Date() { remove(envelope) }
     }
 }

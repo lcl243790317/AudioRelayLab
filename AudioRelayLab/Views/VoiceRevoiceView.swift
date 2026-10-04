@@ -1,106 +1,297 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum RevoiceInputField:Hashable { case text, instruction }
+private enum RevoiceSheet:String,Identifiable {
+    case connection, library
+    var id:String { rawValue }
+}
+
 struct VoiceRevoiceView: View {
     @ObservedObject var coordinator:ExperimentCoordinator
     @ObservedObject var ai:RevoiceController
     @ObservedObject var voice:RawVoiceRecorder
-    @State private var showConnection = false
-    @FocusState private var focusedInput:String?
-    @State private var showLibrary = false
+    @State private var sheet:RevoiceSheet?
+    @FocusState private var focusedInput:RevoiceInputField?
+
+    private var draftLocked:Bool { ai.stage == .recognizing || voice.isActive }
+    private var generationLocked:Bool {
+        !ai.canGenerateDraft || voice.isActive || coordinator.isImporting || coordinator.isMixing || coordinator.aiVoice.busy
+    }
+    private var emptyDraft:Bool { ai.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }
+    private var generateTitle:String {
+        if emptyDraft && ai.input != nil { return ai.kind == .preset ? "识别并生成配音" : "识别录音文字" }
+        return ai.hasPendingJob ? "按当前内容生成新的配音" : "生成配音"
+    }
+
     init(coordinator:ExperimentCoordinator) {
         self.coordinator = coordinator; ai = coordinator.revoice; voice = coordinator.rawRecorder
     }
+
     var body:some View {
         VStack(alignment:.leading,spacing:16) {
-            Picker("配音方式",selection:$ai.kind) {
-                Text("预设声线").tag(RevoiceController.Kind.preset)
-                Text("自定义配音").tag(RevoiceController.Kind.custom)
-            }.pickerStyle(.segmented).disabled(ai.busy || ai.hasPendingJob || voice.isActive)
-            PaperCard(ai.kind == .preset ? "选择声线" : "自己设置声线与表达") {
-                if ai.kind == .preset {
-                    if !ai.voices.isEmpty {
-                        StablePicker(title:"声线",selection:$ai.selectedPreset,
-                            choices:ai.voices.map { .init(id:$0.id,title:$0.displayName) }).disabled(ai.busy || ai.hasPendingJob || voice.isActive)
-                    }
-                    PaperCaption("沿用已试听认可的固定声线。录完自动识别并配音，文字可以修改后重新生成。")
-                } else {
-                    StablePicker(title:"Speaker",selection:$ai.selectedSpeaker,
-                        choices:(ai.speakers.isEmpty ? RevoiceSpeaker.all : ai.speakers).map { .init(id:$0.id,title:$0.displayName) }).disabled(ai.busy || ai.hasPendingJob || voice.isActive)
-                    Text("Instruction · 表达指令").font(.subheadline)
-                    TextField("例如：自然放松，语速稍慢，带一点慵懒",text:$ai.instruction,axis:.vertical)
-                        .focused($focusedInput,equals:"instruction")
-                        .textFieldStyle(.roundedBorder).lineLimit(2...5).disabled(ai.busy || ai.hasPendingJob || voice.isActive)
-                    PaperCaption("\(ai.instruction.unicodeScalars.count)/500 字符 · 留空采用 speaker 的自然表达。")
-                    PaperCaption("语音输入后先校对文字，再点击生成。可以自由改变表达指令，不改动前面的预设。")
-                }
-                DisclosureGroup(ai.configured ? "云端连接设置" : "首次使用：连接云端") {
-                    Button(ai.configured ? "导入或更换连接配置" : "导入云端连接配置") { focusedInput = nil; KeyboardDismiss.perform(); showConnection = true }
-                        .disabled(ai.busy || ai.hasPendingJob || voice.isActive)
-                    if ai.configured { Button("重新连接") { ai.connect() }.disabled(ai.busy || ai.hasPendingJob || voice.isActive) }
-                    PaperCaption("电脑关机后仍可配音。录音在手机识别，云端只接收文字和声线参数。")
-                }
-                if !ai.configured { Button("设置云端连接") { focusedInput = nil; KeyboardDismiss.perform(); showConnection = true }.buttonStyle(PaperButtonStyle(primary:true)) }
-            }
-            PaperCard("要说的话") {
-                TextEditor(text:$ai.text).frame(minHeight:100,maxHeight:180).accessibilityIdentifier("revoice.text")
-                    .focused($focusedInput,equals:"text")
-                    .scrollContentBackground(.hidden).padding(8)
-                    .background(Color.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:10))
-                    .disabled(ai.busy || ai.hasPendingJob || voice.isActive)
-                PaperCaption("\(ai.text.unicodeScalars.count)/1,000 字符 · 保留原话，不自动润色。")
-                if let input = ai.input {
-                    Text(input.libraryName).font(.caption).lineLimit(2)
-                    Button("重新识别这段录音") { ai.recognize() }.disabled(coordinator.controlsLocked)
-                }
-                if voice.isActive {
-                    ProgressView(voice.status,value:Double(min(1,max(0,voice.inputLevel))))
-                    Button("停止录音") { voice.stop() }.disabled(voice.state == .saving).buttonStyle(PaperButtonStyle(primary:true))
-                } else {
-                    HStack {
-                        Button("语音输入") {
-                            focusedInput = nil; KeyboardDismiss.perform(); ai.selectInput(nil); voice.start(.revoice)
-                        }.disabled(coordinator.controlsLocked)
-                        Button("从库选择录音") { focusedInput = nil; KeyboardDismiss.perform(); showLibrary = true }.disabled(coordinator.controlsLocked || coordinator.library.isEmpty)
-                    }
-                }
-                PaperCaption("录音 0.3–60 秒；满 60 秒自动停止。成品由目标声线决定节奏，最长 180 秒。")
+            RevoiceModeControl(kind:$ai.kind,disabled:draftLocked)
+            PaperCard {
+                if ai.hasPendingJob { PaperCaption("当前草稿 · 修改只影响下一份配音") }
+                RevoiceVoiceSettings(kind:ai.kind,voices:ai.voices,speakers:ai.speakers,
+                    preset:$ai.selectedPreset,speaker:$ai.selectedSpeaker,instruction:$ai.instruction,
+                    focus:$focusedInput,disabled:draftLocked)
+                Divider()
+                RevoiceTextComposer(text:$ai.text,focus:$focusedInput,disabled:draftLocked)
+                RevoiceInputControls(voice:voice,inputName:ai.input?.libraryName,
+                    disabled:coordinator.controlsLocked,libraryEmpty:coordinator.library.isEmpty,
+                    record:record,chooseAudio:chooseAudio,recognize:recognize)
                 if !voice.isActive {
-                    Button(generateTitle) { focusedInput = nil; KeyboardDismiss.perform(); ai.generate() }.buttonStyle(PaperButtonStyle(primary:true))
-                        .disabled(coordinator.controlsLocked || (!ai.configured && !ai.text.isEmpty) || (ai.text.isEmpty && ai.input == nil))
-                }
-                if ai.busy {
-                    ProgressView(ai.status)
-                    Button("停止等待") { ai.cancel() }
-                    PaperCaption("已提交的云端任务可能继续完成；停止等待后不会保存迟到的成品。")
-                } else {
-                    PaperCaption(ai.status)
+                    Button(generateTitle,action:generate).buttonStyle(PaperButtonStyle(primary:true))
+                        .disabled(generationLocked || !ai.configured || (emptyDraft && ai.input == nil))
+                        .accessibilityIdentifier("revoice.generate")
                     if ai.hasPendingJob {
-                        Button("取回未完成配音") { focusedInput = nil; KeyboardDismiss.perform(); ai.resumePending() }
-                        Button("停止等待") { ai.cancel() }
+                        PaperCaption("新生成按上面的最新内容提交，并停止等待上一份成品。")
+                    } else if !ai.configured {
+                        PaperCaption("先设置云端连接，即可生成。文字可以提前输入。")
                     }
                 }
-                if let error = ai.errorMessage { Text(error).font(.callout).foregroundStyle(.orange) }
-                if let error = voice.errorMessage { Text(error).font(.callout).foregroundStyle(.orange) }
             }
+            if let context = ai.pendingContext {
+                RevoicePendingCard(context:context,status:ai.status,error:ai.errorMessage,busy:ai.busy,
+                    resume:resume,stop:stop)
+            } else {
+                RevoiceStatusNotice(status:ai.status,error:ai.errorMessage,busy:ai.busy,stop:stop)
+            }
+            RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
+                importDisabled:ai.busy || ai.hasPendingJob || voice.isActive,
+                reconnectDisabled:ai.connecting || voice.isActive || (ai.busy && !ai.hasPendingJob),
+                open:openConnection,reconnect:ai.connect)
             if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result) }
         }
         .keyboardDone { focusedInput = nil }
-        .sheet(isPresented:$showConnection) { CloudConnectionView(ai:ai) }
-        .sheet(isPresented:$showLibrary) {
-            NavigationStack {
-                AudioLibraryPickerView(coordinator:coordinator) { asset in ai.selectInput(asset); showLibrary = false }
+        .sheet(item:$sheet) { destination in
+            switch destination {
+            case .connection: CloudConnectionView(ai:ai)
+            case .library: NavigationStack { AudioLibraryPickerView(coordinator:coordinator,onSelect:selectAudio) }
             }
         }
-        .task { if ai.configured && ai.voices.isEmpty && !ai.busy { ai.connect() } }
+        .task { connectIfNeeded() }
     }
-    private var generateTitle:String {
-        if ai.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty && ai.input != nil {
-            return ai.kind == .preset ? "识别并生成配音" : "识别录音文字"
-        }
-        return "生成配音"
+
+    private func dismissKeyboard() { focusedInput = nil; KeyboardDismiss.perform() }
+    private func record() { dismissKeyboard(); ai.selectInput(nil); voice.start(.revoice) }
+    private func chooseAudio() { dismissKeyboard(); sheet = .library }
+    private func selectAudio(_ asset:AudioAsset) { ai.selectInput(asset); sheet = nil }
+    private func recognize() { dismissKeyboard(); ai.recognize() }
+    private func generate() { dismissKeyboard(); ai.generate() }
+    private func resume() { dismissKeyboard(); ai.resumePending() }
+    private func stop() { dismissKeyboard(); ai.cancel() }
+    private func openConnection() { dismissKeyboard(); sheet = .connection }
+    private func connectIfNeeded() { if ai.configured && ai.voices.isEmpty && !ai.connecting { ai.connect() } }
+}
+
+private struct RevoiceModeControl:View {
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Binding var kind:RevoiceController.Kind
+    let disabled:Bool
+    var body:some View {
+        Group {
+            if typeSize.isAccessibilitySize {
+                StablePicker(title:"配音方式",selection:$kind,choices:[
+                    .init(id:.preset,title:"预设声线"),.init(id:.custom,title:"自定义配音")])
+            } else {
+                Picker("配音方式",selection:$kind) {
+                    Text("预设声线").tag(RevoiceController.Kind.preset)
+                    Text("自定义配音").tag(RevoiceController.Kind.custom)
+                }.pickerStyle(.segmented)
+            }
+        }.disabled(disabled).accessibilityIdentifier("revoice.mode")
     }
 }
+
+private struct RevoiceVoiceSettings:View {
+    let kind:RevoiceController.Kind
+    let voices:[RevoiceVoice]
+    let speakers:[RevoiceSpeaker]
+    @Binding var preset:String
+    @Binding var speaker:String
+    @Binding var instruction:String
+    let focus:FocusState<RevoiceInputField?>.Binding
+    let disabled:Bool
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            if kind == .preset {
+                if !voices.isEmpty {
+                    StablePicker(title:"声线",selection:$preset,
+                        choices:voices.map { .init(id:$0.id,title:$0.displayName) })
+                } else { Text("选择声线").font(.headline) }
+                PaperCaption("固定声线与表达 · 录完自动识别、配音")
+            } else {
+                StablePicker(title:"Speaker",selection:$speaker,
+                    choices:(speakers.isEmpty ? RevoiceSpeaker.all : speakers).map { .init(id:$0.id,title:$0.displayName) })
+                Text("表达指令 · 可选").font(.subheadline)
+                TextField("例如：自然放松，语速稍慢",text:$instruction,axis:.vertical)
+                    .focused(focus,equals:.instruction).lineLimit(1...3)
+                    .textFieldStyle(.roundedBorder).frame(minHeight:44).accessibilityIdentifier("revoice.instruction")
+                PaperCaption("\(instruction.unicodeScalars.count)/500 · 留空使用自然表达")
+            }
+        }.disabled(disabled)
+    }
+}
+
+private struct RevoiceTextComposer:View {
+    @ScaledMetric(relativeTo:.body) private var editorHeight:CGFloat = 96
+    @Binding var text:String
+    let focus:FocusState<RevoiceInputField?>.Binding
+    let disabled:Bool
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            ViewThatFits(in:.horizontal) {
+                HStack { Text("要说的话").font(.headline); Spacer(); PaperCaption("\(text.unicodeScalars.count)/1,000") }
+                VStack(alignment:.leading,spacing:4) { Text("要说的话").font(.headline); PaperCaption("\(text.unicodeScalars.count)/1,000 字符") }
+            }
+            TextEditor(text:$text).frame(height:editorHeight).accessibilityIdentifier("revoice.text")
+                .accessibilityLabel("要说的话").focused(focus,equals:.text)
+                .scrollContentBackground(.hidden).padding(8)
+                .background(PaperTheme.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:6))
+                .overlay(RoundedRectangle(cornerRadius:6).stroke(PaperTheme.line,lineWidth:1))
+                .overlay(alignment:.topLeading) {
+                    if text.isEmpty {
+                        Text("输入要说的话，或使用下方语音输入")
+                            .foregroundStyle(PaperTheme.secondary).padding(12)
+                            .allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                }
+                .disabled(disabled)
+            PaperCaption("保留原话，不自动润色；语音输入后可以校对。")
+        }
+    }
+}
+
+private struct RevoiceInputControls:View {
+    @ObservedObject var voice:RawVoiceRecorder
+    let inputName:String?
+    let disabled:Bool
+    let libraryEmpty:Bool
+    let record:()->Void
+    let chooseAudio:()->Void
+    let recognize:()->Void
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            if let inputName {
+                Text("录音：\(inputName)").font(.caption).lineLimit(2)
+                Button("重新识别这段录音",action:recognize).disabled(disabled)
+            }
+            if voice.isActive {
+                ProgressView(voice.status,value:Double(min(1,max(0,voice.inputLevel))))
+                Button("停止录音") { voice.stop() }.disabled(voice.state == .saving).buttonStyle(PaperButtonStyle(primary:true))
+            } else {
+                ViewThatFits(in:.horizontal) {
+                    HStack(spacing:12) {
+                        Button("语音输入",action:record).disabled(disabled)
+                        Button("从库选择录音",action:chooseAudio).disabled(disabled || libraryEmpty)
+                    }
+                    VStack(alignment:.leading,spacing:8) {
+                        Button("语音输入",action:record).disabled(disabled)
+                        Button("从库选择录音",action:chooseAudio).disabled(disabled || libraryEmpty)
+                    }
+                }
+            }
+            PaperCaption("录音最长 60 秒 · 配音最长 180 秒")
+            if let error = voice.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
+        }
+    }
+}
+
+private struct RevoicePendingCard:View {
+    let context:RevoiceSaveContext
+    let status:String
+    let error:String?
+    let busy:Bool
+    let resume:()->Void
+    let stop:()->Void
+    var body:some View {
+        PaperCard("已提交的配音") {
+            VStack(alignment:.leading,spacing:8) {
+                HStack(alignment:.firstTextBaseline,spacing:8) {
+                    Image(systemName:"person.wave.2").accessibilityHidden(true)
+                    Text(context.voiceName).accessibilityIdentifier("revoice.pending.voice")
+                }.font(.subheadline)
+                Text(context.text).font(.subheadline).lineLimit(3)
+                    .accessibilityIdentifier("revoice.pending.text")
+                Text("表达：\(context.instruction.isEmpty ? "自然表达" : context.instruction)")
+                    .font(.caption).foregroundStyle(PaperTheme.secondary).lineLimit(3)
+                    .accessibilityIdentifier("revoice.pending.instruction")
+                PaperCaption("以上是这份任务的固定内容。上面的草稿可以继续编辑。")
+            }
+            if busy { ProgressView(status) } else { PaperCaption(status) }
+            if let error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("revoice.error") }
+            if !busy {
+                Button("继续取回这份配音",action:resume).buttonStyle(PaperButtonStyle(primary:true))
+                    .accessibilityIdentifier("revoice.pending.resume")
+            }
+            Button("停止等待这份配音",action:stop).accessibilityIdentifier("revoice.pending.stop")
+            PaperCaption("切到其他 App 后可继续取回。停止等待后，迟到成品不会自动保存。")
+        }
+    }
+}
+
+private struct RevoiceStatusNotice:View {
+    let status:String
+    let error:String?
+    let busy:Bool
+    let stop:()->Void
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            if busy { ProgressView(status); Button("停止等待",action:stop) }
+            else { PaperCaption(status) }
+            if let error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("revoice.error") }
+        }.accessibilityIdentifier("revoice.status")
+    }
+}
+
+private struct RevoiceConnectionControl:View {
+    let configured:Bool
+    let connecting:Bool
+    let importDisabled:Bool
+    let reconnectDisabled:Bool
+    let open:()->Void
+    let reconnect:()->Void
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            Button(action:open) { Label(configured ? "云端连接设置" : "设置云端连接",systemImage:"cloud") }
+                .accessibilityIdentifier("revoice.connection").disabled(importDisabled)
+            if configured {
+                DisclosureGroup("连接与隐私") {
+                    Button("重新连接",action:reconnect).disabled(reconnectDisabled)
+                    PaperCaption("录音在手机识别；云端只接收文字与声线参数。连接配置保存在钥匙串。")
+                }
+            }
+            if connecting { PaperCaption("正在检查连接…") }
+        }
+    }
+}
+
+#if DEBUG
+private struct RevoiceDraftPreview:View {
+    @State private var speaker = "Serena"
+    @State private var preset = "serena-original"
+    @State private var instruction = ""
+    @State private var text = "今天的天气不错，我们出去走走吧。"
+    @FocusState private var focus:RevoiceInputField?
+    var body:some View {
+        NavigationStack {
+            PaperScreen {
+                PaperCard {
+                    RevoiceVoiceSettings(kind:.custom,voices:[],speakers:RevoiceSpeaker.all,
+                        preset:$preset,speaker:$speaker,instruction:$instruction,focus:$focus,disabled:false)
+                    Divider()
+                    RevoiceTextComposer(text:$text,focus:$focus,disabled:false)
+                }
+            }.keyboardDone { focus = nil }.navigationTitle("AI 重新配音")
+        }.tint(PaperTheme.accent)
+    }
+}
+
+#Preview("配音草稿 · 浅色") { RevoiceDraftPreview().preferredColorScheme(.light) }
+#Preview("配音草稿 · 深色大字体") { RevoiceDraftPreview().preferredColorScheme(.dark).dynamicTypeSize(.accessibility3) }
+#endif
 
 struct CloudConnectionView:View {
     @ObservedObject var ai:RevoiceController

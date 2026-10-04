@@ -31,8 +31,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.audiorelaylab.AudioRelayLab
         PRODUCT_NAME: AudioRelayLab
         TARGETED_DEVICE_FAMILY: '1'
-        MARKETING_VERSION: '1.6.1'
-        CURRENT_PROJECT_VERSION: '11'
+        MARKETING_VERSION: '1.6.2'
+        CURRENT_PROJECT_VERSION: '12'
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -69,6 +69,8 @@ targets:
       - sdk: CryptoKit.framework
       - sdk: Speech.framework
     scheme:
+      environmentVariables:
+        REVOICE_DOWNLOAD_FIXTURE_URL: https://127.0.0.1:8765
       testTargets:
         - AudioRelayLabTests
         - AudioRelayLabUITests

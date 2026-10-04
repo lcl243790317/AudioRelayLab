@@ -56,6 +56,22 @@ class CIEvidenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.parse_python_tests("Ran 5 tests in 0.01s\nFAILED (failures=1)\n")
 
+    def test_download_evidence_requires_actual_downloads_and_pending_retry(self):
+        report = dict(successfulDownloads=4, pendingResponses=1, longTermCredentialHeadersSeen=False,
+                      fixtureOnly=True, productionTLSChanged=False)
+        self.assertEqual(module.validate_download_fixture(report), report)
+        for failed in [{**report, "successfulDownloads": 0}, {**report, "pendingResponses": 0}]:
+            with self.assertRaises(ValueError):
+                module.validate_download_fixture(failed)
+
+    def test_download_evidence_rejects_long_term_keys_or_production_tls_changes(self):
+        report = dict(successfulDownloads=4, pendingResponses=1, longTermCredentialHeadersSeen=False,
+                      fixtureOnly=True, productionTLSChanged=False)
+        for failed in [{**report, "longTermCredentialHeadersSeen": True}, {**report, "productionTLSChanged": True},
+                       {**report, "fixtureOnly": False}]:
+            with self.assertRaises(ValueError):
+                module.validate_download_fixture(failed)
+
 
 if __name__ == "__main__":
     unittest.main()

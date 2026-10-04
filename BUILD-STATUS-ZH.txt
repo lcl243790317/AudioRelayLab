@@ -1,30 +1,17 @@
-AudioRelayLab 1.6.1 / build 11 — 签名测试版验证状态
+AudioRelayLab 1.6.2 / build 12 — 签名测试版验证状态
 
-本轮：JSON 文件与键盘修复、稳定选择页、持久云端任务、系统后台下载、配音命名和移除手机实时处理。
-GPU 与常规 CPU 服务 scaledown_window=75 秒，已部署并实测；准备/清理=10 秒，后台下载单次等待=120 秒。
-分支 feature/revoice-ios-1.6.0，main 合并等待用户签名验收。详见 REVOICE-1.6.1-ZH.md 与 REVOICE-1.6.1-TEST-REPORT-ZH.md。
+本轮：下载暂存及前台取回修复、最新参数冻结、旧任务与草稿分离、首屏与大字体布局优化。
+Modal 模型/参考/snapshot 不变，GPU 与常规 CPU scaledown_window=75 秒。
+分支 feature/revoice-ios-1.6.0；main 合并等待用户签名验收。详见 REVOICE-1.6.2-ZH.md。
 
-本轮真实 CI 证据：
-- 源码提交：a1c47fdf3f5eb5aa1d4b6db75f99a53697815fc7
-- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37183804352
-- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
-- 实际 iPhone Simulator XCTest：174 项，0 失败，TEST SUCCEEDED。
-- UI 测试：3 项通过；真实录屏见 build/ui-interaction.mp4。
-- Python 自检：87 项通过。
-- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
-- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1248459 字节。
-- SHA-256：c6fec1db0f2227d0bd5925bf4d32912c42094d9013cc1ddfae1fe67b442e4553
-- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
-- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
-- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
-- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
-- 手机文件提供者、键盘/列表体验、锁屏保存、设备端识别和重签名权限仍须真机验收。
+待本轮真实 CI 更新：
+- 新版本尚未完成真实 macOS 构建与模拟器验证；旧版结果不作为本轮通过证据。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1 的微信普通语音消息曾收录播放音频，约 4% App 音量有效。
 - 实时语音/电话中的历史实验结果不作为本轮配音或后台下载验收证据。
 
-本轮真实 Modal NVIDIA L4：
+既有 1.6.1 的真实 Modal NVIDIA L4（本轮未改云端）：
 - 75 秒配置下 CustomVoice → Base → CustomVoice 三条任务、提交连接断开后完成、请求去重和参数冲突均通过。
 - 空闲约 60 秒后复用同一 session，停止请求后确认缩到 0；查询和下载不唤醒 GPU。
 - WAV/SHA256/24,000 Hz/时长/声线身份验证通过，固定模型/参考/snapshot 沿用已有方案。
@@ -36,5 +23,5 @@ GPU 与常规 CPU 服务 scaledown_window=75 秒，已部署并实测；准备/�
 - 云端任务 24 小时取回；系统后台下载与保存时机由 iOS 决定。
 
 已移除手机实时处理及 Signalsmith/DSP/桥接；旧实时录音和元数据继续可读。
-凭据审计通过：编译提交的 172 个 tracked 文件及解压后 IPA 无真实密钥；连接 JSON 导入 Keychain。
+本轮源码与 IPA 凭据审计随新构建记录；连接 JSON 导入 Keychain。
 IPA 未包含 Apple 签名材料，需要用户使用有效证书重新签名。main 未合并，无正式 release。

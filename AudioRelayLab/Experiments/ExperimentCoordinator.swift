@@ -52,6 +52,9 @@ import UniformTypeIdentifiers
         if ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") {
             revoice.preparePreview(custom:ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot"))
         }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("voice-recovery-snapshot") { revoice.preparePreviewRecovery() }
+        #endif
         session = AudioSessionManager(logger: logger)
         preview = PreviewPlaybackController(session: session, logger: logger)
         rawRecorder = RawVoiceRecorder(session: session, logger: logger)
