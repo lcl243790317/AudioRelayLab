@@ -35,6 +35,12 @@ jobs:
             xcrun simctl list runtimes
             printf '源码提交：%s\n' "$GITHUB_SHA"
           } 2>&1 | tee build-environment.log
+      - name: 配置 Python 3.12 与 CPU 测试依赖
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: 安装锁定的 CPU 测试依赖
+        run: python3 -m pip install -r server/ci-requirements.txt 2>&1 | tee build-python-dependencies.log
       - name: 安装 XcodeGen 并静态检查
         run: |
           set -euo pipefail
@@ -99,6 +105,9 @@ jobs:
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-custom.png
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-local-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-local.png
@@ -163,6 +172,8 @@ jobs:
             VOICE-PROCESSING-RESEARCH-ZH.md
             VOICE-LAB-TEST-PROTOCOL-ZH.md
             AI-VOICE-GUIDE-ZH.md
+            REVOICE-1.6-ZH.md
+            MODAL-DEPLOYMENT-ZH.md
             AudioRelayLab/Resources/THIRD-PARTY-NOTICES.txt
             AudioRelayLab/VoiceLab/Vendor/DEPENDENCIES.json
       - name: 记录最终状态

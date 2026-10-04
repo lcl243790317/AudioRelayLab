@@ -1,0 +1,6 @@
+# Deployment tooling / CPU API. Verified latest stable Modal on 2026-10-03.
+modal==1.6.1
+fastapi==0.142.2
+httpx==0.28.1
+pydantic==2.13.5
+starlette==1.7.0

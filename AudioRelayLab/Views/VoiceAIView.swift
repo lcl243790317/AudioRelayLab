@@ -68,6 +68,7 @@ struct VoiceAIView: View {
                         Button("录制原声") {
                             ai.selectInput(nil)
                             useAppliedRange = false
+                            voice.rawRecordingPurpose = .computerConversion
                             voice.start(.rawRecording)
                         }.disabled(coordinator.controlsLocked || ai.connecting)
                         Button("从音频库选择") { showLibrary = true }

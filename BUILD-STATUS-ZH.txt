@@ -1,10 +1,20 @@
-AudioRelayLab 1.5.1 / build 9 — 本轮验证状态
+AudioRelayLab 1.6.0 / build 10 — 签名测试版验证状态
 
 项目根目录：D:\Codex projectless\Wechat delay playback app
 仓库：https://github.com/lcl243790317/AudioRelayLab
 Bundle ID：com.audiorelaylab.AudioRelayLab；仅 iPhone；最低 iOS 17.0。
 正式功能使用 iOS 18.1.1 已有公开 API；没有重新创建仓库或改写既有历史。
 
+1.6.0 本轮交付：
+- 默认 AI 重新配音；六个认可预设与独立九 speaker 自定义入口，instruction 默认为空。
+- 手机强制设备端最终语音识别，自定义先校对再生成；识别失败保留录音，允许手动输入。
+- 云端只接收文字与目标参数；同源 HTTPS 303、总等待 900 秒、取消丢弃迟到结果、完整 WAV/SHA/身份校验。
+- 输入 .3–60 秒；成品 >0 至 180 秒，真实时长保存、回听及混音；旧元数据和倒序库兼容。
+- GPU/CPU scaledown_window=120；snapshot 串行 A/B，达到两种模型中位数降低至少 30% 才启用。
+- 构建分支 feature/revoice-ios-1.6.0；无签名 IPA 由用户签名测试，main 合并和正式发布待验收。
+- 真机识别准确度、重签名权限、自然度、18.1.1 音频行为仍待用户实测；详见 REVOICE-1.6-ZH.md。
+
+以下 1.5.1 及更早部分为历史证据：
 1.5.1 本轮交付：
 - 本地音频库和录音与 AI 声音共用加入时间倒序；旧元数据回退到音频文件创建/修改时间，内置测试音在最后。
 - AI 从库直接选择人声；回听不替换当前播放选择；成品直接分享或用于延迟播放。
@@ -98,20 +108,10 @@ https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
 Simulator 麦克风可能为零输入，不证明真人声音或 18.1.1 硬件行为。
 选择器回调测试不等于真实 Files/iCloud/第三方 Provider 的屏幕点选测试。
 
-本轮真实 CI 证据：
-- 源码提交：5b4da891c4b6d8a04677e83db419e5bcf93d953b
-- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37151910477
-- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
-- 实际 iPhone Simulator XCTest：162 项，0 失败，TEST SUCCEEDED。
-- Python 自检：30 项通过。
-- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
-- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1029839 字节。
-- SHA-256：d093634b97617be24a6c5c44fdec1d94ef3dacaccf41203419183cb81482b2ab
-- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
-- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
-- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
-- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
-- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
+待本轮真实 CI 更新：
+- 1.6.0/build 10 尚未记录本轮成功构建，不能引用历史 IPA 作为新版本产物。
+- Python 目前 72 项回归通过；macOS 构建执行完整 Python 回归和所有 XCTest，实际数量由成功步骤记录。
+- 成功后此区块自动替换为提交号、Actions run、真实测试数量、环境、IPA 大小与 SHA-256。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。

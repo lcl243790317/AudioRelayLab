@@ -1,0 +1,25 @@
+{
+  "references": {
+    "scholar-design": {
+      "audioFile": "scholar-design-reference.wav",
+      "metadataFile": "scholar-design-reference.json",
+      "audioSHA256": "42adc31274f0f007f617999ab22dbd31acfa1ddf9953d4392e5c07cc47b1def8",
+      "metadataSHA256": "39b754fb7c2170c43d49894c2d3bef56c4f4f0f5aa523c99bcc25bf2c8c62234",
+      "textSHA256": "d23748b6e44b54382865ef2d98a864cb439b2dd673d0eb55513956b5b9cf05a3"
+    },
+    "cute-design": {
+      "audioFile": "cute-design-reference.wav",
+      "metadataFile": "cute-design-reference.json",
+      "audioSHA256": "09b5b756651a0f797781e3fb665f79a0aa15b06af76d8393180c095e23b4b86a",
+      "metadataSHA256": "1f5fb28cb553b65c7376551c20eea5272ba811f8c6645b6e5756b35f8cc9dd86",
+      "textSHA256": "d23748b6e44b54382865ef2d98a864cb439b2dd673d0eb55513956b5b9cf05a3"
+    },
+    "lazy-design": {
+      "audioFile": "lazy-design-reference.wav",
+      "metadataFile": "lazy-design-reference.json",
+      "audioSHA256": "de57a93e34086524cab5821faf81eb607a2c78c4451089227cb04b33b2c446e7",
+      "metadataSHA256": "c58d678087b6c06032a5f3cfd54aa5715f1c0f28913bc449949a1b4bc6a4b202",
+      "textSHA256": "d23748b6e44b54382865ef2d98a864cb439b2dd673d0eb55513956b5b9cf05a3"
+    }
+  }
+}

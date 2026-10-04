@@ -7,6 +7,7 @@ import os
 import time
 from pathlib import Path
 from revoice_contract import synthesis_arguments, text_for_synthesis, validate_input_duration, validate_output_duration
+from revoice_audio import MAX_NEW_TOKENS, validated_samples
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = ROOT / '.runtime/revoice'
@@ -85,16 +86,9 @@ def tts(args):
         before = time.perf_counter()
         arguments = synthesis_arguments(args.variant,task,prompt)
         print('Generating '+task['id']+' ('+str(len(arguments['text']))+' characters)',flush=True)
-        wavs, rate = method(**arguments,max_new_tokens=2300)
+        wavs, rate = method(**arguments,max_new_tokens=MAX_NEW_TOKENS)
         elapsed = time.perf_counter()-before
-        if not observed or any(count >= 2300 for count in observed):
-            raise RuntimeError('Generation reached the token limit; refusing an incomplete sentence')
-        samples = np.asarray(wavs[0],dtype=np.float32).reshape(-1)
-        validate_output_duration(len(samples)/rate)
-        if not np.isfinite(samples).all() or np.max(np.abs(samples)) < .0001:
-            raise RuntimeError('Model returned invalid or silent audio')
-        peak = float(np.max(np.abs(samples)))
-        if peak > .98: samples *= .98/peak
+        samples = validated_samples(wavs[0],int(rate),observed)
         output = output_root/(task['id']+'.wav')
         partial = output.with_suffix('.wav.part')
         sf.write(partial,samples,int(rate),format='WAV',subtype='PCM_16')

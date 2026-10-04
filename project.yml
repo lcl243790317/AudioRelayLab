@@ -35,8 +35,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.audiorelaylab.AudioRelayLab
         PRODUCT_NAME: AudioRelayLab
         TARGETED_DEVICE_FAMILY: '1'
-        MARKETING_VERSION: '1.5.1'
-        CURRENT_PROJECT_VERSION: '9'
+        MARKETING_VERSION: '1.6.0'
+        CURRENT_PROJECT_VERSION: '10'
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -57,7 +57,8 @@ targets:
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        NSMicrophoneUsageDescription: 使用麦克风录音或实时变声。只有主动点击生成 AI 声音时，所选录音才发送到你配置的电脑。C/D 实验也需要麦克风会话权限。
+        NSMicrophoneUsageDescription: 使用麦克风录音、语音输入或实时变声。重新配音先在手机识别文字；高级电脑变声会把所选录音发送到你配置的电脑。C/D 实验也需要麦克风会话权限。
+        NSSpeechRecognitionUsageDescription: 在手机设备端把录音识别成可编辑文字，再用你选择的声线重新配音。
         NSLocalNetworkUsageDescription: 连接你同一网络的电脑，在本机服务中转换所选人声。
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -72,6 +73,7 @@ targets:
       - sdk: CallKit.framework
       - sdk: Security.framework
       - sdk: CryptoKit.framework
+      - sdk: Speech.framework
     scheme:
       testTargets:
         - AudioRelayLabTests

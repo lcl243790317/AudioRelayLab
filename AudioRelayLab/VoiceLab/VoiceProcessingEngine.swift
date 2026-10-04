@@ -4,6 +4,9 @@ import Combine
 @MainActor final class VoiceProcessingEngine: ObservableObject {
     enum State: String { case idle, preparing, running, failed }
     enum Mode { case monitor, voiceRecording, mixedMonitor, mixedRecording, rawRecording }
+    enum RawRecordingPurpose { case computerConversion, revoice }
+    var rawRecordingPurpose:RawRecordingPurpose = .computerConversion
+    private var recordingPurpose:RawRecordingPurpose = .computerConversion
     @Published private(set) var state: State = .idle
     @Published var preset = VoicePreset.all[0]
     @Published var strength: Float = 1
@@ -72,7 +75,7 @@ import Combine
     func start(_ mode: Mode, music: AudioAsset? = nil, settings: AudioPlaybackSettings? = nil) {
         guard !isActive else { return }
         beforeStart?()
-        errorMessage = nil; self.mode = mode; state = .preparing
+        errorMessage = nil; self.mode = mode; recordingPurpose = rawRecordingPurpose; state = .preparing
         modeLabel = String(describing: mode)
         let generation = UUID(); token = generation
         restartedSameFormat = false
@@ -298,7 +301,7 @@ import Combine
             if let recordingWriter, saveRecording {
                 let recorded = try recordingWriter.finish()
                 let mixed = mode == .mixedRecording
-                let presetLabel = mode == .rawRecording ? "AI 原声" : (Set(parameterEvents.map { $0.preset.name }).count > 1 ? "多预设" : preset.name)
+                let presetLabel = mode == .rawRecording ? (recordingPurpose == .revoice ? "重新配音原声" : "AI 原声") : (Set(parameterEvents.map { $0.preset.name }).count > 1 ? "多预设" : preset.name)
                 let id = UUID()
                 let name = AudioNaming.generated(kind: mode == .rawRecording ? "原声" : (mixed ? "混音" : "手机变声"),
                     label: mode == .rawRecording ? nil : presetLabel, fileExtension: "caf", date: startedAt ?? Date(), id: id)

@@ -5,7 +5,7 @@ enum RecordedVoiceMixer {
         try volumes.validate()
         let voiceFile = try AVAudioFile(forReading:voiceURL)
         let seconds = Double(voiceFile.length)/voiceFile.processingFormat.sampleRate
-        guard seconds.isFinite, (AIAudioLimits.minimumSeconds...AIAudioLimits.maximumSeconds).contains(seconds) else { throw LabError.invalidFormat }
+        try RevoiceLimits.output(seconds)
         let musicCopy = try RateAdjustedAudio.copy(of:musicURL,startOffset:settings.startOffset,
             rate:settings.playbackRate,duration:seconds*Double(settings.playbackRate),endOffset:settings.endOffset)
         defer { try? FileManager.default.removeItem(at:musicCopy) }

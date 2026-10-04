@@ -1,0 +1,16 @@
+{
+  "round": "expanded-revoice-1.7B",
+  "reviewDate": "2026-10-03T22:57:52.239Z",
+  "decisions": {
+    "serena-original": "keep",
+    "vivian-original": "keep",
+    "ancient-dylan": "keep",
+    "scholar-design": "keep",
+    "cute-serena": "unreviewed",
+    "cute-design": "keep",
+    "lazy-vivian": "adjust",
+    "lazy-design": "unreviewed",
+    "cool-serena": "keep",
+    "magnetic-uncle": "reject"
+  }
+}

@@ -15,8 +15,9 @@ struct AudioFileMetadata: Codable, Identifiable {
     var formatDescription: String = "音频"
     var presetName: String? = nil
     var aiConversion: AIConversionMetadata? = nil
+    var revoice: RevoiceMetadata? = nil
     var addedAt: Date? = nil
-    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName, aiConversion, addedAt }
+    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName, aiConversion, revoice, addedAt }
 }
 
 extension AudioFileMetadata {
@@ -33,6 +34,7 @@ extension AudioFileMetadata {
         formatDescription = (try? c.decode(String.self, forKey: .formatDescription)) ?? URL(fileURLWithPath: sandboxFileName).pathExtension.uppercased()
         presetName = try? c.decode(String.self, forKey: .presetName)
         aiConversion = try? c.decode(AIConversionMetadata.self, forKey: .aiConversion)
+        revoice = try? c.decode(RevoiceMetadata.self, forKey: .revoice)
         addedAt = try? c.decode(Date.self, forKey: .addedAt)
     }
 }

@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from revoice_contract import text_for_synthesis
 from revoice_worker import digest
+from revoice_registry import PresetRegistry
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = ROOT/'.runtime/revoice'
@@ -34,7 +35,8 @@ def run_worker(arguments, log, timeout=1800):
 
 
 def evaluate(input_path, text, voice, output):
-    if voice not in ('Serena','Vivian','Designed'): raise ValueError('Unsupported audition voice')
+    registry = PresetRegistry()
+    preset = None if voice in ('Serena','Vivian','Designed') else registry.get(voice)
     output = Path(output).resolve()
     if output.suffix.lower() != '.wav': raise ValueError('Output must be a WAV file')
     if output.exists() or output.with_suffix('.json').exists(): raise ValueError('Existing results are never overwritten')
@@ -50,17 +52,22 @@ def evaluate(input_path, text, voice, output):
     text = text_for_synthesis(text)
     task = dict(id='result',text=text)
     cases = json.loads((ROOT/'revoice-audition-cases.json').read_text(encoding='utf-8-sig'))
-    variant = 'base' if voice=='Designed' else 'custom'
-    if variant=='custom':task.update(speaker=voice,instruction=cases['customInstruction'])
+    variant = preset.variant if preset else ('base' if voice=='Designed' else 'custom')
+    if preset: task.update(preset.task(text))
+    elif variant=='custom':task.update(speaker=voice,instruction=cases['customInstruction'])
     task_path = folder/'tts-task.json'
     task_path.write_text(json.dumps([task],ensure_ascii=False),encoding='utf-8')
     arguments = ['tts','--variant',variant,'--tasks',str(task_path),'--output',str(folder)]
     if variant=='base':
-        reference = ROOT.parent/'dist/revoice/designed-reference.wav'
-        reference_metadata = json.loads(reference.with_suffix('.json').read_text(encoding='utf-8'))
-        if reference_metadata['variant']!='design' or digest(reference)!=reference_metadata['sha256']:
-            raise ValueError('The fixed designed target reference has changed')
-        arguments += ['--reference',str(reference),'--reference-text',reference_metadata['text']]
+        if preset:
+            reference, reference_text = registry.verify_reference(preset.reference_id,ROOT.parent/'dist/revoice-expanded')
+        else:
+            reference = ROOT.parent/'dist/revoice/designed-reference.wav'
+            reference_metadata = json.loads(reference.with_suffix('.json').read_text(encoding='utf-8'))
+            if reference_metadata['variant']!='design' or digest(reference)!=reference_metadata['sha256']:
+                raise ValueError('The fixed designed target reference has changed')
+            reference_text = reference_metadata['text']
+        arguments += ['--reference',str(reference),'--reference-text',reference_text]
     print('配音中：'+voice+'（只传文字和目标声线）',flush=True)
     run_worker(arguments,folder/'tts.log')
     report = json.loads((folder/'result.json').read_text(encoding='utf-8'))
@@ -94,7 +101,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     source=parser.add_mutually_exclusive_group(required=True)
     source.add_argument('--input');source.add_argument('--text')
-    parser.add_argument('--voice',choices=('Serena','Vivian','Designed'),required=True)
+    parser.add_argument('--voice',required=True,help='Serena / Vivian / Designed, or a current registry preset ID')
     parser.add_argument('--output',required=True)
     args=parser.parse_args()
     evaluate(args.input,args.text,args.voice,args.output)

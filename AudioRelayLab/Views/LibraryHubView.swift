@@ -24,7 +24,7 @@ struct LibraryHubView: View {
                         Label("诊断与日志",systemImage:"doc.text")
                     }
                 }
-                PaperCaption("AudioRelayLab · \(version)\n手机实时处理与电脑 AI 转换，可在同一套播放实验中回听。")
+                PaperCaption("AudioRelayLab · \(version)\nAI 重新配音、手机实时处理与电脑变声，可以在同一套播放实验中回听。")
             }.navigationTitle("资料").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() } }
         }
@@ -66,6 +66,10 @@ struct LocalAudioLibraryView: View {
                         }.disabled(locked)
                         if let conversion = asset.aiConversion {
                             PaperCaption("\(conversion.voiceName) · \(conversion.modeTitle)")
+                        }
+                        if let revoice = asset.revoice {
+                            PaperCaption("AI 重新配音 · \(revoice.generationMode == "custom" ? "自定义" : "固定预设")")
+                            DisclosureGroup("配音文字") { Text(revoice.synthesisText).font(.callout).textSelection(.enabled) }
                         }
                     }.padding(.vertical,8)
                         .swipeActions(edge:.trailing,allowsFullSwipe:false) {

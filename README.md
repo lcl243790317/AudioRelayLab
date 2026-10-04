@@ -1,11 +1,11 @@
 # AudioRelayLab 音频接力实验室
 
-当前交付：**1.5.1 / build 9**。音频库按加入时间最新在前；电脑 AI 可直接从库选择原声，四种技术模式在高级转换设置中；手机详细参数在高级调音中。回听只试听，点击“使用”才改变当前播放音频；首页“开始延迟播放”一次完成准备和倒计时。起止范围仍须点击“应用这个播放设置”后用于正式播放；AI 从库选择默认使用全段，可展开“使用音频页的区间”沿用已应用范围。
+当前测试版本：**1.6.0 / build 10**。默认入口为“AI 重新配音”，提供六个已认可预设和九个 speaker 的自定义配音；录音在手机设备端识别，云端只收到文字及声线参数。旧电脑变声保留在高级入口，手机实时处理继续可用。
 
-安装包：`dist/AudioRelayLab-1.5.1-unsigned.ipa`，需要使用自己的证书重新签名。162 项 XCTest / 30 项 Python 和真实 iPhoneOS Release 已通过，见 `BUILD-STATUS-ZH.txt`。新声线是独立候选试听，尚未加入正式服务。
+本轮从 `feature/revoice-ios-1.6.0` 构建无签名 IPA，签名真机验收后再合并 main。连接导入与验收说明见 [REVOICE-1.6-ZH.md](REVOICE-1.6-ZH.md)，实际编译和测试证据见 `BUILD-STATUS-ZH.txt`。1.5.1 的 162 XCTest / 30 Python 为历史证据，不能代替本轮结果。
 
 
-自然重新配音：原声只用于识别，文字交给 Qwen3-TTS 1.7B 重新说。用户已认可 Serena、Vivian，拒绝首轮普通设计女声；新增古风小生、可爱、慵懒等 8 组候选，独立试听后再接入 App，当前仍为 1.5.1。见 [扩展声线试听与复现](REVOICE-PALETTE-ZH.md) 和 [首轮流程验证](REVOICE-RESEARCH-ZH.md)。
+六个正式声线使用原 instruction 和固定参考，未认可候选继续保留在本地试听而不接入云端正式列表。支持编辑识别文字后重配音、独立 instruction、成品最长 180 秒及完整混音。Modal 双层认证、固定模型/资产哈希和单一 L4 池继续保留，空闲窗口改为 120 秒；snapshot 实测与部署状态见 [MODAL-DEPLOYMENT-ZH.md](MODAL-DEPLOYMENT-ZH.md)。
 
 现有 iPhone 项目的增量版本，最低 iOS 17.0，功能边界为 iOS 18.1.1；保留 SwiftUI、两套播放器、实验历史、诊断、XcodeGen 和原有 Git 历史。
 

@@ -4,6 +4,7 @@ struct VoiceLabView: View {
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var voice: VoiceProcessingEngine
     @ObservedObject var ai: AIConversionController
+    @ObservedObject var revoice: RevoiceController
     @State private var processor = ProcessInfo.processInfo.arguments.contains("voice-local-snapshot") ? 1 : 0
     @State private var mixer = false
     @State private var showConnection = false
@@ -12,17 +13,22 @@ struct VoiceLabView: View {
     @State private var calibration = ""
     @State private var calibrating = false
     init(coordinator:ExperimentCoordinator) {
-        self.coordinator = coordinator; voice = coordinator.voiceLab; ai = coordinator.aiVoice
+        self.coordinator = coordinator; voice = coordinator.voiceLab; ai = coordinator.aiVoice; revoice = coordinator.revoice
     }
     var body: some View {
         NavigationStack {
             PaperScreen {
                 PaperHeader(title:"声音工坊",subtitle:"让声音，也有自己的模样。",symbol:"mic")
                 Picker("处理方式",selection:$processor) {
-                    Text("电脑 AI").tag(0)
+                    Text("AI 重新配音").tag(0)
                     Text("手机实时").tag(1)
-                }.pickerStyle(.segmented).disabled(voice.isActive || ai.busy)
-                if processor == 0 { VoiceAIView(coordinator:coordinator, showConnection: { showConnection = true }) } else { localSection }
+                }.pickerStyle(.segmented).disabled(voice.isActive || ai.busy || revoice.busy)
+                if processor == 0 {
+                    VoiceRevoiceView(coordinator:coordinator)
+                    DisclosureGroup("高级：电脑变声") {
+                        VoiceAIView(coordinator:coordinator, showConnection:{ showConnection = true })
+                    }.disabled(revoice.busy)
+                } else { localSection }
                 PaperCard {
                     NavigationLink("录音与已生成的声音") { VoiceRecordLibraryView(coordinator:coordinator) }
                 }
