@@ -1,0 +1,51 @@
+[
+  {
+    "timestamp": "2026-10-04 02:27:27.032153+00:00",
+    "source": "system",
+    "object_id": "ap-j1iV5hEnYCBKyz5f6uO6TP",
+    "context_ids": "['fu-Z8JjipXraFNnmOCRRq3cCx', 'ta-01M42BSM39BZTVM0QAMP8CBSGR']",
+    "message": "Creating GPU memory snapshot for Function."
+  },
+  {
+    "timestamp": "2026-10-04 02:30:51.131369+00:00",
+    "source": "system",
+    "object_id": "ap-j1iV5hEnYCBKyz5f6uO6TP",
+    "context_ids": "['fu-Z8JjipXraFNnmOCRRq3cCx', 'ta-01M42BSM39BZTVM0QAMP8CBSGR']",
+    "message": "Snapshot created. Restoring Function from memory snapshot."
+  },
+  {
+    "timestamp": "2026-10-04 02:30:51.351534+00:00",
+    "source": "system",
+    "object_id": "ap-j1iV5hEnYCBKyz5f6uO6TP",
+    "context_ids": "['fu-Z8JjipXraFNnmOCRRq3cCx', 'ta-01M42BSM39BZTVM0QAMP8CBSGR']",
+    "message": "Restoring Function from memory snapshot."
+  },
+  {
+    "timestamp": "2026-10-04 02:34:07.685789+00:00",
+    "source": "system",
+    "object_id": "ap-j1iV5hEnYCBKyz5f6uO6TP",
+    "context_ids": "['fu-Z8JjipXraFNnmOCRRq3cCx', 'ta-01M42C5V1MSC7N4RM7SHJAZ1MR']",
+    "message": "Restoring Function from memory snapshot."
+  },
+  {
+    "timestamp": "2026-10-04 02:36:47.179907+00:00",
+    "source": "system",
+    "object_id": "ap-j1iV5hEnYCBKyz5f6uO6TP",
+    "context_ids": "['fu-Z8JjipXraFNnmOCRRq3cCx', 'ta-01M42CAPJRJS1Z4SQF3176VF2R']",
+    "message": "Restoring Function from memory snapshot."
+  },
+  {
+    "timestamp": "2026-10-04 02:39:31.253918+00:00",
+    "source": "system",
+    "object_id": "ap-j1iV5hEnYCBKyz5f6uO6TP",
+    "context_ids": "['fu-Z8JjipXraFNnmOCRRq3cCx', 'ta-01M42CFQE6665RC3QY8RQBYVRR']",
+    "message": "Restoring Function from memory snapshot."
+  },
+  {
+    "timestamp": "2026-10-04 02:42:50.779437+00:00",
+    "source": "system",
+    "object_id": "ap-j1iV5hEnYCBKyz5f6uO6TP",
+    "context_ids": "['fu-Z8JjipXraFNnmOCRRq3cCx', 'ta-01M42CNTG3NJJ2D4F11BJ15YWR']",
+    "message": "Restoring Function from memory snapshot."
+  }
+]

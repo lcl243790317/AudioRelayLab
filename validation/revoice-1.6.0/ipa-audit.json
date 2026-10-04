@@ -1,0 +1,21 @@
+{
+  "CFBundleIdentifier": "com.audiorelaylab.AudioRelayLab",
+  "CFBundleExecutable": "AudioRelayLab",
+  "MinimumOSVersion": "17.0",
+  "UIBackgroundModes": [
+    "audio"
+  ],
+  "platform": "iPhoneOS",
+  "architecture": "arm64",
+  "unsigned": true,
+  "sha256": "0dfbd163cb66b766ad46b363a8050096aed530f785e9f0b2e92ce51599f3a4cf",
+  "bytes": 1211400,
+  "version": "1.6.0",
+  "build": "10",
+  "sourceCommit": "8d80b9b6ffc8f5556a1902206b3059f3af5c471b",
+  "xctestCount": 179,
+  "pythonTestCount": 72,
+  "swiftWarningCount": 0,
+  "privateCredentialScan": "passed",
+  "speechPermissionDescription": true
+}

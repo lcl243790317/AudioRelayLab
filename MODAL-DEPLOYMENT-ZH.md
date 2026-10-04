@@ -6,9 +6,11 @@ App 从 `feature/revoice-ios-1.6.0` 接入云端；手机强制设备端识别�
 
 GPU worker 与常规 CPU API 的空闲窗口为 120 秒；模型准备保持 10 秒。继续单一 L4 池、min=0/max=1/buffer=0、生成并发 1。模型切换先释放上一模型并把缓存参考 prompt 移至 CPU，再核验 Volume 文件哈希并加载新模型。
 
-Snapshot 是可关闭的部署开关：`setup_modal_cloud.py --gpu-snapshot on|off`，默认 off。捕获前核验依赖与资产、计算两组固定参考、释放 Base、加载并预热 CustomVoice，始终只有一个模型驻留；恢复重置 session ID、生成计数及运行状态。A/B 串行部署到同一 App，最多 16 次冷启动请求；只有两种模型的中位数均降低至少 30%，且恢复/切换/输出检查通过，才选择 on。报告保存于 `dist/modal-snapshot-1.6.0/snapshot-report.json`，当前测试进行中，尚未宣称改善。
+Snapshot 是可关闭的部署开关：`setup_modal_cloud.py --gpu-snapshot on|off`，默认 off。捕获前核验依赖与资产、计算两组固定参考、释放 Base、加载并预热 CustomVoice，始终只有一个模型驻留；恢复重置 session ID、生成计数及运行状态。A/B 串行部署到同一 App，最多 16 次冷启动请求；只有两种模型的中位数均降低至少 30%，且恢复/切换/输出检查通过，才选择 on。报告保存于 `dist/modal-snapshot-1.6.0/snapshot-report.json`，真实 A/B 已完成，最终启用 snapshot：CustomVoice 中位数降低 63.3%，Base 降低 48.4%。完整捕获/恢复、显存和费用证据见 [SNAPSHOT-REPORT-ZH.md](SNAPSHOT-REPORT-ZH.md)。
 
-本轮 Python 72 项回归通过，实际 iOS 构建及最终 GPU 结果另行记录。源码与 IPA 不包含凭据；连接 JSON 由用户导入手机 Keychain。安装与使用见 [REVOICE-1.6-ZH.md](REVOICE-1.6-ZH.md)。
+当前日常重部署使用 `setup_modal_cloud.py --gpu-snapshot on`，需要关闭时明确指定 `off`。不传开关的引导默认为 off。
+
+本轮 Python 72 项回归与实际模拟器 179 项 XCTest 全部通过，iPhoneOS Release 及无签名 build 10 已生成，Swift 警告 0；六个预设、九个 speaker 的真实 L4 验证和最终缩零通过。源码与 IPA 不包含凭据；连接 JSON 由用户导入手机 Keychain。安装与使用见 [REVOICE-1.6-ZH.md](REVOICE-1.6-ZH.md)。
 
 ## 上一轮独立后端的历史验收记录
 

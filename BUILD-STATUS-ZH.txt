@@ -108,10 +108,20 @@ https://github.com/lcl243790317/AudioRelayLab/actions/runs/37091342051
 Simulator 麦克风可能为零输入，不证明真人声音或 18.1.1 硬件行为。
 选择器回调测试不等于真实 Files/iCloud/第三方 Provider 的屏幕点选测试。
 
-待本轮真实 CI 更新：
-- 1.6.0/build 10 尚未记录本轮成功构建，不能引用历史 IPA 作为新版本产物。
-- Python 目前 72 项回归通过；macOS 构建执行完整 Python 回归和所有 XCTest，实际数量由成功步骤记录。
-- 成功后此区块自动替换为提交号、Actions run、真实测试数量、环境、IPA 大小与 SHA-256。
+本轮真实 CI 证据：
+- 源码提交：8d80b9b6ffc8f5556a1902206b3059f3af5c471b
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37171526393
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：179 项，0 失败，TEST SUCCEEDED。
+- Python 自检：72 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1211400 字节。
+- SHA-256：0dfbd163cb66b766ad46b363a8050096aed530f785e9f0b2e92ce51599f3a4cf
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
 - iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。

@@ -1,0 +1,36 @@
+{
+  "cloudReferenceHashesVerified": [
+    "scholar-design",
+    "cute-design"
+  ],
+  "productionLogPrivacy": {
+    "credentialFound": false,
+    "fullTextOrReferenceFound": false
+  },
+  "finalPool": {
+    "backlog": 0,
+    "num_total_runners": 0,
+    "num_running_inputs": 0,
+    "input_headroom": 0
+  },
+  "billingFinal": {
+    "start": "2026-10-01 00:00:00+00:00",
+    "end": "2026-11-01 00:00:00+00:00",
+    "metered_cost": "1.04108801",
+    "metered_cost_breakdown": {
+      "LLM Tokens": "0E-8",
+      "Ephemeral Apps": "0.00774925",
+      "Volumes": "0E-8",
+      "Deployed Apps": "1.03139868"
+    },
+    "adjustments": {
+      "Credits": "-1.04000000",
+      "Free Storage": "-0E-8",
+      "Network Egress Allowance": "-0.00108801",
+      "Plan Cost": "0E-8",
+      "Reservation Adjustment": "-0E-8"
+    },
+    "billed_cost": "0E-8"
+  },
+  "snapshotEnabled": true
+}

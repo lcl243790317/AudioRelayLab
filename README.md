@@ -4,6 +4,8 @@
 
 本轮从 `feature/revoice-ios-1.6.0` 构建无签名 IPA，签名真机验收后再合并 main。连接导入与验收说明见 [REVOICE-1.6-ZH.md](REVOICE-1.6-ZH.md)，实际编译和测试证据见 `BUILD-STATUS-ZH.txt`。1.5.1 的 162 XCTest / 30 Python 为历史证据，不能代替本轮结果。
 
+实际交付：`dist/AudioRelayLab-1.6.0-unsigned.ipa`；179 XCTest / 72 Python 通过、Swift 警告 0。GPU snapshot 达标启用，实测见 [snapshot 与完整验收报告](SNAPSHOT-REPORT-ZH.md)。
+
 
 六个正式声线使用原 instruction 和固定参考，未认可候选继续保留在本地试听而不接入云端正式列表。支持编辑识别文字后重配音、独立 instruction、成品最长 180 秒及完整混音。Modal 双层认证、固定模型/资产哈希和单一 L4 池继续保留，空闲窗口改为 120 秒；snapshot 实测与部署状态见 [MODAL-DEPLOYMENT-ZH.md](MODAL-DEPLOYMENT-ZH.md)。
 
