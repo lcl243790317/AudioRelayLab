@@ -133,11 +133,31 @@ class JobAPITests(unittest.TestCase):
             self.assertEqual(record['payload']['instruction'],self.body['instruction'])
             self.assertEqual(set(record['payload']),{'mode','voice','variant','speaker','text','instruction','revision'})
             self.jobs.release_active(record['id'])
-    def test_preset_uses_registry_instruction_and_never_accepts_override(self):
+    def test_preset_instruction_default_override_empty_and_deduplication(self):
         body=dict(requestID=str(uuid.uuid4()),mode='preset',voice='cool-serena',text='今天好吗？')
-        bad=self.submit(body|{'instruction':'override'}); self.assertEqual(bad.status_code,400); self.assertFalse(self.enqueued)
         response=self.submit(body); self.assertEqual(response.status_code,202)
-        self.assertTrue(self.jobs.get(response.json()['id'])['payload']['instruction'])
+        record=self.jobs.get(response.json()['id']); default=record['payload']['instruction']
+        self.assertTrue(default)
+        self.assertEqual(self.submit(body|{'instruction':default}).status_code,202)
+        enqueue_count=len(self.enqueued)
+        self.assertEqual(enqueue_count,2) # Retried dispatch still claims this ID only once.
+        self.assertEqual(self.submit(body|{'instruction':''}).status_code,409)
+        self.assertEqual(len(self.enqueued),enqueue_count)
+        self.jobs.release_active(record['id'])
+        for instruction in ('  慵懒自然。\n不要夹嗓。  ',''):
+            response=self.submit(body|dict(requestID=str(uuid.uuid4()),instruction=instruction))
+            self.assertEqual(response.status_code,202)
+            record=self.jobs.get(response.json()['id'])
+            self.assertEqual(record['payload']['instruction'],instruction)
+            self.assertEqual(record['payload']['voice'],'cool-serena')
+            self.assertEqual(record['payload']['mode'],'preset')
+            self.jobs.release_active(record['id'])
+    def test_fixed_reference_and_invalid_preset_instruction_never_enqueue(self):
+        body=dict(requestID=str(uuid.uuid4()),mode='preset',voice='serena-original',text='今天好吗？')
+        for values in ({'voice':'scholar-design','instruction':''},{'voice':'cute-design','instruction':'自然'},
+                       {'instruction':'字'*501},{'instruction':None},{'instruction':12},{'instruction':'bad\x00'}):
+            self.assertEqual(self.submit(body|values).status_code,400)
+        self.assertFalse(self.enqueued)
     def test_invalid_and_unauthenticated_requests_never_enqueue(self):
         for body in [self.body|{'speaker':'unknown'},self.body|{'text':'x'*1001},self.body|{'instruction':'x'*501},
                      self.body|{'requestID':'bad'},self.body|{'audio':'unwanted'},self.body|{'mode':'bad'},self.body|{'text':''}]:

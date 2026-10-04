@@ -33,6 +33,55 @@ private final class RevoiceDownloadProbe:NSObject,URLSessionDownloadDelegate,@un
 }
 
 final class RevoiceJobTests:XCTestCase {
+    @MainActor func testForegroundRetrievalSucceedsWithoutNativeTemporaryFileOrTransientError() async throws {
+        let store = try store(), job = try fixtureJob(); try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        var failures:[String] = []; manager.onChange = { job,_,_ in if let error = job.lastError { failures.append(error) } }
+        manager.setForeground(true); await manager.restore()
+        for _ in 0..<500 where store.job(job.id)?.phase != .completed { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(job.id)?.phase,.completed); XCTAssertTrue(failures.isEmpty)
+        XCTAssertNil(store.job(job.id)?.lastTransferFailure)
+        XCTAssertNotNil(store.job(job.id)?.transferID); XCTAssertEqual(store.job(job.id)?.attempts,1)
+        let asset = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == job.id })
+        defer { try? AudioFileManager.removeAudio(asset) }
+    }
+    @MainActor func testForegroundBackgroundHandoffKeepsJobIDAndSavesOnce() async throws {
+        let store = try store()
+        let id = try XCTUnwrap(UUID(uuidString:"20200000"+String(UUID().uuidString.dropFirst(8))))
+        let job = try fixtureJob(id:id); try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        var saved = 0,errors:[String] = []
+        manager.onChange = { value,_,asset in if asset != nil { saved += 1 }; if let error = value.lastError { errors.append(error) } }
+        manager.setForeground(true); await manager.restore()
+        for _ in 0..<200 where store.job(job.id)?.attempts != 2 { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(job.id)?.attempts,2)
+        manager.setForeground(false); await manager.restore(retrySuspended:false)
+        manager.setForeground(true); await manager.restore()
+        for _ in 0..<500 where store.job(job.id)?.phase != .completed { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(job.id)?.phase,.completed); XCTAssertEqual(store.job(job.id)?.context.id,job.id)
+        XCTAssertEqual(saved,1); XCTAssertTrue(errors.isEmpty)
+        let asset = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == job.id })
+        defer { try? AudioFileManager.removeAudio(asset) }
+    }
+    @MainActor func testLateTransportReceiptAndCancellationCannotAffectNewTransport() async throws {
+        let store = try store(); var job = try pending(context()); job.transferID = UUID(); try store.save(job)
+        let old = try envelope(store,job),oldToken = try XCTUnwrap(job.transferID)
+        job.transferID = UUID(); try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        manager.process(old)
+        let session = URLSession(configuration:.ephemeral); defer { session.invalidateAndCancel() }
+        let task = session.dataTask(with:try XCTUnwrap(job.reply?.downloadURL))
+        task.taskDescription = job.id.uuidString+"|"+oldToken.uuidString
+        manager.urlSession(session,task:task,didCompleteWithError:URLError(.cancelled))
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(store.job(job.id)?.phase,.downloading); XCTAssertNil(store.job(job.id)?.lastError)
+        XCTAssertEqual(store.job(job.id)?.transferID,job.transferID)
+        XCTAssertFalse(try AudioFileManager.listLocalAudio().contains { $0.id == job.id })
+        XCTAssertTrue(store.envelopes().isEmpty)
+    }
     private func context(id:UUID = UUID(),seconds:Double = 1,instruction:String = "  轻声自然  ") -> RevoiceSaveContext {
         .init(id:id,createdAt:Date(),choice:.custom(speaker:"Serena",instruction:instruction),
             voiceName:"Serena",instruction:instruction,fixedReferenceID:nil,recognizedText:"嗯，我，我知道。",
@@ -146,8 +195,11 @@ final class RevoiceJobTests:XCTestCase {
         XCTAssertTrue(store.envelopes().isEmpty)
     }
     @MainActor func testRealDownloadFailureRecoversRetainedJobThenGeneratesFreshJob() async throws {
-        let store = try store(), job = try fixtureJob(); try store.save(job)
+        let store = try store(), job = try fixtureJob()
         let initial = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        initial.setForeground(false)
+        await initial.restore(retrySuspended:false)
+        try store.save(job)
         let probe = RevoiceDownloadProbe(manager:initial,removeBorrowedFile:true)
         let session = URLSession(configuration:.ephemeral,delegate:probe,delegateQueue:nil)
         defer { session.invalidateAndCancel(); initial.invalidateForTesting() }
@@ -156,7 +208,8 @@ final class RevoiceJobTests:XCTestCase {
         for _ in 0..<500 where store.job(job.id)?.phase == .downloading && probe.errorCode == nil {
             try await Task.sleep(for:.milliseconds(20))
         }
-        XCTAssertNil(probe.errorCode); XCTAssertEqual(store.job(job.id)?.phase,.suspended)
+        XCTAssertNil(probe.errorCode); XCTAssertEqual(store.job(job.id)?.phase,.waitingForForeground)
+        XCTAssertNil(store.job(job.id)?.lastError)
         XCTAssertEqual(store.job(job.id)?.lastTransferFailure?.operation,"read-download")
         XCTAssertFalse(try AudioFileManager.listLocalAudio().contains { $0.id == job.id })
         initial.invalidateForTesting()
@@ -285,7 +338,7 @@ final class RevoiceJobTests:XCTestCase {
         let response = try XCTUnwrap(HTTPURLResponse(url:url,statusCode:200,httpVersion:nil,headerFields:headers))
         let file = store.directory.appendingPathComponent(UUID().uuidString+".tmp")
         try (broken ? Data("bad".utf8) : bytes).write(to:file)
-        return try store.stage(file,id:job.id,response:response)
+        return try store.stage(file,id:job.id,response:response,transferID:job.transferID)
     }
     @MainActor func testLateResultAfterStopIsDiscardedAcrossManagerRestart() async throws {
         let store = try store(); var job = try pending(context()); try store.save(job)

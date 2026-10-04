@@ -61,7 +61,8 @@ def job_service(mounted=False):
 async def execute_job(identity):
     async def invoke(payload,request_id):
         custom = {'speaker':payload['speaker'],'instruction':payload['instruction']} if payload['mode']=='custom' else None
-        return await QwenWorker().synthesize.remote.aio(payload['voice'],payload['text'],request_id,custom=custom)
+        instruction = payload['instruction'] if payload['mode']=='preset' and payload['variant']=='custom' else None
+        return await QwenWorker().synthesize.remote.aio(payload['voice'],payload['text'],request_id,custom=custom,instruction=instruction)
     return await job_service(mounted=True).execute(identity,invoke)
 
 
@@ -134,14 +135,14 @@ class QwenWorker:
                               initializationPeakAllocatedBytes=self.engine.initialization_peak)), flush=True)
 
     @modal.method()
-    def synthesize(self, voice, text, request_id, custom=None):
+    def synthesize(self, voice, text, request_id, custom=None, instruction=None):
         import logging
         try:
             if custom is not None:
-                if voice != 'custom':
+                if voice != 'custom' or instruction is not None:
                     raise ValueError('Custom route mismatch')
                 return self.engine.synthesize_custom(custom['speaker'], text, custom['instruction'], request_id)
-            return self.engine.synthesize(voice, text, request_id)
+            return self.engine.synthesize(voice, text, request_id, instruction=instruction)
         except Exception as error:
             self.engine.unload()
             logging.getLogger('audiorelaylab.gpu').warning(json.dumps(dict(requestID=request_id,
@@ -156,8 +157,8 @@ class QwenWorker:
 @modal.asgi_app(requires_proxy_auth=True)
 def api():
     from modal_api import create_api
-    async def invoke(voice, text, request_id):
-        return await QwenWorker().synthesize.remote.aio(voice, text, request_id)
+    async def invoke(voice, text, request_id, instruction=None):
+        return await QwenWorker().synthesize.remote.aio(voice, text, request_id, instruction=instruction)
     async def invoke_custom(speaker, text, instruction, request_id):
         return await QwenWorker().synthesize.remote.aio('custom', text, request_id,
                                                     custom={'speaker': speaker, 'instruction': instruction})

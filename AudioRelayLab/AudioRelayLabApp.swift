@@ -5,7 +5,7 @@ import SwiftUI
     @StateObject private var coordinator = ExperimentCoordinator()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appearance.nightMode") private var nightMode = false
-    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") ? 1 : 0
+    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") || ProcessInfo.processInfo.arguments.contains("mix-snapshot") ? 1 : 0
     init() {
         if ProcessInfo.processInfo.arguments.contains("night-snapshot") {
             UserDefaults.standard.set(true,forKey:"appearance.nightMode")

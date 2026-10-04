@@ -1,6 +1,35 @@
 import XCTest
 
 final class InteractionUITests: XCTestCase {
+    @MainActor func testIndependentMixWorksWithoutLatestRevoiceResult() {
+        let app = XCUIApplication(); app.launchArguments = ["mix-snapshot","mix-interaction-test","day-snapshot"]; app.launch()
+        let save = app.buttons["mix.save"]
+        XCTAssertTrue(save.waitForExistence(timeout:5)); XCTAssertFalse(save.isEnabled)
+        app.buttons["select.人声"].tap()
+        let voice = app.buttons.matching(NSPredicate(format:"identifier CONTAINS %@","16300000-0000-4000-8000-000000000013")).firstMatch
+        XCTAssertTrue(voice.waitForExistence(timeout:3)); voice.tap()
+        app.buttons["select.背景音乐"].tap()
+        let music = app.buttons.matching(NSPredicate(format:"identifier CONTAINS %@","00000000-0000-4000-8000-000000000001")).firstMatch
+        XCTAssertTrue(music.waitForExistence(timeout:3)); music.tap()
+        reveal(save,in:app); XCTAssertTrue(save.isEnabled); save.tap()
+        XCTAssertTrue(app.staticTexts["混音已保存到录音库"].waitForExistence(timeout:15))
+        reveal(app.buttons["分享成品"],in:app); XCTAssertTrue(app.buttons["用于延迟播放"].exists)
+        attach(app,"独立混音成品")
+    }
+    @MainActor func testPresetInstructionEditResetAndSwitchRestoreDefault() {
+        let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
+        let instruction = app.textFields["revoice.instruction"]
+        XCTAssertTrue(instruction.waitForExistence(timeout:5)); let original = instruction.value as? String
+        instruction.tap(); instruction.typeText(" relaxed"); app.buttons["keyboard.done"].tap()
+        XCTAssertTrue((instruction.value as? String ?? "").contains("relaxed"))
+        app.buttons["revoice.instruction.reset"].tap(); XCTAssertEqual(instruction.value as? String,original)
+        instruction.tap(); instruction.typeText(" temporary"); app.buttons["keyboard.done"].tap()
+        app.buttons["select.声线"].tap(); app.buttons["choice.vivian-original"].tap()
+        XCTAssertFalse((instruction.value as? String ?? "").contains("temporary"))
+        app.buttons["select.声线"].tap(); app.buttons["choice.serena-original"].tap()
+        XCTAssertEqual(instruction.value as? String,original); XCTAssertFalse(app.keyboards.firstMatch.exists)
+        attach(app,"预设指令可编辑与恢复默认")
+    }
     @MainActor func testLongMusicListKeepsScrollPositionWhileParentUpdates() {
         let app = XCUIApplication(); app.launchArguments = ["interaction-test"]; app.launch()
         app.buttons["select.背景音乐"].tap()

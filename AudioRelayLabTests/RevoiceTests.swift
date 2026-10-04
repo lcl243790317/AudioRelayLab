@@ -32,18 +32,19 @@ private final class RevoiceHTTPState: @unchecked Sendable {
     var failNext = false
     var redirect:String?
     var customSupported = true
+    var presetInstructionSupported = false
     var asyncJobs = false
     var failAfterSubmission = false
     var methods:[String] = []
     var responseStatus = 200
     var responseDelay = 0.0
     var invalidVoices = false
-    func reset() { lock.lock();defer{lock.unlock()};data = RevoiceTestAudio.wav(seconds:1);submissions=[];failNext=false;redirect=nil;customSupported=true;methods=[];responseStatus=200;responseDelay=0;asyncJobs=false;failAfterSubmission=false;invalidVoices=false }
+    func reset() { lock.lock();defer{lock.unlock()};data = RevoiceTestAudio.wav(seconds:1);submissions=[];failNext=false;redirect=nil;customSupported=true;presetInstructionSupported=false;methods=[];responseStatus=200;responseDelay=0;asyncJobs=false;failAfterSubmission=false;invalidVoices=false }
     func respond(_ request:URLRequest) throws -> (Data,Int,[String:String]) {
         lock.lock();defer{lock.unlock()}
         let path = request.url?.path ?? ""
         if path == "/v1/health" {
-            return (try JSONSerialization.data(withJSONObject:["status":"ok","capabilities":["customTTS":customSupported,"textOnly":true,"asyncJobs":asyncJobs],"jobDownloadOrigin":"https://unit-download.modal.run"]),200,[:])
+            return (try JSONSerialization.data(withJSONObject:["status":"ok","capabilities":["customTTS":customSupported,"textOnly":true,"asyncJobs":asyncJobs,"presetInstruction":presetInstructionSupported],"jobDownloadOrigin":"https://unit-download.modal.run"]),200,[:])
         }
         if path == "/v1/voices" {
             if invalidVoices { return (Data("{\"voices\":[]}".utf8),200,[:]) }
@@ -86,7 +87,7 @@ private final class RevoiceHTTPState: @unchecked Sendable {
 
 private extension CloudRevoiceClient {
     struct VoicesForTests:Encodable {
-        let voices:[RevoiceVoice] = [.init(id:"serena-original",displayName:"Serena",variant:"custom"),.init(id:"scholar-design",displayName:"书生",variant:"base")]
+        let voices:[RevoiceVoice] = [.init(id:"serena-original",displayName:"Serena",variant:"custom",instruction:"默认自然表达",supportsInstruction:true),.init(id:"scholar-design",displayName:"书生",variant:"base",supportsInstruction:false)]
     }
 }
 
@@ -126,6 +127,65 @@ private final class RevoiceHTTPProtocol:URLProtocol,@unchecked Sendable {
 }
 
 final class RevoiceTests:XCTestCase {
+    func testLegacyPresetChoiceDecodesWithoutInstructionAndNewOverrideRoundTrips() throws {
+        let old = Data("{\"preset\":{\"id\":\"serena-original\",\"variant\":\"custom\"}}".utf8)
+        XCTAssertEqual(try JSONDecoder().decode(RevoiceChoice.self,from:old),.preset(id:"serena-original",variant:"custom"))
+        for value in ["","  原样指令。\n放松  "] {
+            let choice = RevoiceChoice.preset(id:"serena-original",variant:"custom",instruction:value)
+            XCTAssertEqual(try JSONDecoder().decode(RevoiceChoice.self,from:JSONEncoder().encode(choice)),choice)
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with:choice.body(text:"你好。")) as? [String:String])
+            XCTAssertEqual(body["instruction"],value); XCTAssertEqual(body["voice"],"serena-original")
+        }
+        XCTAssertThrowsError(try RevoiceChoice.preset(id:"scholar-design",variant:"base",instruction:"").body(text:"你好。"))
+    }
+    @MainActor func testPresetInstructionResetsOnSwitchButConnectionRefreshKeepsDraft() async throws {
+        try await exercise { ai,_,_ in
+            RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
+            XCTAssertTrue(ai.canEditPresetInstruction); XCTAssertEqual(ai.presetInstruction,"默认自然表达")
+            ai.presetInstruction = "  新表达。  "; ai.instruction = "独立自定义指令"
+            ai.connect(); try await self.settle(ai); XCTAssertEqual(ai.presetInstruction,"  新表达。  ")
+            ai.selectedPreset = "scholar-design"; XCTAssertFalse(ai.canEditPresetInstruction)
+            ai.selectedPreset = "serena-original"; XCTAssertEqual(ai.presetInstruction,"默认自然表达")
+            ai.presetInstruction = "临时编辑"; ai.kind = .custom; ai.kind = .preset
+            XCTAssertEqual(ai.presetInstruction,"默认自然表达"); XCTAssertEqual(ai.instruction,"独立自定义指令")
+            ai.presetInstruction = "编辑"; ai.resetPresetInstruction(); XCTAssertEqual(ai.presetInstruction,"默认自然表达")
+        }
+    }
+    @MainActor func testPresetOverrideUsesLatestDraftAndEmptyClearsDefaultWithoutRecognition() async throws {
+        try await exercise { ai,recognizer,_ in
+            RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
+            for instruction in ["  慵懒、自然。  ",""] {
+                ai.presetInstruction = instruction; ai.text = "嗯，我，我刚刚更新了文字。"
+                ai.generate(); try await self.settle(ai)
+                let body = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
+                XCTAssertEqual(body,["voice":"serena-original","text":ai.text,"instruction":instruction])
+                XCTAssertEqual(ai.result?.revoice?.instruction,instruction)
+                XCTAssertEqual(ai.result?.revoice?.voiceID,"serena-original"); XCTAssertEqual(recognizer.calls,0)
+            }
+        }
+    }
+    @MainActor func testOldServerKeepsDefaultPresetAndNeverSendsUnsupportedOverride() async throws {
+        try await exercise { ai,_,_ in
+            XCTAssertFalse(ai.canEditPresetInstruction); ai.text = "你好。"; ai.generate(); try await self.settle(ai)
+            XCTAssertNil(RevoiceHTTPProtocol.state.submissions.last?["instruction"])
+            XCTAssertEqual(ai.result?.revoice?.instruction,"默认自然表达")
+        }
+    }
+    @MainActor func testPresetPendingTaskKeepsFrozenOverrideWhileNewDraftChanges() async throws {
+        try await exerciseAsync { ai,_,_,store in
+            RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
+            ai.text = "旧配音文字。"; ai.presetInstruction = "旧表达"
+            RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
+            let old = try XCTUnwrap(ai.pendingJobID)
+            ai.text = "最新文字。"; ai.presetInstruction = "  新表达。  "
+            ai.connect(); try await self.settle(ai)
+            XCTAssertEqual(ai.presetInstruction,"  新表达。  "); XCTAssertEqual(store.job(old)?.context.instruction,"旧表达")
+            RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["instruction"],"  新表达。  ")
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["text"],"最新文字。")
+            XCTAssertEqual(store.job(old)?.phase,.abandoned)
+        }
+    }
     func testAsyncSubmissionResponseLossRecoversSameIDAndFrozenTextOnlyParameters() async throws {
         RevoiceHTTPProtocol.state.reset(); RevoiceHTTPProtocol.state.asyncJobs = true
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [RevoiceHTTPProtocol.self]

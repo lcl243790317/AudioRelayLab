@@ -55,7 +55,7 @@ struct RevoiceSaveContext: Codable, Sendable {
 }
 
 struct PendingRevoiceJob: Codable, Sendable, Identifiable {
-    enum Phase:String,Codable { case submitting, downloading, suspended, abandoned, completed, failed }
+    enum Phase:String,Codable { case submitting, downloading, waitingForForeground, suspended, abandoned, completed, failed }
     let context:RevoiceSaveContext
     let primaryOrigin:URL
     let connectionFingerprint:String
@@ -65,10 +65,11 @@ struct PendingRevoiceJob: Codable, Sendable, Identifiable {
     var attempts = 0
     var lastError:String?
     var lastTransferFailure:RevoiceTransferFailure?
+    var transferID:UUID?
     var id:UUID { context.id }
     var networkID:String { id.uuidString.replacingOccurrences(of:"-",with:"").lowercased() }
     var expiresAt:Date { reply.map { Date(timeIntervalSince1970:$0.expiresAt) } ?? context.createdAt.addingTimeInterval(86400) }
-    var isUnfinished:Bool { [.submitting,.downloading,.suspended].contains(phase) }
+    var isUnfinished:Bool { [.submitting,.downloading,.waitingForForeground,.suspended].contains(phase) }
     var isPending:Bool { isUnfinished && expiresAt > Date() }
 }
 
@@ -105,6 +106,7 @@ struct RevoiceDownloadEnvelope: Codable, Sendable {
     let url:URL
     let status:Int
     let headers:[String:String]
+    var transferID:UUID? = nil
     var response:HTTPURLResponse? { HTTPURLResponse(url:url,statusCode:status,httpVersion:"HTTP/1.1",headerFields:headers) }
 }
 
@@ -141,7 +143,7 @@ struct PendingRevoiceStore: Sendable {
                 return try? JSONDecoder().decode(PendingRevoiceJob.self,from:data)
             }.sorted { $0.context.createdAt > $1.context.createdAt }
     }
-    func stage(_ temporary:URL,id:UUID,response:HTTPURLResponse) throws -> RevoiceDownloadEnvelope {
+    func stage(_ temporary:URL,id:UUID,response:HTTPURLResponse,transferID:UUID? = nil) throws -> RevoiceDownloadEnvelope {
         // A URLSession temporary file is only borrowed for this delegate callback.
         // Read it synchronously; moving/unlinking it or changing its attributes can
         // require permissions the download daemon does not grant to a signed app.
@@ -158,7 +160,7 @@ struct PendingRevoiceStore: Sendable {
                 guard data.count+chunk.count <= 10*1024*1024 else { throw URLError(.dataLengthExceedsMaximum) }
                 data.append(chunk)
             }
-            return try stage(data,id:id,response:response,fileName:name)
+            return try stage(data,id:id,response:response,fileName:name,transferID:transferID)
         } catch let error as RevoiceTransferError { throw error }
         catch {
             // A failed copy never destroys the borrowed source or a previous
@@ -167,7 +169,7 @@ struct PendingRevoiceStore: Sendable {
             throw RevoiceTransferError(failure:.init(operation:operation,error:error))
         }
     }
-    func stage(_ data:Data,id:UUID,response:HTTPURLResponse,fileName:String? = nil) throws -> RevoiceDownloadEnvelope {
+    func stage(_ data:Data,id:UUID,response:HTTPURLResponse,fileName:String? = nil,transferID:UUID? = nil) throws -> RevoiceDownloadEnvelope {
         var operation = "prepare-staging"
         let name = fileName ?? id.uuidString+"_"+UUID().uuidString+".download"
         guard name == URL(fileURLWithPath:name).lastPathComponent,name.hasPrefix(id.uuidString+"_") else {
@@ -186,7 +188,7 @@ struct PendingRevoiceStore: Sendable {
                        "X-Voice-ID","X-Speaker-ID","X-Generation-Mode","X-Model-Revision","X-Request-ID"]
             var headers:[String:String] = [:]
             for key in allowed { if let value = response.value(forHTTPHeaderField:key) { headers[key] = value } }
-            let envelope = RevoiceDownloadEnvelope(id:id,fileName:name,url:url,status:response.statusCode,headers:headers)
+            let envelope = RevoiceDownloadEnvelope(id:id,fileName:name,url:url,status:response.statusCode,headers:headers,transferID:transferID)
             operation = "write-receipt"
             try JSONEncoder().encode(envelope).write(to:target.appendingPathExtension("json"),
                 options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])

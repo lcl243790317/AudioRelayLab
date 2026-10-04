@@ -121,9 +121,9 @@ class QwenEngine:
         self.load_peak_bytes = self.torch.cuda.max_memory_allocated()
         return time.perf_counter()-started
 
-    def synthesize(self, preset_id, text, request_id):
+    def synthesize(self, preset_id, text, request_id, instruction=None):
         preset = self.registry.get(preset_id, cloud=True)
-        task = preset.task(text)
+        task = preset.task(text, instruction=instruction)
         return self._generate(preset.id, preset.variant, task, request_id, preset.reference_id, 'preset')
 
     def synthesize_custom(self, speaker, text, instruction, request_id):

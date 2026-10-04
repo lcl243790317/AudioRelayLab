@@ -5,10 +5,19 @@ import UIKit
 @MainActor final class RevoiceController: ObservableObject {
     enum Kind:String,CaseIterable,Hashable { case preset, custom }
     enum Stage:Equatable { case idle, recognizing, generating, saving }
-    @Published var kind:Kind = .preset
-    @Published var selectedPreset = "serena-original"
+    @Published var kind:Kind = .preset { didSet { if kind == .preset && oldValue != kind { resetPresetInstruction() } } }
+    @Published var selectedPreset = "serena-original" { didSet { if selectedPreset != oldValue { resetPresetInstruction() } } }
     @Published var selectedSpeaker = "Serena"
     @Published var instruction = ""
+    @Published var presetInstruction = ""
+    @Published private(set) var supportsPresetInstruction = false
+    private var instructionPresetID:String?
+    var selectedVoice:RevoiceVoice? { voices.first { $0.id == selectedPreset } }
+    var canEditPresetInstruction:Bool { supportsPresetInstruction && selectedVoice?.supportsInstruction == true }
+    func resetPresetInstruction() {
+        presetInstruction = selectedVoice?.instruction ?? ""
+        instructionPresetID = selectedVoice == nil ? nil : selectedPreset
+    }
     @Published var text = ""
     @Published private(set) var recognizedText:String?
     @Published private(set) var input:AudioAsset?
@@ -104,7 +113,9 @@ import UIKit
                 let (voices,speakers) = try await self.client.connect(connection)
                 try Task.checkCancellation(); guard self.connectionGeneration == token else { return }
                 self.voices = voices; self.speakers = speakers
+                self.supportsPresetInstruction = self.client.supportsPresetInstruction(for:connection)
                 if !voices.contains(where:{$0.id == self.selectedPreset}) { self.selectedPreset = voices[0].id }
+                if self.instructionPresetID != self.selectedPreset { self.resetPresetInstruction() }
                 if reportsConnectionStatus && !self.hasPendingJob && self.stage == .idle {
                     self.status = speakers.isEmpty ? "云端已连接 · 此服务暂未提供自定义配音" : "云端已连接 · 录音在手机转为文字"
                 }
@@ -176,8 +187,9 @@ import UIKit
                 label = selectedSpeaker; effectiveInstruction = instruction; reference = nil
             } else {
                 guard let voice = voices.first(where:{$0.id == selectedPreset}) else { throw LabError.message("请先连接云端并选择声线") }
-                choice = .preset(id:voice.id,variant:voice.variant)
-                label = voice.displayName; effectiveInstruction = voice.instruction ?? ""; reference = voice.fixedReferenceID
+                let override = canEditPresetInstruction ? presetInstruction : nil
+                choice = .preset(id:voice.id,variant:voice.variant,instruction:override)
+                label = voice.displayName; effectiveInstruction = override ?? voice.instruction ?? ""; reference = voice.fixedReferenceID
             }
             let usedText = try RevoiceLimits.text(text); _ = try choice.body(text:usedText)
             let context = RevoiceSaveContext(id:UUID(),createdAt:Date(),choice:choice,voiceName:label,
@@ -218,7 +230,10 @@ import UIKit
     private func restoreDraft(_ job:PendingRevoiceJob) {
         if case .custom(let speaker,let value) = job.context.choice {
             kind = .custom; selectedSpeaker = speaker; instruction = value
-        } else if case .preset(let id,_) = job.context.choice { kind = .preset; selectedPreset = id }
+        } else if case .preset(let id,_,_) = job.context.choice {
+            kind = .preset; selectedPreset = id
+            presetInstruction = job.context.instruction; instructionPresetID = id
+        }
         text = job.context.text; recognizedText = job.context.recognizedText
         if let source = job.context.sourceAudioID { input = (try? AudioFileManager.listLocalAudio())?.first { $0.id == source } }
     }
@@ -256,6 +271,8 @@ import UIKit
                         try Task.checkCancellation()
                         guard self.generation == token else { return }
                         self.voices = voices; self.speakers = speakers
+                        self.supportsPresetInstruction = self.client.supportsPresetInstruction(for:connection)
+                        if self.instructionPresetID != self.selectedPreset { self.resetPresetInstruction() }
                     }
                 }
                 try Task.checkCancellation()
@@ -308,12 +325,13 @@ import UIKit
         previewPendingContext = nil
 #endif
         kind = custom ? .custom : .preset; configured = false
-        voices = [.init(id:"serena-original",displayName:"Serena · 认可原版",variant:"custom"),
-                  .init(id:"vivian-original",displayName:"Vivian · 认可原版",variant:"custom"),
-                  .init(id:"ancient-dylan",displayName:"古风温润小生",variant:"custom"),
-                  .init(id:"scholar-design",displayName:"清润书生",variant:"base"),
-                  .init(id:"cute-design",displayName:"清脆动漫可爱声",variant:"base"),
-                  .init(id:"cool-serena",displayName:"清冷淡然 · Serena",variant:"custom")]
+        voices = [.init(id:"serena-original",displayName:"Serena · 认可原版",variant:"custom",instruction:"自然、放松的日常表达。",supportsInstruction:true),
+                  .init(id:"vivian-original",displayName:"Vivian · 认可原版",variant:"custom",instruction:"自然明亮，轻松地说话。",supportsInstruction:true),
+                  .init(id:"ancient-dylan",displayName:"古风温润小生",variant:"custom",instruction:"温润从容，古风小生的自然表达。",supportsInstruction:true),
+                  .init(id:"scholar-design",displayName:"清润书生",variant:"base",supportsInstruction:false),
+                  .init(id:"cute-design",displayName:"清脆动漫可爱声",variant:"base",supportsInstruction:false),
+                  .init(id:"cool-serena",displayName:"清冷淡然 · Serena",variant:"custom",instruction:"清冷淡然，语气自然。",supportsInstruction:true)]
+        supportsPresetInstruction = true; resetPresetInstruction()
         speakers = RevoiceSpeaker.all; text = "今天的天气不错，我们出去走走吧。"
         status = "界面预览 · 未连接云端"
     }

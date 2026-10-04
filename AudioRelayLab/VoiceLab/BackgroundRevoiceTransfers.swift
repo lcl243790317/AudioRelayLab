@@ -14,6 +14,9 @@ import UIKit
     private var scheduled:Set<UUID> = []
     private var abandoned:Set<UUID> = []
     private var foregroundRecoveries:[UUID:Task<Void,Never>] = [:]
+    private var foregroundTokens:[UUID:UUID] = [:]
+    private var restoring = false
+    private var restoreRequested = false
     private var isForeground = UIApplication.shared.applicationState == .active
     private var eventsFinished = false
     private var completion:(()->Void)?
@@ -59,46 +62,63 @@ import UIKit
             abandoned.insert(job.id)
             scheduled.remove(job.id)
             foregroundRecoveries.removeValue(forKey:job.id)?.cancel()
+            foregroundTokens.removeValue(forKey:job.id)
             let id = job.id
             session.getAllTasks { tasks in
-                for task in tasks where task.taskDescription == id.uuidString { task.cancel() }
+                for task in tasks where Self.identity(task.taskDescription)?.id == id { task.cancel() }
             }
             onChange?(job,"已停止等待 · 云端可能继续完成，迟到结果不会保存",nil)
         }
         return true
     }
     func setForeground(_ active:Bool) {
+        guard isForeground != active else { return }
         isForeground = active
-        if !active {
-            // The cloud job continues. A foreground recovery never pretends to
-            // be an iOS background transfer, and may be resumed on the next open.
-            for task in foregroundRecoveries.values { task.cancel() }
+        // Invalidate the old transport before cancelling it. Its late callbacks
+        // can no longer change the same cloud job's new transport or save twice.
+        for var job in store.all() where job.isPending && job.reply != nil && !processing.contains(job.id) {
+            job.transferID = UUID(); job.attempts = 0
+            do { try store.save(job) }
+            catch { continue }
+            scheduled.remove(job.id)
+            foregroundTokens.removeValue(forKey:job.id)
+            foregroundRecoveries.removeValue(forKey:job.id)?.cancel()
         }
+        Task { await restore(retrySuspended:active) }
     }
     func handleEvents(_ handler:@escaping ()->Void) {
         completion = handler; eventsFinished = false
         Task { await restore(retrySuspended:false) }
     }
     func restore(retrySuspended:Bool = true) async {
+        guard !restoring else { restoreRequested = true; return }
+        restoring = true
+        defer {
+            restoring = false
+            if restoreRequested { restoreRequested = false; Task { await restore(retrySuspended:isForeground) } }
+        }
         for job in store.all() where job.isUnfinished && job.expiresAt <= Date() { expire(job) }
         store.cleanup()
         // Incoming files were copied out of URLSession's temporary location before
         // its delegate returned. A crash during saving can therefore be recovered.
         for envelope in store.envelopes() { process(envelope) }
         let tasks = await session.allTasks
-        scheduled = Set(tasks.compactMap { task in
-            guard task.state != .completed, let value = task.taskDescription else { return nil }
-            return UUID(uuidString:value)
-        }).union(foregroundRecoveries.keys)
+        var nativeIDs:Set<UUID> = []
+        for task in tasks where task.state != .completed {
+            guard let identity = Self.identity(task.taskDescription),let job = store.job(identity.id),
+                  job.isPending,job.transferID == identity.transferID,!isForeground else { task.cancel(); continue }
+            nativeIDs.insert(identity.id)
+        }
+        scheduled = nativeIDs.union(foregroundRecoveries.keys)
         for job in store.all() where job.isPending && !abandoned.contains(job.id) && !processing.contains(job.id) {
             if job.reply == nil { onNeedsSubmission?(job) }
             else if !scheduled.contains(job.id) {
+                if !isForeground && job.phase == .waitingForForeground { continue }
                 if !retrySuspended && (job.phase == .suspended || job.attempts >= 8) { continue }
                 var resumed = job; resumed.attempts = 0; resumed.phase = .downloading
                 do { try store.save(resumed) }
                 catch { suspend(job.id,message:"任务记录暂时无法写入，请保持 App 打开后重试",terminal:false); continue }
-                if retrySuspended && isForeground && Self.needsForegroundRecovery(job) { recoverInForeground(resumed) }
-                else { schedule(resumed) }
+                schedule(resumed)
             } else { onChange?(job,"配音中 · 可切换 App 或锁屏",nil) }
         }
         completeEventsIfPossible()
@@ -106,13 +126,14 @@ import UIKit
     private func schedule(_ value:PendingRevoiceJob,after seconds:Double = 0) {
         guard !scheduled.contains(value.id),value.isPending,var job = store.job(value.id),job.isPending,
               !abandoned.contains(job.id),let reply = job.reply, let origin = job.downloadOrigin else { return }
-        if isForeground && Self.needsForegroundRecovery(job) { recoverInForeground(job,after:seconds); return }
+        if isForeground { recoverInForeground(job,after:seconds); return }
         do {
             _ = try reply.validated(requestID:job.id,origin:origin)
             if job.attempts >= 8 { suspend(job.id,message:"云端任务已保留，返回 App 后继续取回",terminal:false); return }
             let request = try Self.request(reply:reply,id:job.id,origin:origin)
             let transfer = session.downloadTask(with:request)
-            transfer.taskDescription = job.id.uuidString
+            let token = UUID(); job.transferID = token
+            transfer.taskDescription = job.id.uuidString+"|"+token.uuidString
             if seconds > 0 { transfer.earliestBeginDate = Date().addingTimeInterval(seconds) }
             job.attempts += 1; job.phase = .downloading; try store.save(job)
             scheduled.insert(job.id); onChange?(job,"配音中 · 可切换 App 或锁屏",nil)
@@ -128,8 +149,13 @@ import UIKit
         request.setValue("Bearer "+reply.downloadToken,forHTTPHeaderField:"Authorization")
         return request
     }
-    private static func needsForegroundRecovery(_ job:PendingRevoiceJob) -> Bool {
-        job.lastTransferFailure != nil || job.lastError?.contains("下载文件无法暂存") == true
+    private nonisolated static func identity(_ description:String?) -> (id:UUID,transferID:UUID?)? {
+        guard let description else { return nil }
+        let parts = description.split(separator:"|",omittingEmptySubsequences:false)
+        guard (1...2).contains(parts.count),let id = UUID(uuidString:String(parts[0])) else { return nil }
+        if parts.count == 1 { return (id,nil) } // Existing background sessions.
+        guard let token = UUID(uuidString:String(parts[1])) else { return nil }
+        return (id,token)
     }
     private func recoverInForeground(_ value:PendingRevoiceJob,after seconds:Double = 0) {
         guard isForeground,foregroundRecoveries[value.id] == nil,!scheduled.contains(value.id),
@@ -138,9 +164,12 @@ import UIKit
         if job.attempts >= 8 { suspend(job.id,message:"任务已保留，稍后可继续取回",terminal:false); return }
         do {
             _ = try reply.validated(requestID:job.id,origin:origin)
-            job.attempts += 1; job.phase = .downloading; try store.save(job)
+            job.attempts += 1; job.phase = .downloading; job.lastError = nil
+            job.transferID = UUID(); try store.save(job)
         } catch { suspend(job.id,message:"无法恢复结果下载，文字和任务已保留",terminal:false); return }
-        scheduled.insert(job.id); onChange?(job,"正在前台取回配音 · 无需重新生成",nil)
+        guard let token = job.transferID else { return }
+        foregroundTokens[job.id] = token
+        scheduled.insert(job.id); onChange?(job,"配音中 · 可切换 App 或锁屏",nil)
         foregroundRecoveries[job.id] = Task { [weak self, job] in
             guard let self else { return }
             let configuration = URLSessionConfiguration.ephemeral
@@ -148,8 +177,12 @@ import UIKit
             configuration.timeoutIntervalForRequest = 180; configuration.timeoutIntervalForResource = 180
             let resultSession = URLSession(configuration:configuration)
             defer {
-                resultSession.invalidateAndCancel(); self.foregroundRecoveries.removeValue(forKey:job.id)
-                self.scheduled.remove(job.id)
+                resultSession.invalidateAndCancel()
+                if self.foregroundTokens[job.id] == token {
+                    self.foregroundRecoveries.removeValue(forKey:job.id)
+                    self.foregroundTokens.removeValue(forKey:job.id)
+                    self.scheduled.remove(job.id)
+                }
             }
             do {
                 if seconds > 0 { try await Task.sleep(for:.seconds(seconds)) }
@@ -164,16 +197,15 @@ import UIKit
                 let data = try await Self.readResultBytes(bytes,expectedLength:response.expectedContentLength)
                 try Task.checkCancellation()
                 guard self.isForeground,let current = self.store.job(job.id),current.isPending,
-                      !self.abandoned.contains(job.id) else { return }
-                let envelope = try self.store.stage(data,id:job.id,response:response)
+                      current.transferID == token,!self.abandoned.contains(job.id) else { return }
+                let envelope = try self.store.stage(data,id:job.id,response:response,transferID:token)
                 self.process(envelope)
             } catch {
-                if Task.isCancelled {
-                    self.suspend(job.id,message:"任务已保留，返回 App 后继续取回",terminal:false)
-                } else {
+                guard self.store.job(job.id)?.transferID == token, !Task.isCancelled else { return }
+                if self.isForeground {
                     let failure = (error as? RevoiceTransferError)?.failure ?? RevoiceTransferFailure(operation:"foreground-retrieve",error:error)
                     self.suspend(job.id,message:"暂时无法取回配音，任务已保留（\(failure.summary)）",terminal:false,failure:failure)
-                }
+                } else { self.waitForForeground(job.id,failure:nil) }
             }
         }
     }
@@ -202,7 +234,17 @@ import UIKit
         if let failure { job.lastTransferFailure = failure }
         try? store.save(job); scheduled.remove(id); onChange?(job,message,nil)
     }
+    private func waitForForeground(_ id:UUID,failure:RevoiceTransferFailure?) {
+        guard var job = store.job(id),job.isPending,!abandoned.contains(id) else { return }
+        job.phase = .waitingForForeground; job.lastError = nil
+        if let failure { job.lastTransferFailure = failure }
+        try? store.save(job); scheduled.remove(id)
+        onChange?(job,"配音任务已保留，返回 App 后自动保存",nil)
+        if isForeground { job.attempts = 0; try? store.save(job); schedule(job) }
+    }
     func process(_ envelope:RevoiceDownloadEnvelope) {
+        guard let current = store.job(envelope.id),current.isPending,current.transferID == envelope.transferID,
+              !abandoned.contains(envelope.id) else { store.remove(envelope); return }
         guard !processing.contains(envelope.id) else { return }
         processing.insert(envelope.id)
         Task { [weak self] in
@@ -212,7 +254,8 @@ import UIKit
                 self.completeEventsIfPossible()
             }
             self.scheduled.remove(envelope.id)
-            guard let job = self.store.job(envelope.id),job.isUnfinished,!self.abandoned.contains(job.id) else { return }
+            guard let job = self.store.job(envelope.id),job.isUnfinished,
+                  job.transferID == envelope.transferID,!self.abandoned.contains(job.id) else { return }
             if job.expiresAt <= Date() { self.expire(job); return }
             guard let origin = job.downloadOrigin,CloudJobEndpoint.sameOrigin(envelope.url,origin),
                   envelope.url.path == job.reply?.downloadURL.path,let response = envelope.response else {
@@ -244,7 +287,8 @@ import UIKit
                 let audio = try await work.value
                 // Re-read cancellation after validation. Saving/registration below
                 // is one MainActor transaction; cancellation cannot race it.
-                guard var current = self.store.job(job.id),current.isPending,!self.abandoned.contains(job.id) else { return }
+                guard var current = self.store.job(job.id),current.isPending,
+                      current.transferID == envelope.transferID,!self.abandoned.contains(job.id) else { return }
                 self.onChange?(current,"保存中",nil)
                 let asset = try RevoiceSaving.save(audio,context:current.context,jobID:current.networkID)
                 current.phase = .completed; current.reply = nil; current.lastError = nil
@@ -267,15 +311,16 @@ import UIKit
         onChange?(job,job.lastError ?? "任务已过期",nil)
     }
     nonisolated func urlSession(_ session:URLSession,downloadTask:URLSessionDownloadTask,didFinishDownloadingTo location:URL) {
-        guard let value = downloadTask.taskDescription,let id = UUID(uuidString:value),
+        guard let identity = Self.identity(downloadTask.taskDescription),
               let response = downloadTask.response as? HTTPURLResponse else { return }
         do {
-            let envelope = try store.stage(location,id:id,response:response)
+            let envelope = try store.stage(location,id:identity.id,response:response,transferID:identity.transferID)
             Task { @MainActor [weak self] in self?.process(envelope) }
         } catch {
             let failure = (error as? RevoiceTransferError)?.failure ?? RevoiceTransferFailure(operation:"stage-download",error:error)
             Task { @MainActor [weak self] in
-                self?.suspend(id,message:"下载文件无法暂存，任务已保留；可在前台取回（\(failure.summary)）",terminal:false,failure:failure)
+                guard let self,self.store.job(identity.id)?.transferID == identity.transferID else { return }
+                self.waitForForeground(identity.id,failure:failure)
             }
         }
     }
@@ -284,8 +329,12 @@ import UIKit
         if totalBytesWritten > 10*1024*1024 || totalBytesExpectedToWrite > 10*1024*1024 { downloadTask.cancel() }
     }
     nonisolated func urlSession(_ session:URLSession,task:URLSessionTask,didCompleteWithError error:Error?) {
-        guard error != nil,let value = task.taskDescription,let id = UUID(uuidString:value) else { return }
-        Task { @MainActor [weak self] in self?.suspend(id,message:"连接暂停，配音任务已保留；返回 App 后自动取回",terminal:false) }
+        guard error != nil,let identity = Self.identity(task.taskDescription) else { return }
+        Task { @MainActor [weak self] in
+            guard let self,self.store.job(identity.id)?.transferID == identity.transferID,
+                  self.store.job(identity.id)?.phase == .downloading else { return }
+            self.waitForForeground(identity.id,failure:nil)
+        }
     }
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session:URLSession) {
         Task { @MainActor [weak self] in

@@ -12,6 +12,7 @@ final class CloudRevoiceClient: @unchecked Sendable {
     private let capabilityLock = NSLock()
     private var jobOrigin:URL?
     private var jobFingerprint:String?
+    private var presetInstruction = false
     private let redirectBlocker = RevoiceRedirectBlocker()
     init(session:URLSession? = nil) {
         if let session { self.session = session }
@@ -26,7 +27,7 @@ final class CloudRevoiceClient: @unchecked Sendable {
         let status:String
         let capabilities:Capabilities?
         let jobDownloadOrigin:String?
-        struct Capabilities:Decodable { let customTTS:Bool; let textOnly:Bool; let asyncJobs:Bool? }
+        struct Capabilities:Decodable { let customTTS:Bool; let textOnly:Bool; let asyncJobs:Bool?; let presetInstruction:Bool? }
     }
     struct Voices:Decodable { let voices:[RevoiceVoice] }
     struct Speakers:Decodable { let speakers:[RevoiceSpeaker] }
@@ -54,11 +55,14 @@ final class CloudRevoiceClient: @unchecked Sendable {
             }
         }
         try Task.checkCancellation()
-        capabilityLock.withLock { jobOrigin = origin; jobFingerprint = connection.fingerprint }
+        capabilityLock.withLock { jobOrigin = origin; jobFingerprint = connection.fingerprint; presetInstruction = health.capabilities?.presetInstruction == true }
         return (voices,speakers)
     }
     func downloadOrigin(for connection:CloudConnection) -> URL? {
         capabilityLock.withLock { jobFingerprint == connection.fingerprint ? jobOrigin : nil }
+    }
+    func supportsPresetInstruction(for connection:CloudConnection) -> Bool {
+        capabilityLock.withLock { jobFingerprint == connection.fingerprint && presetInstruction }
     }
     func submitJob(_ connection:CloudConnection, context:RevoiceSaveContext) async throws -> CloudJobReply {
         var object = try JSONSerialization.jsonObject(with:context.choice.body(text:context.text)) as? [String:Any] ?? [:]
@@ -103,6 +107,7 @@ final class CloudRevoiceClient: @unchecked Sendable {
             request.setValue(connection.apiKey,forHTTPHeaderField:"X-AudioRelay-Key")
             if payload != nil { request.setValue("application/json",forHTTPHeaderField:"Content-Type") }
             let (stream, rawResponse) = try await session.bytes(for:request,delegate:redirectBlocker)
+            defer { stream.task.cancel() }
             guard let response = rawResponse as? HTTPURLResponse else { throw URLError(.badServerResponse) }
             if response.statusCode == 303 {
                 guard let location = response.value(forHTTPHeaderField:"Location") else { throw URLError(.badServerResponse) }
@@ -119,15 +124,18 @@ final class CloudRevoiceClient: @unchecked Sendable {
             }
             let maximum = body == nil || path.hasPrefix("v1/jobs") ? 64*1024 : 10*1024*1024
             guard response.expectedContentLength <= Int64(maximum) else { throw LabError.message("云端返回的文件过大") }
-            var data = Data(); data.reserveCapacity(min(maximum,max(0,Int(response.expectedContentLength))))
-            for try await byte in stream {
-                guard data.count < maximum else { throw LabError.message("云端返回的文件过大") }
-                data.append(byte)
-                if data.count%65536 == 0 {
-                    try Task.checkCancellation()
-                    guard Date().timeIntervalSince(started) < 900 else { throw URLError(.timedOut) }
+            let data = try await withTaskCancellationHandler {
+                var data = Data(); data.reserveCapacity(min(maximum,max(0,Int(response.expectedContentLength))))
+                for try await byte in stream {
+                    guard data.count < maximum else { throw LabError.message("云端返回的文件过大") }
+                    data.append(byte)
+                    if data.count%65536 == 0 {
+                        try Task.checkCancellation()
+                        guard Date().timeIntervalSince(started) < 900 else { throw URLError(.timedOut) }
+                    }
                 }
-            }
+                return data
+            } onCancel: { stream.task.cancel() }
             try Task.checkCancellation()
             guard Date().timeIntervalSince(started) < 900 else { throw URLError(.timedOut) }
             return (data,response,Date().timeIntervalSince(started))

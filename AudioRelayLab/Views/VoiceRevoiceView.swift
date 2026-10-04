@@ -11,6 +11,7 @@ struct VoiceRevoiceView: View {
     @ObservedObject var coordinator:ExperimentCoordinator
     @ObservedObject var ai:RevoiceController
     @ObservedObject var voice:RawVoiceRecorder
+    let onMix:(AudioAsset)->Void
     @State private var sheet:RevoiceSheet?
     @FocusState private var focusedInput:RevoiceInputField?
 
@@ -24,8 +25,9 @@ struct VoiceRevoiceView: View {
         return ai.hasPendingJob ? "按当前内容生成新的配音" : "生成配音"
     }
 
-    init(coordinator:ExperimentCoordinator) {
+    init(coordinator:ExperimentCoordinator,onMix:@escaping (AudioAsset)->Void) {
         self.coordinator = coordinator; ai = coordinator.revoice; voice = coordinator.rawRecorder
+        self.onMix = onMix
     }
 
     var body:some View {
@@ -34,7 +36,10 @@ struct VoiceRevoiceView: View {
             PaperCard {
                 if ai.hasPendingJob { PaperCaption("当前草稿 · 修改只影响下一份配音") }
                 RevoiceVoiceSettings(kind:ai.kind,voices:ai.voices,speakers:ai.speakers,
-                    preset:$ai.selectedPreset,speaker:$ai.selectedSpeaker,instruction:$ai.instruction,
+                    preset:$ai.selectedPreset,speaker:$ai.selectedSpeaker,
+                    instruction:ai.kind == .preset ? $ai.presetInstruction : $ai.instruction,
+                    editablePreset:ai.canEditPresetInstruction,serviceSupportsPreset:ai.supportsPresetInstruction,
+                    resetInstruction:ai.resetPresetInstruction,
                     focus:$focusedInput,disabled:draftLocked)
                 Divider()
                 RevoiceTextComposer(text:$ai.text,focus:$focusedInput,disabled:draftLocked)
@@ -58,11 +63,11 @@ struct VoiceRevoiceView: View {
             } else {
                 RevoiceStatusNotice(status:ai.status,error:ai.errorMessage,busy:ai.busy,stop:stop)
             }
-            RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
+            if !ai.configured { RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
                 importDisabled:ai.busy || ai.hasPendingJob || voice.isActive,
                 reconnectDisabled:ai.connecting || voice.isActive || (ai.busy && !ai.hasPendingJob),
-                open:openConnection,reconnect:ai.connect)
-            if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result) }
+                open:openConnection,reconnect:ai.connect) }
+            if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result,onMix:onMix) }
         }
         .keyboardDone { focusedInput = nil }
         .sheet(item:$sheet) { destination in
@@ -116,6 +121,9 @@ private struct RevoiceVoiceSettings:View {
     @Binding var preset:String
     @Binding var speaker:String
     @Binding var instruction:String
+    var editablePreset = false
+    var serviceSupportsPreset = false
+    var resetInstruction:()->Void = {}
     let focus:FocusState<RevoiceInputField?>.Binding
     let disabled:Bool
     var body:some View {
@@ -125,11 +133,20 @@ private struct RevoiceVoiceSettings:View {
                     StablePicker(title:"声线",selection:$preset,
                         choices:voices.map { .init(id:$0.id,title:$0.displayName) })
                 } else { Text("选择声线").font(.headline) }
-                PaperCaption("固定声线与表达 · 录完自动识别、配音")
+                PaperCaption("录完自动识别、配音")
             } else {
                 StablePicker(title:"Speaker",selection:$speaker,
                     choices:(speakers.isEmpty ? RevoiceSpeaker.all : speakers).map { .init(id:$0.id,title:$0.displayName) })
-                Text("表达指令 · 可选").font(.subheadline)
+            }
+            if kind == .custom || editablePreset {
+                HStack {
+                    Text("表达指令 · 可选").font(.subheadline)
+                    Spacer()
+                    if kind == .preset {
+                        Button("恢复默认",action:resetInstruction).font(.caption)
+                            .accessibilityIdentifier("revoice.instruction.reset")
+                    }
+                }
                 TextField("",text:$instruction,axis:.vertical)
                     .focused(focus,equals:.instruction).lineLimit(1...3)
                     .textFieldStyle(.plain).padding(10).frame(minHeight:44)
@@ -143,6 +160,10 @@ private struct RevoiceVoiceSettings:View {
                     }
                     .accessibilityLabel("表达指令").accessibilityIdentifier("revoice.instruction")
                 PaperCaption("\(instruction.unicodeScalars.count)/500 · 留空使用自然表达")
+            } else if voices.first(where:{$0.id == preset})?.variant == "base" {
+                PaperCaption("固定参考声线沿用已认可的表达，暂不支持修改指令。")
+            } else if !voices.isEmpty && !serviceSupportsPreset {
+                PaperCaption("当前云端需升级后才能编辑预设指令。")
             }
         }.disabled(disabled)
     }
@@ -348,17 +369,12 @@ struct CloudConnectionView:View {
 
 struct RevoiceResultTools:View {
     @ObservedObject var coordinator:ExperimentCoordinator
-    @ObservedObject var volumes:MixVolumeSettings
     let result:AudioAsset
+    var title = "配音成品"
+    var onMix:((AudioAsset)->Void)? = nil
     @State private var share:ShareItem?
-    @State private var backgroundID:UUID?
-    @State private var mixing = false
-    @State private var mixStatus = ""
-    init(coordinator:ExperimentCoordinator,result:AudioAsset) {
-        self.coordinator = coordinator; self.result = result; volumes = coordinator.mixVolumes
-    }
     var body:some View {
-        PaperCard("配音成品") {
+        PaperCard(title) {
             Text(result.libraryName).font(.headline)
             if let metadata = result.revoice { PaperCaption("配音计算 \(String(format:"%.1f",metadata.generationSeconds)) 秒 · 成品 \(AudioPlaybackSettings.time(result.duration))") }
             HStack {
@@ -370,39 +386,7 @@ struct RevoiceResultTools:View {
                     .disabled(coordinator.controlsLocked)
                 Button("停止回听") { coordinator.preview.stop() }
             }
-            DisclosureGroup("加入背景音乐并保存") {
-                StablePicker(title:"背景音乐",selection:$backgroundID,
-                    choices:[.init(id:nil,title:"请选择音乐")] + coordinator.library.filter { $0.id != result.id }.map { .init(id:Optional($0.id),title:$0.fileName) }).disabled(coordinator.controlsLocked)
-                volume("人声",value:$volumes.voice)
-                volume("音乐",value:$volumes.music)
-                PaperCaption("使用完整成品时长；音乐默认 4%。")
-                Button(mixing ? "保存中…" : "保存混合音频") { mix() }
-                    .disabled(coordinator.controlsLocked || backgroundID == nil || mixing)
-                if !mixStatus.isEmpty { PaperCaption(mixStatus) }
-            }
+            if let onMix { Button("去混音") { KeyboardDismiss.perform(); onMix(result) } }
         }.sheet(item:$share) { ShareSheet(url:$0.url) }
-    }
-    private func volume(_ label:String,value:Binding<Float>) -> some View {
-        VStack(alignment:.leading) {
-            Text("\(label) \(Int(boundedVolume(value.wrappedValue)*100))%").font(.subheadline)
-            Slider(value:Binding(get:{Double(boundedVolume(value.wrappedValue))},set:{value.wrappedValue = boundedVolume(Float($0))}),in:0...1)
-                .disabled(coordinator.controlsLocked)
-        }
-    }
-    private func boundedVolume(_ value:Float) -> Float { value.isFinite ? min(1,max(0,value)) : 0 }
-    private func mix() {
-        guard let music = coordinator.library.first(where:{$0.id == backgroundID}) else { return }
-        do { try coordinator.beginMixing() } catch { mixStatus = userFacingAudioError(error); return }
-        mixing = true; coordinator.preview.stop()
-        let volumes = self.volumes.parameters
-        let settings = music.id == coordinator.audio?.id ? coordinator.applied : AudioPlaybackSettings()
-        Task {
-            defer { mixing = false; coordinator.endMixing() }
-            do {
-                let voiceURL = try AudioFileManager.url(for:result), musicURL = try AudioFileManager.url(for:music)
-                _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:settings,volumes:volumes,voiceAsset:result,musicAsset:music) }.value
-                coordinator.refreshLibrary(); mixStatus = "已保存，可以在录音库回听。"
-            } catch { mixStatus = userFacingAudioError(error) }
-        }
     }
 }

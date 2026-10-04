@@ -78,9 +78,11 @@ struct RevoiceVoice: Codable, Identifiable, Hashable {
     let speaker:String?
     let instruction:String?
     let fixedReferenceID:String?
-    init(id:String,displayName:String,variant:String,speaker:String? = nil,instruction:String? = nil,fixedReferenceID:String? = nil) {
+    let supportsInstruction:Bool?
+    init(id:String,displayName:String,variant:String,speaker:String? = nil,instruction:String? = nil,fixedReferenceID:String? = nil,supportsInstruction:Bool? = nil) {
         self.id=id; self.displayName=displayName; self.variant=variant; self.speaker=speaker
         self.instruction=instruction; self.fixedReferenceID=fixedReferenceID
+        self.supportsInstruction=supportsInstruction
     }
 }
 struct RevoiceSpeaker: Codable, Identifiable, Hashable {
@@ -94,20 +96,26 @@ struct RevoiceSpeaker: Codable, Identifiable, Hashable {
 }
 
 enum RevoiceChoice: Equatable, Sendable, Codable {
-    case preset(id:String, variant:String)
+    case preset(id:String, variant:String, instruction:String? = nil)
     case custom(speaker:String, instruction:String)
     var mode:String { if case .custom = self { return "custom" }; return "preset" }
-    var variant:String { if case .preset(_, let variant) = self { return variant }; return "custom" }
-    var voiceID:String { if case .preset(let id, _) = self { return id }; return "custom" }
+    var variant:String { if case .preset(_, let variant, _) = self { return variant }; return "custom" }
+    var voiceID:String { if case .preset(let id, _, _) = self { return id }; return "custom" }
     var speakerID:String? { if case .custom(let speaker, _) = self { return speaker }; return nil }
-    var instruction:String? { if case .custom(_, let instruction) = self { return instruction }; return nil }
+    var instruction:String? {
+        switch self { case .custom(_,let instruction): return instruction; case .preset(_,_,let instruction): return instruction }
+    }
     func body(text:String) throws -> Data {
         let text = try RevoiceLimits.text(text)
         var values:[String:String] = ["text":text]
         switch self {
-        case .preset(let id, let variant):
+        case .preset(let id, let variant, let instruction):
             guard !id.isEmpty, ["custom","base"].contains(variant) else { throw LabError.message("请选择可用的预设声线") }
             values["voice"] = id
+            if let instruction {
+                guard variant == "custom" else { throw LabError.message("固定参考声线暂不支持修改表达指令") }
+                try RevoiceLimits.instruction(instruction); values["instruction"] = instruction
+            }
         case .custom(let speaker, let instruction):
             guard RevoiceSpeaker.all.contains(where:{$0.id == speaker}) else { throw LabError.message("请选择模型支持的 speaker") }
             try RevoiceLimits.instruction(instruction)

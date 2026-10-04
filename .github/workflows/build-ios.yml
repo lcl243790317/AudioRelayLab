@@ -158,6 +158,12 @@ jobs:
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot voice-recovery-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-recovery.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab mix-snapshot day-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-mix.png
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab mix-snapshot voice-large-type night-snapshot
+          sleep 3
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-mix-large-dark.png
           xcrun simctl terminate "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
           printf 'XCTest iPhone Simulator UDID: %s; architecture: %s\n' "$SIMULATOR_UDID" "$SIMULATOR_ARCH" | tee build-test-destination.log
           xcodebuild \
@@ -233,6 +239,7 @@ jobs:
             MODAL-DEPLOYMENT-ZH.md
             REVOICE-1.6.1-ZH.md
             REVOICE-1.6.2-ZH.md
+            REVOICE-1.6.3-ZH.md
             build/revoice-download-fixture-report.json
             build/ui-*.mp4
       - name: 记录最终状态

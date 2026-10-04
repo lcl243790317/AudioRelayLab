@@ -27,13 +27,17 @@ def unique_object(pairs):
 
 
 def validate_request(body, registry):
-    if not isinstance(body, dict) or set(body) != {'voice', 'text'}:
-        raise ValueError('Only voice and text are accepted')
+    if not isinstance(body, dict) or not {'voice', 'text'} <= set(body) or set(body) - {'voice', 'text', 'instruction'}:
+        raise ValueError('Only voice, text and optional instruction are accepted')
     preset = registry.get(body['voice'], cloud=True)
     text = text_for_synthesis(body['text'])
     text.encode('utf-8')
     if any(ord(c)<32 and c not in '\r\n\t' for c in text):
         raise ValueError('Invalid text control characters')
+    if 'instruction' in body:
+        if not isinstance(body['instruction'], str):
+            raise ValueError('Invalid instruction')
+        preset.task(text, instruction=body['instruction'])
     return preset, text
 
 
@@ -98,7 +102,7 @@ def create_api(worker, api_key, registry=None, guard=None, custom_worker=None, *
     async def health():
         # Health checks intentionally never touch or warm the GPU worker.
         return {'status': 'ok', 'backend': 'Modal Qwen3-TTS 1.7B', 'voices': len(registry.public_voices()),
-                'capabilities': {'presetTTS': True, 'customTTS': custom_worker is not None, 'textOnly': True, 'asyncJobs': jobs is not None},
+                'capabilities': {'presetTTS': True, 'customTTS': custom_worker is not None, 'textOnly': True, 'asyncJobs': jobs is not None, 'presetInstruction': True},
                 'jobDownloadOrigin': download_origin,
                 'limits': {'textCharacters': 1000, 'instructionCharacters': 500, 'outputSeconds': 180}}
 
@@ -139,7 +143,7 @@ def create_api(worker, api_key, registry=None, guard=None, custom_worker=None, *
             else:
                 preset,text = validate_request(params,registry)
                 payload = dict(mode='preset',voice=preset.id,variant=preset.variant,speaker=preset.speaker or '',
-                               text=text,instruction=preset.instruction or '')
+                               text=text,instruction=params.get('instruction',preset.instruction or ''))
             payload['revision'] = registry.lock['models'][payload['variant']]['revision']
             record = await jobs.submit(identity,payload,enqueue)
             return JSONResponse(jobs.public(record,download_origin),status_code=202)
@@ -199,8 +203,13 @@ def create_api(worker, api_key, registry=None, guard=None, custom_worker=None, *
             return JSONResponse({'error': 'Invalid text or voice request'}, status_code=400)
         if not guard.enter():
             return JSONResponse({'error': 'Busy or rate limited'}, status_code=429, headers={'Retry-After': '10'})
-        task = asyncio.create_task(custom_worker(speaker, text, values['instruction'], request_id) if mode == 'custom'
-                                   else worker(voice, text, request_id))
+        if mode == 'custom':
+            generation = custom_worker(speaker, text, values['instruction'], request_id)
+        elif 'instruction' in body:
+            generation = worker(voice, text, request_id, instruction=body['instruction'])
+        else:
+            generation = worker(voice, text, request_id)
+        task = asyncio.create_task(generation)
         try:
             # If a client disconnects, keep the gate until the one dispatched generation finishes.
             result = await asyncio.shield(task)

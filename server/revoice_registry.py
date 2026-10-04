@@ -33,15 +33,21 @@ class Preset:
     def enabled(self):
         return self.decision == 'keep'
 
-    def task(self, text):
+    def task(self, text, instruction=None):
         task = dict(text=text_for_synthesis(text), seed=20261003)
+        if instruction is not None:
+            if self.variant != 'custom':
+                raise ValueError('Fixed reference voices do not support instruction overrides')
+            from revoice_contract import custom_task
+            instruction = custom_task(self.speaker, text, instruction)['instruction']
         if self.variant == 'custom':
-            task.update(speaker=self.speaker, instruction=self.instruction)
+            task.update(speaker=self.speaker, instruction=self.instruction if instruction is None else instruction)
         return task
 
     def public(self):
         return dict(id=self.id, displayName=self.display_name, variant=self.variant,
-                    speaker=self.speaker, instruction=self.instruction, fixedReferenceID=self.reference_id)
+                    speaker=self.speaker, instruction=self.instruction, fixedReferenceID=self.reference_id,
+                    supportsInstruction=self.variant == 'custom')
 
 
 class PresetRegistry:

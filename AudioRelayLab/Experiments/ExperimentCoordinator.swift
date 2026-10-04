@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
     let preview: PreviewPlaybackController
     let rawRecorder: RawVoiceRecorder
     let mixVolumes = MixVolumeSettings()
+    let voiceMix = VoiceMixController()
     let aiVoice: AIConversionController
     let revoice: RevoiceController
     private var aiObserver: AnyCancellable?
@@ -107,6 +108,17 @@ import UniformTypeIdentifiers
             } catch { logger.log("音频恢复失败", diagnosticError(error)) }
         }
         if audio == nil { useTestAudio() }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("mix-interaction-test"),let source = audio,
+           let sourceURL = try? AudioFileManager.url(for:source),let folder = try? AudioFileManager.audioDirectory() {
+            let id = UUID(uuidString:"16300000-0000-4000-8000-000000000013") ?? UUID()
+            let target = folder.appendingPathComponent("混音测试原声.wav")
+            if !FileManager.default.fileExists(atPath:target.path) { try? FileManager.default.copyItem(at:sourceURL,to:target) }
+            if let fixture = try? AudioFileManager.inspect(url:target,displayName:"混音测试原声",id:id,source:.voiceLabRecording) {
+                try? AudioFileManager.register(fixture)
+            }
+        }
+        #endif
         refreshLibrary()
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
