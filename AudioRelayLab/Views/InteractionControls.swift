@@ -20,17 +20,33 @@ struct StablePicker<Value: Hashable>: View {
     let choices: [SelectionChoice<Value>]
     @State private var snapshot: SelectionSnapshot<Value>?
     @Environment(\.keyboardDismissAction) private var clearFocus
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         Button {
             if let clearFocus { clearFocus() } else { KeyboardDismiss.perform() }
             snapshot = .init(choices: choices, selected: selection)
         } label: {
-            HStack {
-                Text(title)
-                Spacer()
-                Text(choices.first { $0.id == selection }?.title ?? "请选择")
-                    .foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.trailing)
-                Image(systemName: "chevron.up.chevron.down").font(.caption)
+            Group {
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment:.leading,spacing:8) {
+                        Text(title).font(.subheadline)
+                        HStack(alignment:.top,spacing:12) {
+                            Text(choices.first { $0.id == selection }?.title ?? "请选择")
+                                .foregroundStyle(.secondary).lineLimit(3).multilineTextAlignment(.leading)
+                                .fixedSize(horizontal:false,vertical:true)
+                            Spacer(minLength:0)
+                            Image(systemName:"chevron.up.chevron.down").font(.caption)
+                        }
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                } else {
+                    HStack {
+                        Text(title)
+                        Spacer()
+                        Text(choices.first { $0.id == selection }?.title ?? "请选择")
+                            .foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.trailing)
+                        Image(systemName: "chevron.up.chevron.down").font(.caption)
+                    }
+                }
             }.frame(minHeight: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)

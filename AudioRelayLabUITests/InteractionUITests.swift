@@ -70,6 +70,7 @@ final class InteractionUITests: XCTestCase {
         XCTAssertEqual(pendingText.label,"这是之前已提交的配音，恢复时请继续取回这一份。")
         XCTAssertTrue(app.staticTexts["revoice.pending.voice"].label.contains("Serena"))
         XCTAssertTrue(app.staticTexts["revoice.pending.instruction"].label.contains("轻柔、语速稍慢"))
+        attach(app,"旧任务固定参数")
         reveal(app.buttons["revoice.pending.resume"],in:app)
         XCTAssertTrue(app.buttons["revoice.pending.resume"].isHittable)
         XCTAssertTrue(app.buttons["revoice.pending.stop"].exists)

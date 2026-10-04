@@ -130,9 +130,18 @@ private struct RevoiceVoiceSettings:View {
                 StablePicker(title:"Speaker",selection:$speaker,
                     choices:(speakers.isEmpty ? RevoiceSpeaker.all : speakers).map { .init(id:$0.id,title:$0.displayName) })
                 Text("表达指令 · 可选").font(.subheadline)
-                TextField("例如：自然放松，语速稍慢",text:$instruction,axis:.vertical)
+                TextField("",text:$instruction,axis:.vertical)
                     .focused(focus,equals:.instruction).lineLimit(1...3)
-                    .textFieldStyle(.roundedBorder).frame(minHeight:44).accessibilityIdentifier("revoice.instruction")
+                    .textFieldStyle(.plain).padding(10).frame(minHeight:44)
+                    .background(PaperTheme.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:6))
+                    .overlay(RoundedRectangle(cornerRadius:6).stroke(PaperTheme.line,lineWidth:1))
+                    .overlay(alignment:.leading) {
+                        if instruction.isEmpty {
+                            Text("例如：自然放松，语速稍慢").foregroundStyle(PaperTheme.secondary)
+                                .padding(10).lineLimit(1).allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                    }
+                    .accessibilityLabel("表达指令").accessibilityIdentifier("revoice.instruction")
                 PaperCaption("\(instruction.unicodeScalars.count)/500 · 留空使用自然表达")
             }
         }.disabled(disabled)
