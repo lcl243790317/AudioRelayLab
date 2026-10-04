@@ -1,6 +1,16 @@
 # AudioRelayLab：Modal 迁移实现与部署记录
 
-## 1.6.0 / build 10 当前增量
+## 当前 1.6.1 / build 11
+
+GPU worker、CPU API、任务执行与下载服务的 `scaledown_window` 已改为 **75 秒并部署**；模型准备与每小时清理任务保持 10 秒。继续单一 L4 池、min=0/max=1/buffer=0、生成并发 1，snapshot 开启，模型、固定参考及推理算法未改变。本文下方 60/120 秒和未提交的描述属于早期历史记录。
+
+新增 `POST /v1/jobs` 与 `GET /v1/jobs/{id}`，使用 Modal spawn 独立完成任务、Dict 持久状态及 requestID 去重、私有 results Volume 保存 24 小时成品。下载源 `https://your-workspace--audiorelaylab-qwen-download.modal.run` 只接受对应任务的临时只读凭据，查询和下载不启动 GPU；单次下载等待上限 120 秒与空闲缩零窗口分别设置。iOS 使用持久后台 URLSession 取回并校验保存，已有连接 JSON 继续可用。
+
+75 秒配置下三条真实 L4 任务、断开提交连接后完成、去重/冲突、CustomVoice/Base 切换、约 60 秒后同 session 复用、最终缩零及查询/下载不唤醒 GPU 均通过。完整证据与当前 IPA 交付见 [1.6.1 测试报告](REVOICE-1.6.1-TEST-REPORT-ZH.md)。main 尚未合并，等待用户签名验收。
+
+重部署保持现有 snapshot 时明确使用 `setup_modal_cloud.py --gpu-snapshot on`，不传开关默认为 off。
+
+## 1.6.0 / build 10 历史增量
 
 App 从 `feature/revoice-ios-1.6.0` 接入云端；手机强制设备端识别，云端只接收文字和目标声线参数。新增 `/v1/speakers` 与 `/v1/tts/custom`，九个固定 speaker 白名单，instruction 可空、原样传递、最多 500 字符；语言 Auto。原 `/v1/tts` 仍只接受 voice/text，六个认可预设的 instruction、Chinese 参数和两组固定参考保持原值。健康接口公开能力及长度限制。
 

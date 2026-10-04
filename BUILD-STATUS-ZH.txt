@@ -1,29 +1,40 @@
 AudioRelayLab 1.6.1 / build 11 — 签名测试版验证状态
 
-本轮：文件与键盘交互修复、稳定选择页、持久云端任务、系统后台下载、可辨认的配音名称和移除手机实时处理。
-分支 feature/revoice-ios-1.6.0，main 合并等待用户签名验收。详见 REVOICE-1.6.1-ZH.md。
+本轮：JSON 文件与键盘修复、稳定选择页、持久云端任务、系统后台下载、配音命名和移除手机实时处理。
+GPU 与常规 CPU 服务 scaledown_window=75 秒，已部署并实测；准备/清理=10 秒，后台下载单次等待=120 秒。
+分支 feature/revoice-ios-1.6.0，main 合并等待用户签名验收。详见 REVOICE-1.6.1-ZH.md 与 REVOICE-1.6.1-TEST-REPORT-ZH.md。
 
-待本轮真实 CI 更新：
-- Python 全量 87 项通过；模拟器 XCTest、UI 测试与 Release 构建尚在本轮验证中。
-- 本段仅由真实成功的 CI 证据脚本更新；不使用旧产物充当新版本。
+本轮真实 CI 证据：
+- 源码提交：a1c47fdf3f5eb5aa1d4b6db75f99a53697815fc7
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37183804352
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：174 项，0 失败，TEST SUCCEEDED。
+- UI 测试：3 项通过；真实录屏见 build/ui-interaction.mp4。
+- Python 自检：87 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1248459 字节。
+- SHA-256：c6fec1db0f2227d0bd5925bf4d32912c42094d9013cc1ddfae1fe67b442e4553
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+- Swift 编译警告：0；全部构建警告：Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 手机文件提供者、键盘/列表体验、锁屏保存、设备端识别和重签名权限仍须真机验收。
 
 真机已有观察（旧版用户结果，不是本轮复测）：
-- iPhone17,1 / iOS 18.1.1：A 多次普通微信语音消息收录成功，曾与本人讲话共同收录。
-- 约 4% App 音量明显降低，音量控制有效。
-- 微信实时语音通话 / 系统电话中 A/C/D 未实现目标播放，旧 C 准备曾闪退。
-- D 曾用实际内置路由成功，不等于 Bluetooth HFP 已验证。
+- iPhone17,1 / iOS 18.1.1 的微信普通语音消息曾收录播放音频，约 4% App 音量有效。
+- 实时语音/电话中的历史实验结果不作为本轮配音或后台下载验收证据。
 
-仍需 iOS 18.1.1 真机验收：
-- Files/iCloud/provider picker 实际可选、下载授权、metadata、试听、seek、倍速和两引擎 Experiment。
-- 8 类音频的完整真机链路，包括 AIF/AIFC/FLAC 和各编码变体。
-- 真人预设自然度、可懂度、监听端到端延迟、切换/音量/seek 瞬态、长时间掉帧与发热。
-- 麦克风权限、耳机/HFP、扬声器反馈、录音和混合 CAF、回流/分享/删除。
-- 中断、后台开关、媒体服务和路由变化；跨 App Voice 真实音频是否允许继续及保存后主播放器收录。
-- 新版 C 在真实电话/微信实时通话中准备不闪退、结束后可重新启动，仍为发布前阻断项。
-没有旧 crash report，不能宣称已定位唯一 C 崩溃栈或所有通话场景已稳定。
+本轮真实 Modal NVIDIA L4：
+- 75 秒配置下 CustomVoice → Base → CustomVoice 三条任务、提交连接断开后完成、请求去重和参数冲突均通过。
+- 空闲约 60 秒后复用同一 session，停止请求后确认缩到 0；查询和下载不唤醒 GPU。
+- WAV/SHA256/24,000 Hz/时长/声线身份验证通过，固定模型/参考/snapshot 沿用已有方案。
 
-第三方：Signalsmith Stretch 1.3.2 / Linear，固定 SHA，MIT 完整许可证已纳入 App。
-技术 graph、参数、局限和来源见 VOICE-PROCESSING-RESEARCH-ZH.md。
-默认本地处理；仅主动生成 AI 时向用户配置的电脑发送所选人声。不使用私有 API/注入/通话抓取/静音保活，不修改系统音量。
-导入审计按本轮要求含原 URL/文件名/沙盒目标，分享前检查个人路径。
-未配置 Apple 证书/私钥/profile；unsigned IPA 需要用户有效证书重新签名。
+待用户签名后的真机验收：
+- 第三方文件提供者 JSON 选择、完成按钮与选择页键盘收起、长列表滚动与视觉稳定。
+- 切换微信、锁屏、系统暂停/断网与恢复后的保存；手动划掉 App 后重新打开取回。
+- 麦克风和设备端语音识别权限、识别准确度，以及既有回听/混音/分享/延迟播放。
+- 云端任务 24 小时取回；系统后台下载与保存时机由 iOS 决定。
+
+已移除手机实时处理及 Signalsmith/DSP/桥接；旧实时录音和元数据继续可读。
+凭据审计通过：编译提交的 172 个 tracked 文件及解压后 IPA 无真实密钥；连接 JSON 导入 Keychain。
+IPA 未包含 Apple 签名材料，需要用户使用有效证书重新签名。main 未合并，无正式 release。

@@ -17,8 +17,8 @@
 手机实时监听、实时调音、专属 DSP、Signalsmith 和桥接已移除。原声录音使用 AVAudioRecorder，最长 60 秒自动停止；原声、录音权限和中断保护保留。电脑变声高级入口、离线混音、回听、分享、延迟播放和旧录音读取继续支持。声线、固定参考和 snapshot 配置沿用 1.6.0。按用户最新要求，GPU 与常规 CPU 服务 scaledown_window 改为 75 秒；模型准备与清理任务仍为 10 秒。后台下载每次服务器等待 120 秒是请求等待上限，与缩零空闲窗口分别设置。
 
 ## 验证状态
-Python 全量回归 87 项通过；静态审计已通过。模拟器 XCTest、UI 测试录屏、iPhoneOS Release 和真实 L4 验证由本轮 CI/测试报告记录，未完成前不视为通过。
+Python 全量回归 87 项、模拟器 XCTest 174 项、UI 测试 3 项全部通过；Simulator Debug、iPhoneOS Release 和无签名 IPA 校验完成，Swift 编译警告 0。75 秒配置下真实 L4 的独立任务、去重、CustomVoice/Base 切换、窗口内复用和最终缩零通过。实际提交与证据见 [交付与测试报告](REVOICE-1.6.1-TEST-REPORT-ZH.md)。
 
 真机待验收：第三方文件提供者的 JSON 选择、键盘收起、所有选择页滚动和视觉稳定、切到微信和锁屏后的自动保存、系统暂停/断网恢复，以及重签名后的设备端识别权限。模拟器测试不替代这些项目。
 
-IPA、SHA256、确切提交、日志与瘦身前后包体比较在交付报告中记录。当前不合并 main、不创建正式 release。
+交付为 1.6.1/build 11：`dist/AudioRelayLab-1.6.1-unsigned.ipa`；SHA256 为 `c6fec1db0f2227d0bd5925bf4d32912c42094d9013cc1ddfae1fe67b442e4553`。IPA、确切源码提交、日志与瘦身前后包体比较在交付报告中记录。当前不合并 main、不创建正式 release。

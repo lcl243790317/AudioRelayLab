@@ -1,6 +1,6 @@
-当前 1.5.0 / build 8 增量：双圆点起止范围、AI 原声录制/转换最高 60 秒、右上角一键日夜切换；见 AI-VOICE-GUIDE-ZH.md。
+当前 1.6.1 / build 11：交互修复、持久云端任务与后台下载、配音命名、移除手机实时 DSP；云端 scaledown_window=75 秒。实际 CI 与交付见 REVOICE-1.6.1-TEST-REPORT-ZH.md。main 合并等待签名验收。
 
-AudioRelayLab 1.2.1 / build 4 — 构建与验证说明
+AudioRelayLab — 构建与验证说明
 
 1. 在现有工程上迭代
 仓库：https://github.com/lcl243790317/AudioRelayLab
@@ -13,7 +13,7 @@ Windows 可以编辑、做 Python 静态检查、维护 Git，不能执行 Xcode
 真实 Swift 类型检查、单元测试和 iOS 编译必须在 macOS / Xcode 上完成。
 
 2. 本地可执行检查
-Python 3.10+：
+本轮 CI 固定 Python 3.12 与 server/ci-requirements.txt：
 python scripts/static_check.py
 python -m unittest discover -s tests -v
 python scripts/verify_ipa.py dist/AudioRelayLab-unsigned.ipa
@@ -27,15 +27,15 @@ Swift 自动测试由 CI 在真实 Apple 工具链执行，覆盖数据、状态
 3. 真实 GitHub Actions
 Actions：https://github.com/lcl243790317/AudioRelayLab/actions
 推送 main / develop、面向 main 的 PR 或 workflow_dispatch 可以触发。
-手动运行：Actions → “iOS 无签名构建” → Run workflow → main。
+手动运行：Actions → “iOS 无签名构建” → Run workflow → feature/revoice-ios-1.6.0。本轮实际由草稿 PR 的分支同步触发，checkout 使用 PR head 的确切 SHA；不是 main 产物。
 
 CI 默认 contents: read，构建不扩大写权限。
 不得提交 Apple certificate、private key、密码、provisioning profile、GitHub token 或账户秘密。
 当前无用户签名材料时，保留合法无签名构建流程，不伪造签名成功。
 
 在已正常登录 GitHub CLI 的环境，可使用：
-git push -u origin main
-gh workflow run build-ios.yml
+git push -u origin feature/revoice-ios-1.6.0
+gh workflow run build-ios.yml --ref feature/revoice-ios-1.6.0
 gh run list --workflow build-ios.yml
 gh run view <运行编号> --log-failed
 gh run download <运行编号> --name AudioRelayLab-iOS-Build --dir dist
