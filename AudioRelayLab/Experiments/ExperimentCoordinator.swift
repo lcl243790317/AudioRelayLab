@@ -186,6 +186,7 @@ import UniformTypeIdentifiers
             try AudioFileManager.removeAudio(asset)
             aiVoice.forgetAsset(asset.id)
             revoice.forgetAsset(asset.id)
+            voiceMix.forgetAsset(asset.id)
             if audio?.id == asset.id { useTestAudio() }
             refreshLibrary()
             try rawRecorder.removeRecord(for: asset.id)

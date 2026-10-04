@@ -74,6 +74,7 @@ import UIKit
     func setForeground(_ active:Bool) {
         guard isForeground != active else { return }
         isForeground = active
+        guard store.all().contains(where: { $0.isPending && $0.reply != nil }) else { return }
         // Invalidate the old transport before cancelling it. Its late callbacks
         // can no longer change the same cloud job's new transport or save twice.
         for var job in store.all() where job.isPending && job.reply != nil && !processing.contains(job.id) {

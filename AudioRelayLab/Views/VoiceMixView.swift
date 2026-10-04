@@ -13,11 +13,9 @@ struct VoiceMixView:View {
                 StablePicker(title:"人声",selection:$mix.voiceID,
                     choices:[.init(id:nil,title:"请选择录音或配音")] + VoiceMixController.voices(in:coordinator.library)
                         .map { .init(id:Optional($0.id),title:$0.libraryName) })
-                    .accessibilityIdentifier("mix.voice")
                 StablePicker(title:"背景音乐",selection:$mix.musicID,
                     choices:[.init(id:nil,title:"请选择音乐")] + VoiceMixController.music(in:coordinator.library)
                         .map { .init(id:Optional($0.id),title:$0.libraryName) })
-                    .accessibilityIdentifier("mix.music")
                 if VoiceMixController.voices(in:coordinator.library).isEmpty {
                     PaperCaption("先录一段原声或生成配音，之后随时可以在这里混音。")
                 }

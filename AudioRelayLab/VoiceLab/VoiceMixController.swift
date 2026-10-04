@@ -23,6 +23,11 @@ struct VoiceMixRequest {
     static func music(in library:[AudioAsset]) -> [AudioAsset] {
         library.filter { [.imported,.bundled].contains($0.source) }
     }
+    func forgetAsset(_ id:UUID) {
+        if voiceID == id { voiceID = nil }
+        if musicID == id { musicID = nil }
+        if result?.id == id { result = nil }
+    }
     func request(library:[AudioAsset],volumes:AudioMixParameters) throws -> VoiceMixRequest {
         guard let voice = Self.voices(in:library).first(where:{$0.id == voiceID}),
               let music = Self.music(in:library).first(where:{$0.id == musicID}),voice.id != music.id else {
