@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 struct MainView: View {
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var session: AudioSessionManager
-    @ObservedObject var voice: VoiceProcessingEngine
+    @ObservedObject var voice: RawVoiceRecorder
     @State private var importing = false
     @State private var showResult = false
     @State private var showTechnicalDetails = false
@@ -14,7 +14,7 @@ struct MainView: View {
     init(coordinator: ExperimentCoordinator) {
         self.coordinator = coordinator
         session = coordinator.session
-        voice = coordinator.voiceLab
+        voice = coordinator.rawRecorder
     }
 
     var body: some View {
@@ -37,6 +37,7 @@ struct MainView: View {
                     }
                 }
             }
+            .keyboardDone()
             .navigationTitle("AudioRelayLab")
             .buttonStyle(PaperButtonStyle())
             .navigationBarTitleDisplayMode(.inline)
@@ -143,11 +144,8 @@ struct MainView: View {
 
     private var settingsSection: some View {
         VStack(alignment:.leading,spacing:14) {
-            Picker("音频配置", selection: $coordinator.profile) {
-                ForEach(AudioSessionProfile.selectableCases) { profile in
-                    Text("\(profile.rawValue) · \(profile.title)").tag(profile)
-                }
-            }
+            StablePicker(title:"音频配置",selection:$coordinator.profile,
+                choices:AudioSessionProfile.selectableCases.map { .init(id:$0,title:"\($0.rawValue) · \($0.title)") })
             Text(coordinator.profile.shortDescription).font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("A / C / D / E 配置说明") {
                 ForEach(AudioSessionProfile.selectableCases) { profile in
@@ -157,17 +155,15 @@ struct MainView: View {
                     }
                 }
             }
-            Picker("播放引擎", selection: $coordinator.engineKind) {
-                ForEach(PlaybackEngineKind.selectableCases) { Text($0.rawValue).tag($0) }
-            }
+            StablePicker(title:"播放引擎",selection:$coordinator.engineKind,
+                choices:PlaybackEngineKind.selectableCases.map { .init(id:$0,title:$0.rawValue) })
             Toggle("自定义延迟", isOn: $customDelay)
             if customDelay {
                 TextField("延迟秒数（0.1～60）", value: $coordinator.delay, format: .number)
                     .keyboardType(.decimalPad)
             } else {
-                Picker("延迟时间", selection: $coordinator.delay) {
-                    ForEach([1.0, 2, 3, 4, 5, 7, 10], id: \.self) { Text("\(Int($0)) 秒").tag($0) }
-                }
+                StablePicker(title:"延迟时间",selection:$coordinator.delay,
+                    choices:[1.0,2,3,4,5,7,10].map { .init(id:$0,title:"\(Int($0)) 秒") })
             }
             Toggle("限制播放时长", isOn: Binding(
                 get: { coordinator.requestedDuration != nil },
@@ -215,9 +211,8 @@ struct MainView: View {
     private var experimentSection: some View {
         PaperCard("延迟播放") {
             volumeSection
-            Picker("等待时间",selection:$coordinator.delay) {
-                ForEach([1.0,2,3,4,5,7,10],id:\.self) { Text("\(Int($0)) 秒").tag($0) }
-            }.disabled(coordinator.controlsLocked)
+            StablePicker(title:"等待时间",selection:$coordinator.delay,
+                choices:[1.0,2,3,4,5,7,10].map { .init(id:$0,title:"\(Int($0)) 秒") }).disabled(coordinator.controlsLocked)
             LabeledContent("已应用开始位置", value: AudioPlaybackSettings.time(coordinator.applied.startOffset))
             LabeledContent("已应用结束位置", value: AudioPlaybackSettings.time(coordinator.applied.endPosition(duration:coordinator.audio?.duration ?? 0)))
             LabeledContent("已应用速度", value: String(format: "%gx", coordinator.applied.playbackRate))

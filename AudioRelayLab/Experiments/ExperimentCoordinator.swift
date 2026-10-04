@@ -9,7 +9,8 @@ import UniformTypeIdentifiers
     let session: AudioSessionManager
     let store: ExperimentStore
     let preview: PreviewPlaybackController
-    let voiceLab: VoiceProcessingEngine
+    let rawRecorder: RawVoiceRecorder
+    let mixVolumes = MixVolumeSettings()
     let aiVoice: AIConversionController
     let revoice: RevoiceController
     private var aiObserver: AnyCancellable?
@@ -47,21 +48,21 @@ import UniformTypeIdentifiers
         let logger = DiagnosticsLogger()
         self.logger = logger
         aiVoice = AIConversionController(logger: logger)
-        revoice = RevoiceController(logger:logger)
+        revoice = RevoiceController(logger:logger,backgroundTransfers:.shared)
         if ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") {
             revoice.preparePreview(custom:ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot"))
         }
         session = AudioSessionManager(logger: logger)
         preview = PreviewPlaybackController(session: session, logger: logger)
-        voiceLab = VoiceProcessingEngine(session: session, logger: logger)
+        rawRecorder = RawVoiceRecorder(session: session, logger: logger)
         store = ExperimentStore(logger: logger, directoryURL:historyDirectoryURL)
         logger.log("生命周期", "App 启动；设备=\(DeviceInfo.current().modelIdentifier)；iOS=\(DeviceInfo.current().systemVersion)")
         session.onEvent = { [weak self] event in self?.handle(event) }
-        voiceLab.beforeStart = { [weak self] in self?.stop(); self?.preview.stop() }
-        voiceLab.onSaved = { [weak self] asset in
+        rawRecorder.beforeStart = { [weak self] in self?.stop(); self?.preview.stop() }
+        rawRecorder.onSaved = { [weak self] asset, purpose in
             self?.refreshLibrary()
-            if asset.presetName == "AI 原声" { self?.aiVoice.selectInput(asset) }
-            if asset.presetName == "重新配音原声" { self?.revoice.recorded(asset) }
+            if purpose == .computerConversion { self?.aiVoice.selectInput(asset) }
+            if purpose == .revoice { self?.revoice.recorded(asset) }
         }
         aiVoice.beforeConvert = { [weak self] in self?.stop(); self?.preview.stop() }
         aiVoice.onResult = { [weak self] _ in self?.refreshLibrary() }
@@ -95,6 +96,7 @@ import UniformTypeIdentifiers
                     var restored = try AudioFileManager.inspect(url: url, displayName: saved.fileName, id: saved.id, source: saved.source, presetName: saved.presetName)
                     restored.aiConversion = saved.aiConversion
                     restored.revoice = saved.revoice
+                    restored.mixSource = saved.mixSource
                     restored.addedAt = saved.addedAt ?? restored.addedAt
                     audio = restored
                 }
@@ -115,7 +117,7 @@ import UniformTypeIdentifiers
     }
     var isRunning: Bool { machine.isActive }
     var busy: Bool { isImporting || state == .preparing }
-    var controlsLocked: Bool { isImporting || isMixing || machine.isActive || voiceLab.isActive || aiVoice.busy || revoice.busy }
+    var controlsLocked: Bool { isImporting || isMixing || machine.isActive || rawRecorder.isActive || aiVoice.busy || revoice.busy }
     func beginMixing() throws {
         guard !controlsLocked else { throw LabError.audioUnavailable }
         isMixing = true
@@ -123,7 +125,7 @@ import UniformTypeIdentifiers
     func endMixing() { isMixing = false }
 
     func importAudio(_ url: URL) {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { report(LabError.audioUnavailable, message: "请先结束当前实验、变声或混音再选择音频。"); return }
+        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { report(LabError.audioUnavailable, message: "请先结束当前实验、变声或混音再选择音频。"); return }
         cancelImport()
         preview.reset()
         let lease = AudioAccessLease(url)
@@ -147,7 +149,7 @@ import UniformTypeIdentifiers
         }
     }
     func useTestAudio() {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { return }
+        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { return }
         cancelImport()
         do {
             let metadata = try AudioFileManager.loadBundledAudio()
@@ -171,7 +173,7 @@ import UniformTypeIdentifiers
             revoice.forgetAsset(asset.id)
             if audio?.id == asset.id { useTestAudio() }
             refreshLibrary()
-            try voiceLab.removeRecord(for: asset.id)
+            try rawRecorder.removeRecord(for: asset.id)
             logger.log("音频删除", "asset=\(asset.id)，来源=\(asset.source.rawValue)；实验历史保留。")
         } catch {
             refreshLibrary()
@@ -179,7 +181,7 @@ import UniformTypeIdentifiers
         }
     }
     func selectAudio(_ asset: AudioAsset) throws {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { throw LabError.message("请先结束正式实验、变声或混音") }
+        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { throw LabError.message("请先结束正式实验、变声或混音") }
         var checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
             id: asset.id, source: asset.source, presetName: asset.presetName)
         checked.aiConversion = asset.aiConversion
@@ -195,7 +197,7 @@ import UniformTypeIdentifiers
         refreshLibrary()
     }
     func selectLocal(_ asset: AudioAsset) {
-        guard !machine.isActive, !voiceLab.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { return }
+        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { return }
         cancelImport()
         do { try selectAudio(asset) }
         catch { report(error, message: "本地音频无法读取，请重新导入。") }
@@ -401,12 +403,12 @@ import UniformTypeIdentifiers
     }
     func sceneChanged(_ phase: ScenePhase) {
         scenePhase = phase
+        revoice.foregroundChanged(phase == .active)
         switch phase {
         case .active: logger.log("生命周期", "Scene active / foreground"); capture("foreground"); refresh()
         case .inactive: logger.log("生命周期", "Scene inactive")
         case .background:
-            if !voiceLab.continuesInBackground { voiceLab.stop() }
-            else if voiceLab.isActive { logger.log("Voice 后台", "继续用户主动开启的真实音频；遇到系统中断或无效路由仍安全停止") }
+            rawRecorder.stop()
             preview.stop()
             cancelImport()
             logger.log("生命周期", "Scene background")
@@ -425,9 +427,11 @@ import UniformTypeIdentifiers
         guard scenePhase == .active else { return }
         // UI Timer 只观察，绝不调用 play / schedule / resume。
         engine?.observe()
-        if let engine { diagnosticState = engine.diagnosticState }
-        if state == .waiting, let target = currentExperiment?.schedule?.targetUptime { remaining = max(0, target - ProcessInfo.processInfo.systemUptime) }
-        else { remaining = 0 }
+        if let engine, diagnosticState != engine.diagnosticState { diagnosticState = engine.diagnosticState }
+        let nextRemaining:Double
+        if state == .waiting, let target = currentExperiment?.schedule?.targetUptime { nextRemaining = max(0, target - ProcessInfo.processInfo.systemUptime) }
+        else { nextRemaining = 0 }
+        if remaining != nextRemaining { remaining = nextRemaining }
     }
     func checkpoint(reportFailure: Bool = false) {
         guard var experiment = currentExperiment else { return }
@@ -442,7 +446,7 @@ import UniformTypeIdentifiers
         if machine.isActive || reason == "experiment finish" { currentExperiment?.sessionSnapshots.append(snapshot) }
     }
     private func handle(_ event: AudioSessionEvent) {
-        voiceLab.handle(event)
+        rawRecorder.handle(event)
         preview.handle(event)
         let token = machine.generation
         logEngineState()

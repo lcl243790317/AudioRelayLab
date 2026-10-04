@@ -3,7 +3,8 @@ import SwiftUI
 struct VoiceAIView: View {
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var ai: AIConversionController
-    @ObservedObject var voice: VoiceProcessingEngine
+    @ObservedObject var voice: RawVoiceRecorder
+    @ObservedObject var volumes: MixVolumeSettings
     let showConnection: () -> Void
     @State private var showLibrary = false
     @State private var useAppliedRange = false
@@ -12,7 +13,7 @@ struct VoiceAIView: View {
     @State private var mixing = false
     @State private var mixStatus = ""
     init(coordinator: ExperimentCoordinator, showConnection: @escaping () -> Void) {
-        self.coordinator = coordinator; ai = coordinator.aiVoice; voice = coordinator.voiceLab
+        self.coordinator = coordinator; ai = coordinator.aiVoice; voice = coordinator.rawRecorder; volumes = coordinator.mixVolumes
         self.showConnection = showConnection
     }
     var body: some View {
@@ -22,13 +23,9 @@ struct VoiceAIView: View {
                     PaperCaption("先连接同一网络的电脑，再选择真实参考音色。")
                     Button("连接我的电脑") { showConnection() }.buttonStyle(PaperButtonStyle(primary:true))
                 } else {
-                    Picker("音色",selection:$ai.selectedVoice) {
-                        ForEach(ai.voices) { Text($0.name).tag($0.id) }
-                    }.disabled(ai.busy || voice.isActive)
+                    StablePicker(title:"音色",selection:$ai.selectedVoice,choices:ai.voices.map { .init(id:$0.id,title:$0.name) }).disabled(ai.busy || voice.isActive)
                     DisclosureGroup("高级转换设置") {
-                    Picker("表达与转换方式",selection:$ai.mode) {
-                        ForEach(ai.availableModes) { Text($0.title).tag($0) }
-                    }.disabled(ai.busy || voice.isActive)
+                    StablePicker(title:"表达与转换方式",selection:$ai.mode,choices:ai.availableModes.map { .init(id:$0,title:$0.title) }).disabled(ai.busy || voice.isActive)
                     PaperCaption(ai.mode.explanation)
 
                         Toggle("自定义参数",isOn:$ai.customSettings).disabled(ai.busy || voice.isActive)
@@ -68,10 +65,9 @@ struct VoiceAIView: View {
                         Button("录制原声") {
                             ai.selectInput(nil)
                             useAppliedRange = false
-                            voice.rawRecordingPurpose = .computerConversion
-                            voice.start(.rawRecording)
+                            KeyboardDismiss.perform(); voice.start(.computerConversion)
                         }.disabled(coordinator.controlsLocked || ai.connecting)
-                        Button("从音频库选择") { showLibrary = true }
+                        Button("从音频库选择") { KeyboardDismiss.perform(); showLibrary = true }
                             .disabled(coordinator.controlsLocked || ai.connecting || coordinator.library.isEmpty)
                     }
                 }
@@ -86,6 +82,7 @@ struct VoiceAIView: View {
                     PaperCaption("从库直接选择默认转换全段；长音频可先在音频页截取至 60 秒内。")
                 }
                 Button("生成 AI 声音") {
+                    KeyboardDismiss.perform()
                     let selected = useAppliedRange && ai.input?.id == coordinator.audio?.id
                     ai.convert(start:selected ? coordinator.applied.startOffset : 0,
                                limit:selected ? coordinator.applied.sourceLimit(duration:coordinator.audio?.duration ?? 0,requested:coordinator.requestedDuration) : nil)
@@ -109,14 +106,10 @@ struct VoiceAIView: View {
                     }.disabled(coordinator.controlsLocked)
                     Button("停止回听") { coordinator.preview.stop() }
                     DisclosureGroup("加入背景音乐并保存") {
-                        Picker("背景音乐",selection:$backgroundID) {
-                            Text("请选择音乐").tag(Optional<UUID>.none)
-                            ForEach(coordinator.library.filter { $0.id != result.id }) { asset in
-                                Text(asset.fileName).tag(Optional(asset.id))
-                            }
-                        }.disabled(mixing || coordinator.controlsLocked)
-                        volume("人声",value:$voice.voiceVolume)
-                        volume("音乐",value:$voice.musicVolume)
+                        StablePicker(title:"背景音乐",selection:$backgroundID,
+                            choices:[.init(id:nil,title:"请选择音乐")] + coordinator.library.filter { $0.id != result.id }.map { .init(id:Optional($0.id),title:$0.fileName) }).disabled(mixing || coordinator.controlsLocked)
+                        volume("人声",value:$volumes.voice)
+                        volume("音乐",value:$volumes.music)
                         PaperCaption("使用完整 AI 人声；背景音乐从头以原速加入。音乐默认 4%。")
                         Button(mixing ? "正在保存混音…" : "保存混合音频") { mix(result) }
                             .disabled(mixing || coordinator.controlsLocked || backgroundID == nil)
@@ -125,6 +118,7 @@ struct VoiceAIView: View {
                 }
             }
         }
+        .keyboardDone()
         .sheet(isPresented:$showLibrary) {
             NavigationStack {
                 AudioLibraryPickerView(coordinator:coordinator) { asset in
@@ -137,7 +131,7 @@ struct VoiceAIView: View {
     private func volume(_ title:String,value:Binding<Float>) -> some View {
         VStack(alignment:.leading) {
             Text("\(title) \(percent(value.wrappedValue))").font(.subheadline)
-            Slider(value:Binding(get:{ bounded(value.wrappedValue) },set:{ value.wrappedValue = Float($0); voice.updateParameters() }),in:0...1)
+            Slider(value:Binding(get:{ bounded(value.wrappedValue) },set:{ value.wrappedValue = Float($0) }),in:0...1)
         }
     }
     private func mix(_ result:AudioAsset) {
@@ -145,13 +139,13 @@ struct VoiceAIView: View {
         do { try coordinator.beginMixing() }
         catch { mixStatus = userFacingAudioError(error); return }
         mixing = true; coordinator.preview.stop()
-        let volumes = AudioMixParameters(voice:voice.voiceVolume,music:voice.musicVolume,master:voice.masterVolume)
+        let volumes = self.volumes.parameters
         Task {
             defer { mixing = false; coordinator.endMixing() }
             do {
                 let voiceURL = try AudioFileManager.url(for:result), musicURL = try AudioFileManager.url(for:music)
                 let settings = music.id == coordinator.audio?.id ? coordinator.applied : AudioPlaybackSettings()
-                _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:settings,volumes:volumes) }.value
+                _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:settings,volumes:volumes,voiceAsset:result,musicAsset:music) }.value
                 coordinator.refreshLibrary(); mixStatus = "已保存，可在录音库回听或应用。"
             } catch { mixStatus = userFacingAudioError(error) }
         }
@@ -172,8 +166,10 @@ struct AIConnectionView: View {
                     TextField("http://192.168.1.8:7867",text:$ai.address)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .textFieldStyle(.roundedBorder).disabled(ai.connecting || ai.busy)
+                        .submitLabel(.done).onSubmit { KeyboardDismiss.perform() }
                     SecureField("连接密钥",text:$ai.key).textFieldStyle(.roundedBorder).disabled(ai.connecting || ai.busy)
-                    Button("连接并读取音色") { ai.connect() }.buttonStyle(PaperButtonStyle(primary:true))
+                        .submitLabel(.done).onSubmit { KeyboardDismiss.perform() }
+                    Button("连接并读取音色") { KeyboardDismiss.perform(); ai.connect() }.buttonStyle(PaperButtonStyle(primary:true))
                         .disabled(ai.connecting || ai.busy)
                     if ai.connecting { ProgressView("正在连接…") }
                     PaperCaption(ai.status)
@@ -181,7 +177,7 @@ struct AIConnectionView: View {
                     if let error = ai.errorMessage { Text(error).foregroundStyle(.orange) }
                 }
                 PaperCaption("只有点击“生成 AI 声音”才发送所选录音到此电脑。音色参考和生成结果保留在你的设备。")
-            }.navigationTitle("电脑 AI").navigationBarTitleDisplayMode(.inline)
+            }.keyboardDone().navigationTitle("电脑 AI").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("完成") { dismiss() } }
         }
     }

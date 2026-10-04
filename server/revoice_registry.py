@@ -40,7 +40,8 @@ class Preset:
         return task
 
     def public(self):
-        return dict(id=self.id, displayName=self.display_name, variant=self.variant)
+        return dict(id=self.id, displayName=self.display_name, variant=self.variant,
+                    speaker=self.speaker, instruction=self.instruction, fixedReferenceID=self.reference_id)
 
 
 class PresetRegistry:
@@ -112,7 +113,6 @@ class PresetRegistry:
         return audio, text
 
     def inventory(self):
-        return [dict(**p.public(), speaker=p.speaker, instruction=p.instruction,
-                     fixedReferenceID=p.reference_id, review=p.decision, cloudEnabled=p.enabled,
+        return [dict(**p.public(), review=p.decision, cloudEnabled=p.enabled,
                      needsCustomVoice=p.variant=='custom', needsBase=p.variant=='base',
                      needsVoiceDesignRuntime=False) for p in self.presets.values()]

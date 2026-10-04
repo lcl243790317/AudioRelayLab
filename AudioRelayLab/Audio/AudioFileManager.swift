@@ -17,7 +17,8 @@ struct AudioFileMetadata: Codable, Identifiable {
     var aiConversion: AIConversionMetadata? = nil
     var revoice: RevoiceMetadata? = nil
     var addedAt: Date? = nil
-    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName, aiConversion, revoice, addedAt }
+    var mixSource: MixSourceMetadata? = nil
+    enum CodingKeys: String, CodingKey { case id, fileName, sandboxFileName, duration, sampleRate, channelCount, byteCount, source, formatDescription, presetName, aiConversion, revoice, addedAt, mixSource }
 }
 
 extension AudioFileMetadata {
@@ -35,6 +36,7 @@ extension AudioFileMetadata {
         presetName = try? c.decode(String.self, forKey: .presetName)
         aiConversion = try? c.decode(AIConversionMetadata.self, forKey: .aiConversion)
         revoice = try? c.decode(RevoiceMetadata.self, forKey: .revoice)
+        mixSource = try? c.decode(MixSourceMetadata.self, forKey: .mixSource)
         addedAt = try? c.decode(Date.self, forKey: .addedAt)
     }
 }
@@ -55,6 +57,7 @@ enum AudioFileManager {
         let folder = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true).appendingPathComponent("Audio", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication],ofItemAtPath:folder.path)
         return folder
     }
     static func url(for metadata: AudioFileMetadata) throws -> URL {
@@ -169,7 +172,7 @@ enum AudioFileManager {
            let existing = try? JSONDecoder().decode(AudioAsset.self, from: data) {
             stored.addedAt = existing.addedAt ?? legacyAddedAt(url)
         } else if stored.addedAt == nil { stored.addedAt = legacyAddedAt(url) }
-        try JSONEncoder().encode(stored).write(to: sidecar, options: .atomic)
+        try JSONEncoder().encode(stored).write(to: sidecar, options: [.atomic,.completeFileProtectionUntilFirstUserAuthentication])
     }
     static func listLocalAudio() throws -> [AudioAsset] {
         try FileManager.default.contentsOfDirectory(at: audioDirectory(), includingPropertiesForKeys: nil)

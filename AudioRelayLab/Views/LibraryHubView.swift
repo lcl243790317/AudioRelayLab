@@ -24,7 +24,7 @@ struct LibraryHubView: View {
                         Label("诊断与日志",systemImage:"doc.text")
                     }
                 }
-                PaperCaption("AudioRelayLab · \(version)\nAI 重新配音、手机实时处理与电脑变声，可以在同一套播放实验中回听。")
+                PaperCaption("AudioRelayLab · \(version)\nAI 重新配音与电脑变声，可以在同一套播放实验中回听。")
             }.navigationTitle("资料").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() } }
         }
@@ -69,7 +69,19 @@ struct LocalAudioLibraryView: View {
                         }
                         if let revoice = asset.revoice {
                             PaperCaption("AI 重新配音 · \(revoice.generationMode == "custom" ? "自定义" : "固定预设")")
-                            DisclosureGroup("配音文字") { Text(revoice.synthesisText).font(.callout).textSelection(.enabled) }
+                            DisclosureGroup("配音详情") {
+                                Text(revoice.synthesisText).font(.callout).textSelection(.enabled)
+                                PaperCaption("声线：\(revoice.voiceName ?? revoice.voiceID)\nSpeaker：\(revoice.speakerID ?? "固定参考")")
+                                if let reference = revoice.fixedReferenceID { PaperCaption("参考身份：\(reference)") }
+                                Text("Instruction：\((revoice.instruction ?? "").isEmpty ? "自然表达" : (revoice.instruction ?? ""))")
+                                    .font(.callout).textSelection(.enabled)
+                            }
+                        }
+                        if let source = asset.mixSource {
+                            DisclosureGroup("混音来源") {
+                                PaperCaption("人声：\(source.voiceAssetID.uuidString)\n音乐：\(source.musicAssetID.uuidString)")
+                                PaperCaption("人声音量 \(source.volumes.voice) · 音乐音量 \(source.volumes.music) · 总音量 \(source.volumes.master)")
+                            }
                         }
                     }.padding(.vertical,8)
                         .swipeActions(edge:.trailing,allowsFullSwipe:false) {

@@ -71,7 +71,18 @@ enum CloudConnectionStore {
     }
 }
 
-struct RevoiceVoice: Codable, Identifiable, Hashable { let id:String; let displayName:String; let variant:String }
+struct RevoiceVoice: Codable, Identifiable, Hashable {
+    let id:String
+    let displayName:String
+    let variant:String
+    let speaker:String?
+    let instruction:String?
+    let fixedReferenceID:String?
+    init(id:String,displayName:String,variant:String,speaker:String? = nil,instruction:String? = nil,fixedReferenceID:String? = nil) {
+        self.id=id; self.displayName=displayName; self.variant=variant; self.speaker=speaker
+        self.instruction=instruction; self.fixedReferenceID=fixedReferenceID
+    }
+}
 struct RevoiceSpeaker: Codable, Identifiable, Hashable {
     let id:String; let displayName:String
     static let all: [Self] = [
@@ -82,7 +93,7 @@ struct RevoiceSpeaker: Codable, Identifiable, Hashable {
         .init(id:"Sohee",displayName:"Sohee · 温暖韩语女声")]
 }
 
-enum RevoiceChoice: Equatable, Sendable {
+enum RevoiceChoice: Equatable, Sendable, Codable {
     case preset(id:String, variant:String)
     case custom(speaker:String, instruction:String)
     var mode:String { if case .custom = self { return "custom" }; return "preset" }
@@ -130,7 +141,7 @@ enum RevoiceLimits {
     }
 }
 
-struct RevoiceMetadata: Codable {
+struct RevoiceMetadata: Codable, Sendable {
     let provider:String
     let generationMode:String
     let voiceID:String
@@ -144,6 +155,17 @@ struct RevoiceMetadata: Codable {
     let sha256:String
     let generationSeconds:Double
     let totalSeconds:Double
+    var voiceName:String? = nil
+    var fixedReferenceID:String? = nil
+    var jobID:String? = nil
+}
+
+struct MixSourceMetadata: Codable {
+    let voiceAssetID:UUID
+    let musicAssetID:UUID
+    let revoice:RevoiceMetadata?
+    let settings:AudioPlaybackSettings
+    let volumes:AudioMixParameters
 }
 
 struct RevoiceAudio: Sendable {
@@ -156,7 +178,7 @@ enum RevoiceWAV {
         func invalid() -> LabError { .message("云端音频或校验信息不完整，未保存半成品") }
         func word(_ offset:Int) -> UInt16 { UInt16(data[offset]) | UInt16(data[offset+1]) << 8 }
         func number(_ offset:Int) -> Int { Int(word(offset)) | Int(word(offset+2)) << 16 }
-        guard response.statusCode == 200, response.value(forHTTPHeaderField:"Content-Type")?.split(separator:";").first == "audio/wav",
+        guard [200,206].contains(response.statusCode), response.value(forHTTPHeaderField:"Content-Type")?.split(separator:";").first == "audio/wav",
               data.count >= 44, data.count <= 10*1024*1024, data.prefix(4) == Data("RIFF".utf8),
               data[8..<12] == Data("WAVE".utf8), number(4) == data.count-8 else { throw invalid() }
         var offset = 12, formatOK = false, pcm:Range<Int>?

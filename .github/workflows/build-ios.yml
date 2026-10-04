@@ -111,15 +111,12 @@ jobs:
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-custom.png
-          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-local-snapshot
-          sleep 3
-          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-local.png
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab night-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-audio-dark.png
-          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-local-snapshot night-snapshot
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot night-snapshot
           sleep 3
-          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-local-dark.png
+          xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-custom-dark.png
           xcrun simctl terminate "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
           printf 'XCTest iPhone Simulator UDID: %s; architecture: %s\n' "$SIMULATOR_UDID" "$SIMULATOR_ARCH" | tee build-test-destination.log
           xcodebuild \
@@ -130,7 +127,22 @@ jobs:
             -derivedDataPath build/simulator-tests \
             -resultBundlePath build/unit-tests.xcresult \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            test 2>&1 | tee build-xctest.log
+            test -only-testing:AudioRelayLabTests 2>&1 | tee build-xctest.log
+          # Record actual selection scrolling while the same parent updates four times per second.
+          xcrun simctl io "$SIMULATOR_UDID" recordVideo --codec=h264 build/ui-interaction.mp4 > build-ui-recording.log 2>&1 &
+          RECORD_PID=$!
+          trap 'kill -INT "$RECORD_PID" 2>/dev/null || true' EXIT
+          xcodebuild \
+            -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
+            -configuration Debug -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=$SIMULATOR_ARCH" \
+            -destination-timeout 180 -parallel-testing-enabled NO \
+            -derivedDataPath build/simulator-tests -resultBundlePath build/ui-tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            test -only-testing:AudioRelayLabUITests 2>&1 | tee build-uitest.log
+          kill -INT "$RECORD_PID" 2>/dev/null || true
+          wait "$RECORD_PID" || true
+          trap - EXIT
       - name: 编译 iPhoneOS Release
         run: |
           set -euo pipefail
@@ -177,8 +189,8 @@ jobs:
             AI-VOICE-GUIDE-ZH.md
             REVOICE-1.6-ZH.md
             MODAL-DEPLOYMENT-ZH.md
-            AudioRelayLab/Resources/THIRD-PARTY-NOTICES.txt
-            AudioRelayLab/VoiceLab/Vendor/DEPENDENCIES.json
+            REVOICE-1.6.1-ZH.md
+            build/ui-*.mp4
       - name: 记录最终状态
         if: always()
         env:

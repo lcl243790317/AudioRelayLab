@@ -25,9 +25,7 @@ struct ExperimentResultView: View {
                     Text("\(experiment.device.modelIdentifier) · iOS \(experiment.device.systemVersion)").font(.caption)
                 }
                 Section("实验后的人工判断") {
-                    Picker("实验结果", selection: $result) {
-                        ForEach(ExperimentResult.selectableCases) { Text($0.title).tag($0) }
-                    }.pickerStyle(.inline)
+                    StablePicker(title:"实验结果",selection:$result,choices:ExperimentResult.selectableCases.map { .init(id:$0,title:$0.title) })
                     Text("失败和不确定都是有效实验结果。请根据真实观察填写；未检查时可暂时不保存人工判断。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -54,10 +52,11 @@ struct ExperimentResultView: View {
                     }
                 }
             }
+            .keyboardDone()
             .navigationTitle("保存实验结果")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存") { onSave(result, notes); dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { KeyboardDismiss.perform(); onSave(result, notes); dismiss() } }
             }
         }
     }

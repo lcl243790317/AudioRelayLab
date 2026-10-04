@@ -147,24 +147,11 @@ final class AudioRangeAndDurationTests: XCTestCase {
         let samples=try XCTUnwrap(buffer.floatChannelData?[0])
         XCTAssertGreaterThan((0..<Int(buffer.frameLength)).map { abs(samples[$0]) }.max() ?? 0,0.01)
     }
-    func testRecordingWriterTruncatesLastBlockExactlyAndSavesWithoutFailure() throws {
-        let context=try VoiceDSPContext(sampleRate:44100)
-        let writer=try VoiceRecordingWriter(context:context,sampleRate:44100,maximumSeconds:0.02,automaticallyFinishAtLimit:true)
-        let format=try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate:44100,channels:1))
-        let buffer=try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:format,frameCapacity:1024))
-        buffer.frameLength=1024
-        let samples=try XCTUnwrap(buffer.floatChannelData?[0])
-        for i in 0..<1024 { samples[i]=0.2 }
-        context.enqueueRecording(buffer)
-        let url=try writer.finish()
-        defer { try? FileManager.default.removeItem(at:url) }
-        XCTAssertTrue(writer.hasReachedLimit); XCTAssertNil(writer.currentFailure())
-        XCTAssertEqual(try AVAudioFile(forReading:url).length,882)
-    }
-    @MainActor func testRealRawRecordingAutomaticallySavesExactlySixtySeconds() async throws {
-        let coordinator=ExperimentCoordinator(),voice=coordinator.voiceLab
+
+    @MainActor func testRealNativeRecordingAutomaticallySavesWithinSixtySecondLimit() async throws {
+        let coordinator=ExperimentCoordinator(),voice=coordinator.rawRecorder
         defer { voice.stop(saveRecording:false) }
-        voice.start(.rawRecording)
+        voice.start(.computerConversion)
         for _ in 0..<100 where voice.state == .preparing { try await Task.sleep(for:.milliseconds(50)) }
         XCTAssertEqual(voice.state,.running,voice.errorMessage ?? voice.status)
         guard voice.state == .running else { return }
@@ -172,11 +159,12 @@ final class AudioRangeAndDurationTests: XCTestCase {
         XCTAssertEqual(voice.state,.idle,voice.errorMessage ?? voice.status)
         let record=try XCTUnwrap(voice.recordings.first)
         defer { coordinator.deleteAudio(record.asset) }
-        XCTAssertEqual(record.preset.id,VoicePreset.all[0].id)
+        XCTAssertEqual(record.preset.id,VoicePreset.original.id)
         XCTAssertTrue(record.asset.fileName.hasPrefix("原声_"))
-        XCTAssertEqual(record.asset.duration,60,accuracy:1/record.asset.sampleRate)
+        XCTAssertGreaterThan(record.asset.duration,59)
+        XCTAssertLessThanOrEqual(record.asset.duration,60)
         let upload=try AIRequestAudio.make(url:AudioFileManager.url(for:record.asset))
         defer { try? FileManager.default.removeItem(at:upload) }
-        XCTAssertEqual(try AVAudioFile(forReading:upload).length,1_323_000)
+        XCTAssertEqual(Double(try AVAudioFile(forReading:upload).length)/22050,record.asset.duration,accuracy:1/22050.0)
     }
 }

@@ -1,7 +1,7 @@
 import AVFAudio
 
 enum RecordedVoiceMixer {
-    static func mix(voiceURL:URL, musicURL:URL, settings:AudioPlaybackSettings, volumes:AudioMixParameters) throws -> AudioAsset {
+    static func mix(voiceURL:URL, musicURL:URL, settings:AudioPlaybackSettings, volumes:AudioMixParameters,voiceAsset:AudioAsset? = nil,musicAsset:AudioAsset? = nil) throws -> AudioAsset {
         try volumes.validate()
         let voiceFile = try AVAudioFile(forReading:voiceURL)
         let seconds = Double(voiceFile.length)/voiceFile.processingFormat.sampleRate
@@ -23,7 +23,11 @@ enum RecordedVoiceMixer {
         voice.scheduleFile(voiceFile,at:nil); music.scheduleFile(musicFile,at:nil)
         try engine.start(); voice.play(); music.play()
         let id = UUID()
-        let name = AudioNaming.generated(kind:"混音",label:"AI人声与音乐",fileExtension:"wav",id:id)
+        let revoice = voiceAsset?.revoice
+        let name = revoice.map {
+            AudioNaming.revoice(kind:"混音",voiceName:$0.voiceName ?? $0.voiceID,speaker:$0.speakerID,
+                                instruction:$0.instruction,fixedReferenceID:$0.fixedReferenceID,id:id)
+        } ?? AudioNaming.generated(kind:"混音",label:voiceAsset?.aiConversion?.voiceName ?? "人声与音乐",fileExtension:"wav",id:id)
         let destination = try AudioFileManager.audioDirectory().appendingPathComponent(name)
         do {
           // Close/finalize the WAV header before opening it for inspection.
@@ -49,7 +53,12 @@ enum RecordedVoiceMixer {
                 }
             }
           }
-            let asset = try AudioFileManager.inspect(url:destination,displayName:name,id:id,source:.mixedRecording)
+            var asset = try AudioFileManager.inspect(url:destination,displayName:name,id:id,source:.mixedRecording)
+            if let voiceAsset, let musicAsset {
+                asset.mixSource = .init(voiceAssetID:voiceAsset.id,musicAssetID:musicAsset.id,
+                    revoice:voiceAsset.revoice,settings:settings,volumes:volumes)
+            }
+            asset.addedAt = Date()
             try AudioFileManager.register(asset)
             return asset
         } catch { try? FileManager.default.removeItem(at:destination); throw error }

@@ -105,49 +105,51 @@ final class DeviceBugRegressionTests: XCTestCase {
         try await Task.sleep(for:.milliseconds(700))
         XCTAssertGreaterThan(try XCTUnwrap(player.nativePlaybackTime),0.03)
     }
-    func testUnchangedRouteNotificationsKeepRunningAndOnlyRestartStoppedGraphOnce() {
-        let baseline=route()
-        XCTAssertEqual(baseline.action(comparedTo:route(),engineRunning:true,alreadyRestarted:false),.keepRunning)
-        XCTAssertEqual(baseline.action(comparedTo:route(),engineRunning:false,alreadyRestarted:false),.restartSameFormat)
-        XCTAssertEqual(baseline.action(comparedTo:route(),engineRunning:false,alreadyRestarted:true),.stop)
+    func testUnchangedHardwareFormatAndUsableInputRemainEqual() {
+        XCTAssertEqual(route(),route()); XCTAssertTrue(route().isUsable)
+        XCTAssertFalse(route(rate:0).isUsable); XCTAssertFalse(route(input:0).isUsable)
     }
-    func testRealDeviceFormatAndUnavailableRoutesStillStopSafely() {
+    func testChangedHardwareFormatsAreDetected() {
         for changed in [route(rate:44100),route(input:2),route(port:"headphones"),route(rate:0),route(input:0)] {
-            XCTAssertEqual(route().action(comparedTo:changed,engineRunning:true,alreadyRestarted:false),.stop)
+            XCTAssertNotEqual(route(),changed)
         }
     }
-    @MainActor private func awaitRunning(_ voice:VoiceProcessingEngine) async throws {
+    @MainActor private func awaitSaved(_ recorder:RawVoiceRecorder) async throws {
+        for _ in 0..<200 where recorder.state == .saving { try await Task.sleep(for:.milliseconds(20)) }
+    }
+    @MainActor private func awaitRunning(_ voice:RawVoiceRecorder) async throws {
         for _ in 0..<80 where voice.state == .preparing { try await Task.sleep(for:.milliseconds(50)) }
         XCTAssertEqual(voice.state,.running,voice.errorMessage ?? voice.status)
     }
-    @MainActor func testRealSimulatorMicGraphIgnoresOwnCategoryNotificationAndWritesCAF() async throws {
-        let coordinator=ExperimentCoordinator(), voice=coordinator.voiceLab
+    @MainActor func testRealSimulatorMicGraphIgnoresOwnCategoryNotificationAndWritesWAV() async throws {
+        let coordinator=ExperimentCoordinator(), voice=coordinator.rawRecorder
         defer { voice.stop(saveRecording:false) }
-        voice.start(.voiceRecording); try await awaitRunning(voice)
+        voice.start(.computerConversion); try await awaitRunning(voice)
         guard voice.state == .running else { return }
         NotificationCenter.default.post(name:AVAudioSession.routeChangeNotification,object:AVAudioSession.sharedInstance(),
             userInfo:[AVAudioSessionRouteChangeReasonKey:AVAudioSession.RouteChangeReason.categoryChange.rawValue])
         try await Task.sleep(for:.milliseconds(700))
         XCTAssertEqual(voice.state,.running,voice.errorMessage ?? voice.status)
         voice.stop()
+        try await awaitSaved(voice)
         XCTAssertEqual(voice.state,.idle,voice.errorMessage ?? voice.status)
         let record=try XCTUnwrap(voice.recordings.first)
         XCTAssertEqual(record.asset.source,.voiceLabRecording); XCTAssertGreaterThan(record.asset.duration,0.2)
-        XCTAssertTrue(record.asset.fileName.hasPrefix("手机变声_"))
+        XCTAssertTrue(record.asset.fileName.hasPrefix("原声_"))
         XCTAssertEqual(record.asset.fileName,try AudioFileManager.url(for:record.asset).lastPathComponent)
         coordinator.deleteAudio(record.asset)
     }
     @MainActor func testThreeConsecutiveRawRecordingsSaveAndReleaseSession() async throws {
-        let coordinator = ExperimentCoordinator(), voice = coordinator.voiceLab
+        let coordinator = ExperimentCoordinator(), voice = coordinator.rawRecorder
         defer { voice.stop(saveRecording:false) }
         var ids:Set<UUID> = []
         var names:Set<String> = []
         for _ in 0..<3 {
-            voice.start(.rawRecording)
+            voice.start(.computerConversion)
             try await awaitRunning(voice)
             guard voice.state == .running else { return }
             try await Task.sleep(for:.milliseconds(450))
-            voice.stop(); XCTAssertEqual(voice.state,.idle,voice.errorMessage ?? voice.status)
+            voice.stop(); try await awaitSaved(voice); XCTAssertEqual(voice.state,.idle,voice.errorMessage ?? voice.status)
             let record = try XCTUnwrap(voice.recordings.first)
             XCTAssertEqual(record.asset.presetName,"AI 原声")
             XCTAssertGreaterThan(record.asset.duration,0.3)
@@ -160,25 +162,16 @@ final class DeviceBugRegressionTests: XCTestCase {
             XCTAssertNil(coordinator.aiVoice.input)
         }
     }
-    @MainActor func testRealSimulatorMixerCapturesMusicThroughProductionGraph() async throws {
-        let coordinator=ExperimentCoordinator(), voice=coordinator.voiceLab
-        defer { voice.stop(saveRecording:false) }
-        voice.voiceVolume=0; voice.musicVolume=0.4
-        voice.start(.mixedRecording,music:coordinator.audio,settings:.init(startOffset:0.3,playbackRate:2,volume:0.4))
-        try await awaitRunning(voice)
-        guard voice.state == .running else { return }
-        try await Task.sleep(for:.milliseconds(700))
-        XCTAssertEqual(voice.state,.running,voice.errorMessage ?? voice.status)
-        XCTAssertGreaterThan(voice.musicPosition,0.3)
-        voice.stop(); XCTAssertEqual(voice.state,.idle,voice.errorMessage ?? voice.status)
-        let record=try XCTUnwrap(voice.recordings.first)
-        let file=try AVAudioFile(forReading:AudioFileManager.url(for:record.asset))
-        let buffer=try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:UInt32(file.length)))
+    func testSavedMusicMixUsesProductionOfflineMixer() throws {
+        let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
+        let asset = try RecordedVoiceMixer.mix(voiceURL:fixture,musicURL:fixture,
+            settings:.init(startOffset:0.3,playbackRate:2),volumes:.init(voice:0,music:0.4,master:0.9))
+        defer { try? AudioFileManager.removeAudio(asset) }
+        let file = try AVAudioFile(forReading:AudioFileManager.url(for:asset))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:UInt32(file.length)))
         try file.read(into:buffer)
-        let samples=try XCTUnwrap(buffer.floatChannelData?[0])
-        let peak=(0..<Int(buffer.frameLength)).reduce(Float(0)) { max($0,abs(samples[$1])) }
-        XCTAssertGreaterThan(peak,0.005); XCTAssertEqual(record.asset.source,.mixedRecording)
-        XCTAssertTrue(record.asset.fileName.hasPrefix("混音_"))
-        coordinator.deleteAudio(record.asset)
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        XCTAssertGreaterThan((0..<Int(buffer.frameLength)).map { abs(samples[$0]) }.max() ?? 0,0.005)
+        XCTAssertEqual(asset.source,.mixedRecording); XCTAssertTrue(asset.fileName.hasPrefix("混音_"))
     }
 }

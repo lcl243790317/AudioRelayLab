@@ -39,23 +39,9 @@ struct VoicePreset: Codable, Identifiable, Hashable {
             (800...6000).contains(presenceHz), (0.3...3).contains(presenceQ), (3000...10000).contains(deesserHz),
             (0...400).contains(formantBaseHz) else { throw LabError.invalidFormat }
     }
-    static let all: [VoicePreset] = [
-        .init(id:"original",name:"原声",pitch:0,formant:0,highpass:20,lowmid:0,presence:0,compression:0,deesser:0,wet:0,outputGain:1),
-        .init(id:"female",name:"自然女声",pitch:4.5,formant:2.2,highpass:85,lowmid:-2,presence:1.2,air:0.5,compression:0.25,deesser:0.3),
-        .init(id:"girl",name:"少女声",pitch:6,formant:2.8,highpass:95,lowmid:-2.5,presence:1.5,air:0.8,compression:0.25,deesser:0.35),
-        .init(id:"loli",name:"萝莉音",pitch:8,formant:3.5,highpass:105,lowmid:-3,presence:1.5,air:0.5,compression:0.3,deesser:0.4),
-        .init(id:"sweet",name:"甜美女声",pitch:5.5,formant:2.5,highpass:90,lowmid:-2,presence:1,air:0.8,compression:0.25,deesser:0.3),
-        .init(id:"mature",name:"成熟女声",pitch:3.5,formant:1.8,highpass:75,lowmid:-1.5,presence:0.8,air:0.3,compression:0.3,deesser:0.3),
-        .init(id:"boy",name:"正太音",pitch:3.5,formant:1.4,highpass:100,lowmid:-1,presence:1.5,air:0.5),
-        .init(id:"male",name:"自然男声",pitch:-2.5,formant:-1.5,highpass:65,lowmid:1,presence:1),
-        .init(id:"young",name:"青年男声",pitch:-1,formant:-0.8,highpass:75,lowmid:-1,presence:2),
-        .init(id:"magnetic",name:"磁性男声",pitch:-3,formant:-1.8,highpass:55,lowmid:2,presence:0.5,compression:0.65),
-        .init(id:"deep",name:"低沉男声",pitch:-4.5,formant:-2.5,highpass:50,lowmid:2.5,presence:-1,compression:0.55,deesser:0.2),
-        .init(id:"clear",name:"清晰人声",pitch:0,formant:0,highpass:100,lowmid:-3,presence:3,air:1,deesser:0.6),
-        .init(id:"broadcast",name:"广播人声",pitch:-0.5,formant:-0.3,highpass:70,lowmid:1.5,presence:2,compression:0.8,deesser:0.6),
-        .init(id:"telephone",name:"电话音",pitch:0,formant:0,highpass:300,lowmid:-6,presence:-6,air:-12,compression:0.7,deesser:1),
-        .init(id:"robot",name:"机器人",pitch:-1,formant:-0.5,highpass:120,lowmid:0,presence:1,compression:0.6,deesser:0.3,robot:0.9)
-    ]
+    // Decoding compatibility for recordings made before removal of phone DSP.
+    static let original = VoicePreset(id:"original",name:"原声",pitch:0,formant:0,highpass:20,
+        lowmid:0,presence:0,compression:0,deesser:0,wet:0,outputGain:1)
 }
 
 struct VoiceLabRecord: Codable, Identifiable {
@@ -100,7 +86,7 @@ extension VoiceLabRecord {
             return value.isFinite ? min(1,max(0,value)) : fallback
         }
         self.init(id:(try? c.decode(UUID.self,forKey:.id)) ?? UUID(),date:(try? c.decode(Date.self,forKey:.date)) ?? .distantPast,
-            asset:try c.decode(AudioAsset.self,forKey:.asset),preset:(try? c.decode(VoicePreset.self,forKey:.preset)) ?? VoicePreset.all[0],
+            asset:try c.decode(AudioAsset.self,forKey:.asset),preset:(try? c.decode(VoicePreset.self,forKey:.preset)) ?? VoicePreset.original,
             strength:volume(.strength,1),mixed:(try? c.decode(Bool.self,forKey:.mixed)) ?? false,
             voiceVolume:volume(.voiceVolume,1),musicVolume:volume(.musicVolume,0.04),masterVolume:volume(.masterVolume,0.9),
             musicSettings:try? c.decode(AudioPlaybackSettings.self,forKey:.musicSettings),

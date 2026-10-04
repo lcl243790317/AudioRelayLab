@@ -80,7 +80,7 @@ class AuthMiddleware:
         await self.app(scope, receive, send)
 
 
-def create_api(worker, api_key, registry=None, guard=None, custom_worker=None):
+def create_api(worker, api_key, registry=None, guard=None, custom_worker=None, *, jobs=None, enqueue=None, download_origin=None):
     if not isinstance(api_key, str) or len(api_key) < 32:
         raise RuntimeError('Required application secret is missing or invalid')
     registry, guard = registry or PresetRegistry(), guard or RequestGuard()
@@ -98,7 +98,8 @@ def create_api(worker, api_key, registry=None, guard=None, custom_worker=None):
     async def health():
         # Health checks intentionally never touch or warm the GPU worker.
         return {'status': 'ok', 'backend': 'Modal Qwen3-TTS 1.7B', 'voices': len(registry.public_voices()),
-                'capabilities': {'presetTTS': True, 'customTTS': custom_worker is not None, 'textOnly': True},
+                'capabilities': {'presetTTS': True, 'customTTS': custom_worker is not None, 'textOnly': True, 'asyncJobs': jobs is not None},
+                'jobDownloadOrigin': download_origin,
                 'limits': {'textCharacters': 1000, 'instructionCharacters': 500, 'outputSeconds': 180}}
 
     @api.get('/v1/voices')
@@ -108,6 +109,55 @@ def create_api(worker, api_key, registry=None, guard=None, custom_worker=None):
     @api.get('/v1/speakers')
     async def speakers():
         return {'speakers': public_speakers()}
+
+    @api.post('/v1/jobs')
+    async def submit_job(request: Request):
+        from modal_jobs import JobError, job_id
+        if jobs is None:
+            return JSONResponse({'error':'Jobs unavailable'},status_code=503)
+        try:
+            if request.headers.get('content-type','').split(';')[0].strip().lower() != 'application/json':
+                raise JobError(415,'Expected JSON')
+            lengths = request.headers.getlist('content-length')
+            if len(lengths)>1: raise JobError(400,'Ambiguous body length')
+            if lengths and not 0 <= int(lengths[0]) <= MAX_BODY_BYTES:
+                raise JobError(413,'Body too large')
+            data = bytearray()
+            async for chunk in request.stream():
+                if len(data)+len(chunk)>MAX_BODY_BYTES: raise JobError(413,'Body too large')
+                data.extend(chunk)
+            body = json.loads(data.decode('utf-8'),object_pairs_hook=unique_object)
+            if not isinstance(body,dict) or 'requestID' not in body or body.get('mode') not in ('preset','custom'):
+                raise JobError(400,'Invalid job')
+            identity = job_id(body['requestID'])
+            params = {k:v for k,v in body.items() if k not in ('requestID','mode')}
+            if body['mode']=='custom':
+                values = validate_custom_request(params)
+                if custom_worker is None: raise JobError(503,'Custom synthesis unavailable')
+                payload = dict(mode='custom',voice='custom',variant='custom',speaker=values['speaker'],
+                               text=values['text'],instruction=values['instruction'])
+            else:
+                preset,text = validate_request(params,registry)
+                payload = dict(mode='preset',voice=preset.id,variant=preset.variant,speaker=preset.speaker or '',
+                               text=text,instruction=preset.instruction or '')
+            payload['revision'] = registry.lock['models'][payload['variant']]['revision']
+            record = await jobs.submit(identity,payload,enqueue)
+            return JSONResponse(jobs.public(record,download_origin),status_code=202)
+        except JobError as error:
+            return JSONResponse({'error':error.message},status_code=error.status)
+        except (ValueError,TypeError,UnicodeError):
+            return JSONResponse({'error':'Invalid job parameters'},status_code=400)
+        except Exception:
+            return JSONResponse({'error':'Submission unavailable'},status_code=503)
+
+    @api.get('/v1/jobs/{identity}')
+    async def get_job(identity:str):
+        from modal_jobs import JobError
+        if jobs is None: return JSONResponse({'error':'Jobs unavailable'},status_code=503)
+        try:
+            return jobs.public(jobs.get(identity),download_origin)
+        except JobError as error:
+            return JSONResponse({'error':error.message},status_code=error.status)
 
     @api.post('/v1/tts')
     async def synthesize(request: Request):

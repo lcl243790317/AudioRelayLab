@@ -163,7 +163,7 @@ class AuthAndInputTests(unittest.TestCase):
         response=self.client.get('/v1/voices',headers=self.headers)
         self.assertEqual(response.status_code,200)
         self.assertEqual(len(response.json()['voices']),6)
-        self.assertTrue(all(set(v)=={'id','displayName','variant'} for v in response.json()['voices']))
+        self.assertTrue(all(set(v)=={'id','displayName','variant','speaker','instruction','fixedReferenceID'} for v in response.json()['voices']))
         self.assertNotIn('access-control-allow-origin',response.headers)
         self.assertEqual(self.client.get('/v1/health',headers=self.headers).status_code,200)
         for path in ['/docs','/redoc','/openapi.json']:

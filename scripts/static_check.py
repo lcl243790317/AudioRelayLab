@@ -18,10 +18,12 @@ required = ["project.yml", ".github/workflows/build-ios.yml", "README-BUILD-ZH.t
             "AudioRelayLabTests/ExperimentStateMachineTests.swift",
             "AudioRelayLabTests/ParameterTests.swift",
             "VOICE-PROCESSING-RESEARCH-ZH.md", "VOICE-LAB-TEST-PROTOCOL-ZH.md",
-            "AudioRelayLab/VoiceLab/DSP/VoiceDSP.cpp",
-            "AudioRelayLab/VoiceLab/Vendor/LICENSE-stretch.txt",
-            "AudioRelayLab/VoiceLab/Vendor/LICENSE-linear.txt",
-            "AudioRelayLab/Resources/THIRD-PARTY-NOTICES.txt",
+            "AudioRelayLab/VoiceLab/RawVoiceRecorder.swift",
+            "AudioRelayLab/VoiceLab/BackgroundRevoiceTransfers.swift",
+            "AudioRelayLab/Views/JSONDocumentPicker.swift",
+            "AudioRelayLab/Views/InteractionControls.swift",
+            "AudioRelayLabTests/RevoiceJobTests.swift",
+            "AudioRelayLabUITests/InteractionUITests.swift",
             "AudioRelayLabTests/VoiceLabTests.swift"]
 for name in required:
     if not (root / name).is_file():
@@ -113,14 +115,17 @@ for view in (root / "AudioRelayLab/Views").rglob("*.swift"):
     if "AudioSessionProfile.allCases" in swift_code_only(view.read_text(encoding="utf-8")):
         errors.append(f"新实验 UI 不应暴露历史 B 配置：{view.relative_to(root)}")
 spec = (root / "project.yml").read_text(encoding="utf-8")
-for marker in ["AudioRelayLabTests:", "bundle.unit-test", "testTargets:", "CallKit.framework", "Speech.framework", "NSSpeechRecognitionUsageDescription", "'1.6.0'", "CURRENT_PROJECT_VERSION: '10'"]:
+for marker in ["AudioRelayLabTests:", "bundle.unit-test", "bundle.ui-testing", "AudioRelayLabUITests:", "testTargets:", "CallKit.framework", "Speech.framework", "NSSpeechRecognitionUsageDescription", "'1.6.1'", "CURRENT_PROJECT_VERSION: '11'"]:
     if marker not in spec:
         errors.append(f"XcodeGen 缺少配置：{marker}")
 if not test_sources or any("@testable import AudioRelayLab" not in p.read_text(encoding="utf-8") for p in test_sources):
     errors.append("Swift 单元测试必须直接导入真实 AudioRelayLab 模块")
+for marker in ["VoiceDSP", "VoiceProcessingEngine", "VoiceRecordingWriter", "signalsmith", "SWIFT_OBJC_BRIDGING_HEADER"]:
+    if marker in spec or any(marker in p.read_text(encoding="utf-8") for p in sources):
+        errors.append(f"旧实时处理依赖仍存在：{marker}")
 workflow = (root / ".github/workflows/build-ios.yml").read_text(encoding="utf-8")
 for marker in ["macos-latest", "workflow_dispatch", "xcodegen generate", "set -euo pipefail", "CODE_SIGNING_ALLOWED=NO",
-               "if: always()", "contents: read", "simctl list devices available --json", "build-xctest.log", "test 2>&1",
+               "if: always()", "contents: read", "simctl list devices available --json", "build-xctest.log", "test -only-testing:AudioRelayLabTests 2>&1", "build-uitest.log",
                "BUILD-STATUS-ZH.txt", "dist/SHA256SUMS.txt"]:
     if marker not in workflow:
         errors.append(f"CI 缺少配置：{marker}")

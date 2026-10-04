@@ -9,6 +9,9 @@ private final class RevoiceRedirectBlocker: NSObject, URLSessionTaskDelegate, @u
 
 final class CloudRevoiceClient: @unchecked Sendable {
     private let session:URLSession
+    private let capabilityLock = NSLock()
+    private var jobOrigin:URL?
+    private var jobFingerprint:String?
     private let redirectBlocker = RevoiceRedirectBlocker()
     init(session:URLSession? = nil) {
         if let session { self.session = session }
@@ -22,7 +25,8 @@ final class CloudRevoiceClient: @unchecked Sendable {
     struct Health:Decodable {
         let status:String
         let capabilities:Capabilities?
-        struct Capabilities:Decodable { let customTTS:Bool; let textOnly:Bool }
+        let jobDownloadOrigin:String?
+        struct Capabilities:Decodable { let customTTS:Bool; let textOnly:Bool; let asyncJobs:Bool? }
     }
     struct Voices:Decodable { let voices:[RevoiceVoice] }
     struct Speakers:Decodable { let speakers:[RevoiceSpeaker] }
@@ -30,6 +34,12 @@ final class CloudRevoiceClient: @unchecked Sendable {
         let (healthData,_,_) = try await request(connection,path:"v1/health")
         let health = try JSONDecoder().decode(Health.self,from:healthData)
         guard health.status == "ok" else { throw LabError.message("云端服务尚未就绪") }
+        let origin:URL?
+        if health.capabilities?.asyncJobs == true {
+            guard let value = health.jobDownloadOrigin else { throw LabError.message("云端没有提供后台下载来源") }
+            origin = try CloudJobEndpoint.origin(value)
+        } else { origin = nil }
+        capabilityLock.withLock { jobOrigin = origin; jobFingerprint = connection.fingerprint }
         let (voiceData,_,_) = try await request(connection,path:"v1/voices")
         let voices = try JSONDecoder().decode(Voices.self,from:voiceData).voices
         guard !voices.isEmpty, Set(voices.map(\.id)).count == voices.count,
@@ -45,6 +55,24 @@ final class CloudRevoiceClient: @unchecked Sendable {
             }
         }
         return (voices,speakers)
+    }
+    func downloadOrigin(for connection:CloudConnection) -> URL? {
+        capabilityLock.withLock { jobFingerprint == connection.fingerprint ? jobOrigin : nil }
+    }
+    func submitJob(_ connection:CloudConnection, context:RevoiceSaveContext) async throws -> CloudJobReply {
+        var object = try JSONSerialization.jsonObject(with:context.choice.body(text:context.text)) as? [String:Any] ?? [:]
+        object["mode"] = context.choice.mode; object["requestID"] = context.id.uuidString
+        let data = try JSONSerialization.data(withJSONObject:object)
+        guard data.count <= 8192 else { throw LabError.message("配音请求超过允许大小") }
+        let (reply,_,_) = try await request(connection,path:"v1/jobs",body:data)
+        guard let origin = downloadOrigin(for:connection) else { throw LabError.message("当前云端未提供后台任务能力，请重新连接") }
+        return try JSONDecoder().decode(CloudJobReply.self,from:reply).validated(requestID:context.id,origin:origin)
+    }
+    func job(_ connection:CloudConnection,id:UUID) async throws -> CloudJobReply {
+        let value = id.uuidString.replacingOccurrences(of:"-",with:"").lowercased()
+        let (data,_,_) = try await request(connection,path:"v1/jobs/"+value)
+        guard let origin = downloadOrigin(for:connection) else { throw LabError.message("请先重新连接云端") }
+        return try JSONDecoder().decode(CloudJobReply.self,from:data).validated(requestID:id,origin:origin)
     }
     func synthesize(_ connection:CloudConnection, choice:RevoiceChoice, text:String) async throws -> RevoiceAudio {
         let body = try choice.body(text:text)
@@ -82,12 +110,13 @@ final class CloudRevoiceClient: @unchecked Sendable {
             }
             switch response.statusCode {
             case 200: break
+            case 202 where path == "v1/jobs": break
             case 401,403: throw LabError.message("云端认证失败，请重新导入连接配置")
             case 429: throw LabError.message("云端正在配音或请求过于频繁，请稍后手动重试")
             case 400,413,415,422: throw LabError.message("云端拒绝了配音参数，请检查文字、speaker 和 instruction")
             default: throw LabError.message("云端生成未完成（HTTP \(response.statusCode)），可稍后重试")
             }
-            let maximum = body == nil ? 64*1024 : 10*1024*1024
+            let maximum = body == nil || path.hasPrefix("v1/jobs") ? 64*1024 : 10*1024*1024
             guard response.expectedContentLength <= Int64(maximum) else { throw LabError.message("云端返回的文件过大") }
             var data = Data(); data.reserveCapacity(min(maximum,max(0,Int(response.expectedContentLength))))
             for try await byte in stream {

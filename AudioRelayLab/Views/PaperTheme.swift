@@ -121,8 +121,7 @@ private struct PaperButtonSurface: View {
     let compact: Bool
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var flash = false
-    private var highlighted: Bool { enabled && (configuration.isPressed || flash) }
+    private var highlighted: Bool { enabled && configuration.isPressed }
     private var foreground: Color {
         if highlighted || primary { return PaperTheme.paper }
         return configuration.role == .destructive ? .red : PaperTheme.ink
@@ -139,14 +138,6 @@ private struct PaperButtonSurface: View {
             .opacity(enabled ? 1 : 0.40)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration:0.12),value:configuration.isPressed)
-            .onChange(of:configuration.isPressed) { previous, pressed in
-                if previous && !pressed && enabled { flash = true }
-            }
-            .task(id:flash) {
-                guard flash else { return }
-                try? await Task.sleep(for:.milliseconds(280))
-                if !Task.isCancelled { flash = false }
-            }
     }
 }
 

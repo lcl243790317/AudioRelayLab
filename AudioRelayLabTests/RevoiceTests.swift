@@ -3,7 +3,7 @@ import CryptoKit
 import XCTest
 @testable import AudioRelayLab
 
-private enum RevoiceTestAudio {
+enum RevoiceTestAudio {
     static func wav(seconds:Double) -> Data {
         var data = Data()
         func append(_ value:UInt32, bytes:Int) { for n in 0..<bytes { data.append(UInt8(truncatingIfNeeded:value >> (n*8))) } }

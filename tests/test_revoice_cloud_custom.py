@@ -120,7 +120,11 @@ class SnapshotStateTests(unittest.TestCase):
 
     def test_deployment_keeps_one_unparameterized_l4_pool_and_120_second_window(self):
         source=(Path(__file__).resolve().parents[1]/'server/modal_app.py').read_text(encoding='utf-8')
-        self.assertEqual(source.count('scaledown_window=120'),2)
+        gpu = source[source.index('@app.cls('):source.index('class QwenWorker:')]
+        self.assertIn('scaledown_window=120',gpu)
+        self.assertIn('min_containers=0',gpu); self.assertIn('max_containers=1',gpu)
+        self.assertIn('buffer_containers=0',gpu)
+        self.assertEqual(source.count("gpu='L4'"),1)
         self.assertIn("gpu='L4'",source);self.assertNotIn('@modal.parameter',source)
         self.assertIn('enable_memory_snapshot=GPU_SNAPSHOT',source)
         self.assertIn("'AUDIOLAB_GPU_SNAPSHOT':'1' if GPU_SNAPSHOT else '0'",source)

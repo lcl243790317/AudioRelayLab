@@ -18,7 +18,7 @@ REFERENCE_ROOT = '/assets/references/'+REFERENCE_RELEASE
 GPU_SNAPSHOT = os.environ.get('AUDIOLAB_GPU_SNAPSHOT', '0') == '1'
 SOURCE_FILES = ['revoice-lock.json','revoice-palette.json','revoice-audition-cases.json','revoice-review.json',
                 'revoice-references.json','revoice_registry.py','revoice_contract.py','revoice_audio.py',
-                'modal_api.py','modal_engine.py','modal_app.py','setup_revoice_audition.py',
+                'modal_api.py','modal_jobs.py','modal_engine.py','modal_app.py','setup_revoice_audition.py',
                 'modal-inference-requirements.txt']
 GPU_PINS = [line.strip() for line in (ROOT/'modal-inference-requirements.txt').read_text().splitlines()
             if line.strip() and not line.startswith('#')]
@@ -42,7 +42,46 @@ gpu_image = with_source(
     .pip_install(*GPU_PINS, extra_options='--no-deps')
 ).env({'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','TOKENIZERS_PARALLELISM':'false'})
 assets = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
+job_states = modal.Dict.from_name(APP_NAME+'-jobs-v1',create_if_missing=True)
+results = modal.Volume.from_name(APP_NAME+'-results-v1',create_if_missing=True)
 app = modal.App(APP_NAME)
+
+
+def job_service(mounted=False):
+    from modal_jobs import JobService
+    return JobService(job_states,'/results/audio',os.environ['AUDIOLAB_API_KEY'],
+                      commit=results.commit if mounted else lambda: None,
+                      reload=results.reload if mounted else lambda: None)
+
+
+@app.function(image=cpu_image,secrets=[modal.Secret.from_name(SECRET_NAME)],volumes={'/results':results},
+              cpu=.25,memory=512,timeout=1050,scaledown_window=120,
+              min_containers=0,max_containers=1,buffer_containers=0,retries=0,include_source=False)
+@modal.concurrent(max_inputs=1)
+async def execute_job(identity):
+    async def invoke(payload,request_id):
+        custom = {'speaker':payload['speaker'],'instruction':payload['instruction']} if payload['mode']=='custom' else None
+        return await QwenWorker().synthesize.remote.aio(payload['voice'],payload['text'],request_id,custom=custom)
+    return await job_service(mounted=True).execute(identity,invoke)
+
+
+@app.function(image=cpu_image,secrets=[modal.Secret.from_name(SECRET_NAME)],volumes={'/results':results},
+              cpu=.25,memory=512,timeout=150,scaledown_window=120,
+              min_containers=0,max_containers=1,buffer_containers=0,include_source=False)
+@modal.concurrent(max_inputs=16)
+@modal.asgi_app(requires_proxy_auth=False)
+def download():
+    # Read-only, job-specific HMAC credential. Never accepts a generation request
+    # or the application's long-lived credentials.
+    from modal_jobs import create_download_api
+    return create_download_api(job_service(mounted=True))
+
+
+@app.function(image=cpu_image,secrets=[modal.Secret.from_name(SECRET_NAME)],volumes={'/results':results},
+              cpu=.25,memory=512,timeout=60,scaledown_window=10,
+              min_containers=0,max_containers=1,buffer_containers=0,schedule=modal.Period(hours=1),include_source=False)
+def cleanup_jobs():
+    return job_service(mounted=True).cleanup()
 
 
 @app.function(image=cpu_image, volumes={'/assets':assets}, cpu=2, memory=2048, timeout=1800,
@@ -123,4 +162,9 @@ def api():
         return await QwenWorker().synthesize.remote.aio('custom', text, request_id,
                                                     custom={'speaker': speaker, 'instruction': instruction})
     # Missing secret fails startup. No fallback and no credential in source.
-    return create_api(invoke, os.environ['AUDIOLAB_API_KEY'], custom_worker=invoke_custom)
+    from modal_jobs import LegacyJobGuard
+    jobs = job_service()
+    async def enqueue(identity):
+        await execute_job.spawn.aio(identity)
+    return create_api(invoke,os.environ['AUDIOLAB_API_KEY'],custom_worker=invoke_custom,
+                      jobs=jobs,enqueue=enqueue,download_origin=download.get_web_url(),guard=LegacyJobGuard(jobs))

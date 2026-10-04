@@ -65,18 +65,13 @@ struct HistoryView: View {
             }
         } message: { Text("记录及其结果、备注和实验日志将删除。已导入和生成的音频仍保留。") }
         .onAppear { coordinator.checkpoint() }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
-            switch result {
-            case .success(let urls):
-                guard let source = urls.first else { return }
+        .sheet(isPresented: $importing) {
+            JSONDocumentPicker(onSelection: { source in
+                defer { JSONImportFile.removePickerCopy(source); importing = false }
                 coordinator.checkpoint()
-                do {
-                    importSummary = try store.importFile(from: source).message
-                    failure = nil
-                } catch { fail(error) }
-            case .failure(let error):
-                if (error as NSError).code != NSUserCancelledError { fail(error) }
-            }
+                do { importSummary = try store.importFile(from: source).message; failure = nil }
+                catch { fail(error) }
+            }, onCancel: { importing = false })
         }
         .sheet(item: $shareItem) { ShareSheet(url: $0.url) }
         .sheet(item: $editing) { experiment in

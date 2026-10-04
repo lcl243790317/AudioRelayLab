@@ -99,6 +99,7 @@ def replace_status(text, evidence):
         f"- Actions run：{evidence['workflowRunURL']}\n"
         "- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。\n"
         f"- 实际 iPhone Simulator XCTest：{evidence['xctestCount']} 项，0 失败，TEST SUCCEEDED。\n"
+        f"- UI 测试：{evidence.get('uiTestCount',0)} 项通过；真实录屏见 build/ui-interaction.mp4。\n"
         f"- Python 自检：{evidence['pythonTestCount']} 项通过。\n"
         "- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。\n"
         f"- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；{ipa['bytes']} 字节。\n"
@@ -132,7 +133,7 @@ def record(root, environ):
         raise ValueError("GitHub Actions server URL 无效")
     run_url = f"{server}/{repository}/actions/runs/{run_id}"
     names = ["build-simulator.log", "build-device.log", "build-xctest.log", "build-tests.log",
-             "build-environment.log", "build-xcodegen-version.log", "build-static.log"]
+             "build-environment.log", "build-xcodegen-version.log", "build-static.log", "build-uitest.log"]
     logs = {name: (root / name).read_text(encoding="utf-8") for name in names}
     require_success(logs["build-simulator.log"], "BUILD", "Simulator Debug")
     require_success(logs["build-device.log"], "BUILD", "iPhoneOS Release")
@@ -141,6 +142,10 @@ def record(root, environ):
     expected_count = sum(len(re.findall(r"\bfunc\s+test\w+", path.read_text(encoding="utf-8")))
                          for path in (root / "AudioRelayLabTests").glob("*.swift"))
     count = parse_xctest(logs["build-xctest.log"], expected_count)
+    expected_ui = sum(len(re.findall(r"\bfunc\s+test\w+", path.read_text(encoding="utf-8")))
+                      for path in (root / "AudioRelayLabUITests").glob("*.swift"))
+    ui_count = parse_xctest(logs["build-uitest.log"],expected_ui)
+    if not (root / "build/ui-interaction.mp4").is_file(): raise ValueError("缺少真实 UI 测试录屏")
     if "静态检查通过：" not in logs["build-static.log"]:
         raise ValueError("缺少静态检查通过结果")
     if not (root / "AudioRelayLab.xcodeproj/project.pbxproj").is_file():
@@ -148,7 +153,7 @@ def record(root, environ):
     ipa = verify(root / "dist/AudioRelayLab-unsigned.ipa")
     manifest = json.loads((root / "dist/ipa-manifest.json").read_text(encoding="utf-8"))
     validate_manifest(manifest, ipa)
-    warnings = collect_warnings({name: logs[name] for name in ["build-simulator.log", "build-device.log", "build-xctest.log"]})
+    warnings = collect_warnings({name: logs[name] for name in ["build-simulator.log", "build-device.log", "build-xctest.log", "build-uitest.log"]})
     evidence = {
         "schemaVersion": 1,
         "generatedAtUTC": datetime.now(timezone.utc).isoformat(),
@@ -157,6 +162,8 @@ def record(root, environ):
         "workflowRunID": int(run_id),
         "workflowRunURL": run_url,
         "xctestCount": count,
+        "uiTestCount": ui_count,
+        "uiTestFailures": 0,
         "expectedXCTestCount": expected_count,
         "xctestFailures": 0,
         "pythonTestCount": parse_python_tests(logs["build-tests.log"]),

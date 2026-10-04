@@ -37,9 +37,8 @@ struct AudioEditorView: View {
             }
             Button("恢复完整音频区间") { preview.stop(); coordinator.editing.startOffset=0; coordinator.editing.endOffset=nil }
             }
-            Picker("播放速度", selection: $coordinator.editing.playbackRate) {
-                ForEach(AudioPlaybackSettings.rates, id: \.self) { Text(String(format: "%gx", $0)).tag($0) }
-            }.onChange(of: coordinator.editing.playbackRate) { _, _ in preview.stop() }
+            StablePicker(title:"播放速度",selection:$coordinator.editing.playbackRate,
+                choices:AudioPlaybackSettings.rates.map { .init(id:$0,title:String(format:"%gx",$0)) }).onChange(of: coordinator.editing.playbackRate) { _, _ in preview.stop() }
             DisclosureGroup("试听音量与时长") {
             Slider(value: Binding(get: { coordinator.editing.volume.isFinite ? Double(min(1,max(0,coordinator.editing.volume))) : 0 }, set: { coordinator.editing.volume = Float($0) }), in: 0...1)
             LabeledContent("试听/待应用音量", value: coordinator.editing.volume.isFinite ? "\(Int(min(1,max(0,coordinator.editing.volume)) * 100))%" : "不可用")
