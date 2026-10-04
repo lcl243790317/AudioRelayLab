@@ -1,8 +1,8 @@
 历史 1.5.0 / build 8 增量：双圆点起止范围、AI 原声录制/转换最高 60 秒、右上角一键日夜切换；见 AI-VOICE-GUIDE-ZH.md。
 
-当前测试版本：1.6.2 / build 12。默认入口为“AI 重新配音”，提供六个已认可预设和九个 speaker 的自定义配音；录音在手机设备端识别，云端只收到文字及声线参数。旧电脑变声保留在高级入口，手机实时处理已移除。本轮修复下载暂存与旧任务取回、确保生成使用最新参数，并优化首屏与大字体布局；云端缩零窗口为 75 秒。
+当前测试版本：1.6.3 / build 13。声音工坊分“配音／混音”，六个认可预设、九个自定义 speaker、四个预设支持表达指令编辑。录音在手机设备端识别，云端只收到文字及声线参数。旧电脑变声在工具菜单的高级入口，手机实时处理已移除。前台直接读取成品、后台任务继续保留；云端缩零窗口为 75 秒。
 
-本轮从 feature/revoice-ios-1.6.0 的确切源码构建无签名 IPA，签名真机验收后再合并 main。本地交付文件为 dist/AudioRelayLab-1.6.2-unsigned.ipa。旧连接配置可继续使用，导入说明见 REVOICE-1.6.1-ZH.md；本轮恢复操作见 REVOICE-1.6.2-ZH.md，实际构建结果见 REVOICE-1.6.2-TEST-REPORT-ZH.md 和 BUILD-STATUS-ZH.txt。
+本轮从 feature/revoice-ios-1.6.0 的确切源码构建无签名 IPA，签名真机验收后再合并 main。本地交付文件为 dist/AudioRelayLab-1.6.3-unsigned.ipa。原 modal-client.json 继续可用；工具 → 云端连接设置 → 从文件导入，或粘贴完整 JSON。功能与恢复操作见 REVOICE-1.6.3-ZH.md，实际构建结果见 REVOICE-1.6.3-TEST-REPORT-ZH.md 和 BUILD-STATUS-ZH.txt。
 
 
 音频接力实验室 — 重新签名与安装

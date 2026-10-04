@@ -1,6 +1,12 @@
 # AudioRelayLab：Modal 迁移实现与部署记录
 
-## 当前 1.6.1 / build 11
+## 当前 1.6.3 / build 13
+
+预设指令编辑能力已部署：health.capabilities.presetInstruction=true；四个 CustomVoice 预设声明 supportsInstruction=true。POST /v1/tts 与 POST /v1/jobs 的 preset 可传 instruction；省略用默认、空串清除、原文最多 500 字符。两种固定参考预设拒绝覆盖，任务去重包含实际指令并保留预设身份。同步接口、九个自定义 speaker、任务 ID 与既有连接 JSON 保持兼容。
+
+本轮四次真实 L4 生成、安全检查、同 ID 去重与不同指令冲突、固定参考校验及最终缩零通过，见 [1.6.3 测试报告](REVOICE-1.6.3-TEST-REPORT-ZH.md)。模型/参考/snapshot 不变；前台直取和后台下载切换由 App 处理，查询/下载不唤醒 GPU。
+
+## 1.6.1 部署与历史证据
 
 GPU worker、CPU API、任务执行与下载服务的 `scaledown_window` 已改为 **75 秒并部署**；模型准备与每小时清理任务保持 10 秒。继续单一 L4 池、min=0/max=1/buffer=0、生成并发 1，snapshot 开启，模型、固定参考及推理算法未改变。本文下方 60/120 秒和未提交的描述属于早期历史记录。
 

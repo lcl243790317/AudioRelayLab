@@ -1,13 +1,13 @@
 # AudioRelayLab 音频接力实验室
 
-当前测试版本：**1.6.0 / build 10**。默认入口为“AI 重新配音”，提供六个已认可预设和九个 speaker 的自定义配音；录音在手机设备端识别，云端只收到文字及声线参数。旧电脑变声保留在高级入口，手机实时处理继续可用。
+当前测试版本：**1.6.3 / build 13**。声音工坊分为“配音／混音”，提供六个已认可预设、九个自定义 speaker，四个预设支持编辑表达指令。录音在手机识别；云端只接收文字和目标声线参数。手机实时处理已移除，电脑变声保留在工具菜单的高级入口。
 
-本轮从 `feature/revoice-ios-1.6.0` 构建无签名 IPA，签名真机验收后再合并 main。连接导入与验收说明见 [REVOICE-1.6-ZH.md](REVOICE-1.6-ZH.md)，实际编译和测试证据见 `BUILD-STATUS-ZH.txt`。1.5.1 的 162 XCTest / 30 Python 为历史证据，不能代替本轮结果。
+本轮从 `feature/revoice-ios-1.6.0` 构建无签名 IPA，签名真机验收后再合并 main。连接导入、预设编辑、独立混音及验收说明见 [1.6.3 使用说明](REVOICE-1.6.3-ZH.md)，真实构建、GPU 和测试数据见 [1.6.3 交付报告](REVOICE-1.6.3-TEST-REPORT-ZH.md)。
 
-实际交付：`dist/AudioRelayLab-1.6.0-unsigned.ipa`；179 XCTest / 72 Python 通过、Swift 警告 0。GPU snapshot 达标启用，实测见 [snapshot 与完整验收报告](SNAPSHOT-REPORT-ZH.md)。
+实际交付：`dist/AudioRelayLab-1.6.3-unsigned.ipa`；202 XCTest、8 UI 测试、94 Python 测试全部通过，真实 L4 四次短句通过。App Debug/Release 无 Swift 警告；测试有两条末尾 defer 写法建议。前台直接读取成品；后台下载与任务恢复保留，重签名后的锁屏保存需真机验收。
 
 
-六个正式声线使用原 instruction 和固定参考，未认可候选继续保留在本地试听而不接入云端正式列表。支持编辑识别文字后重配音、独立 instruction、成品最长 180 秒及完整混音。Modal 双层认证、固定模型/资产哈希和单一 L4 池继续保留，空闲窗口改为 120 秒；snapshot 实测与部署状态见 [MODAL-DEPLOYMENT-ZH.md](MODAL-DEPLOYMENT-ZH.md)。
+预设切换恢复默认指令，编辑和留空只影响下一次生成；两个固定参考声线保持认可的目标表达。自定义指令独立保存，成品最长 180 秒。Modal 双层认证、固定模型/资产哈希、单一 L4 池和 snapshot 保持，空闲窗口为 75 秒。部署说明见 [MODAL-DEPLOYMENT-ZH.md](MODAL-DEPLOYMENT-ZH.md)；先前 snapshot A/B 基准保留在 [SNAPSHOT-REPORT-ZH.md](SNAPSHOT-REPORT-ZH.md)。
 
 现有 iPhone 项目的增量版本，最低 iOS 17.0，功能边界为 iOS 18.1.1；保留 SwiftUI、两套播放器、实验历史、诊断、XcodeGen 和原有 Git 历史。
 
@@ -15,9 +15,7 @@ Audio 页选择 Bundle 测试音或外部文件，系统授权 URL 经协调读�
 
 主实验继续以 AVAudioPlayer 为稳定路径，AVAudioEngine 为高级路径；两者共用起点、倍速、音量及可选源音频时长。1.2.1 正式倍速先用原生 TimePitch 离线生成 PCM，再用 1x player/graph 调度；等待秒数与内容速度独立。准备后的 PCM 限 512 MB，超限可缩短源时长或调整起点。预计实际时长 = 剩余/速度。先“准备实验”，再“开始实验”，倒计时由音频系统未来调度执行。A/C/D/E 可新建，旧 B 仅兼容历史。
 
-Voice Lab 提供真实麦克风、独立 pitch/formant、EQ/动态/去齿音/dry-wet/gain、15 个预设和效果强度。Mixer 加入当前音乐及独立 Voice/Music/Master，音乐可在运行中独立 seek/变速。处理后录音和混合录音保存本地单声道 Float PCM CAF，可试听、应用到主音频、分享、删除。原生输出动态处理器提供余量保护；真人自然度和瞬态质量需要回听。
-
-实时监听默认耳机优先；扬声器需主动启用。录制默认关闭现场监听。Voice Lab/Mixer 提供“允许后台继续当前 Voice / Mixer”开关：开启时只继续用户主动启动的真实输入、输出或录音，关闭则切后台时停止并保存。系统中断、实际设备/格式改变或媒体失效仍会安全停止，不完整录音丢弃；正常类别通知先核对硬件状态。跨 App 微信录音同时使用麦克风仍可能被系统中断；也可先保存混合 CAF，再使用主播放器延迟实验。
+原声录音使用轻量原生组件，输入 0.3–60 秒，权限与中断处理保留。独立混音页自由选择已有原声或配音和本地音乐，使用完整人声时长；音乐起止与倍速独立于音频页。离线渲染为单声道 PCM WAV，保留来源与配音参数，可回听、分享和用于延迟播放。两个库按新增时间倒序；旧录音、元数据及历史仍可读取。
 
 | 格式证据分类 | 本轮范围 |
 |---|---|
@@ -41,7 +39,9 @@ Windows 做编辑与静态检查，GitHub Actions/macOS 执行真实 Simulator D
 - [Voice 技术研究、依赖和许可证](VOICE-PROCESSING-RESEARCH-ZH.md)
 - [Voice Lab / Mixer 真机协议](VOICE-LAB-TEST-PROTOCOL-ZH.md)
 
-依赖 Signalsmith Stretch 1.3.2 与固定提交的 Signalsmith Linear，均 MIT，完整许可证进入 App resources。预设不是神经网络身份转换。诊断和历史可导出 TXT/JSON/CSV；本轮按需求加入文件 URL/名称/目标路径审计，分享前检查个人路径，设备 UID/私人路由名称仍不自动记录。
+诊断和历史可导出 TXT/JSON/CSV；连接凭据仅在本机 Keychain，源码与 IPA 不含实际密钥。诊断导出可能带本机音频名称与路径。
+
+以下为历史版本记录：手机实时和 Signalsmith 已在 1.6.1 移除，旧技术研究文档只作为历史资料。
 
 1.2.1 同硬件/格式的 category/override 通知不再直接判失败；启动前等待稳定路由，停止的同格式图最多重启一次。设备或格式真正改变仍安全结束，避免复用无效图。实际 Files 点击、5秒等待和 iOS 18.1.1 麦克风效果仍须按真机协议复测。
 

@@ -1,4 +1,4 @@
-当前 1.6.2 / build 12：下载暂存与取回修复、最新参数提交、首屏与大字体布局优化；云端 scaledown_window=75 秒。实际 CI 与交付见 REVOICE-1.6.2-TEST-REPORT-ZH.md。main 合并等待签名验收。
+当前 1.6.3 / build 13：前台直接读取成品、预设表达指令编辑、独立混音和声音工坊简化；云端 scaledown_window=75 秒。实际 CI 与交付见 REVOICE-1.6.3-TEST-REPORT-ZH.md。main 合并等待签名验收。
 
 AudioRelayLab — 构建与验证说明
 
