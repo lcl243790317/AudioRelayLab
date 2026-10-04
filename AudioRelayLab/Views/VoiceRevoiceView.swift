@@ -16,7 +16,7 @@ struct VoiceRevoiceView: View {
 
     private var draftLocked:Bool { ai.stage == .recognizing || voice.isActive }
     private var generationLocked:Bool {
-        !ai.canGenerateDraft || voice.isActive || coordinator.isImporting || coordinator.isMixing || coordinator.aiVoice.busy
+        !ai.canGenerateDraft || voice.isActive || coordinator.isImporting || coordinator.isMixing || coordinator.isRunning || coordinator.aiVoice.busy
     }
     private var emptyDraft:Bool { ai.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }
     private var generateTitle:String {
@@ -75,7 +75,11 @@ struct VoiceRevoiceView: View {
     }
 
     private func dismissKeyboard() { focusedInput = nil; KeyboardDismiss.perform() }
-    private func record() { dismissKeyboard(); ai.selectInput(nil); voice.start(.revoice) }
+    private func record() {
+        dismissKeyboard()
+        guard ai.selectInput(nil) else { return }
+        voice.start(.revoice)
+    }
     private func chooseAudio() { dismissKeyboard(); sheet = .library }
     private func selectAudio(_ asset:AudioAsset) { ai.selectInput(asset); sheet = nil }
     private func recognize() { dismissKeyboard(); ai.recognize() }
