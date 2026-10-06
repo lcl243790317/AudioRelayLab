@@ -1,17 +1,26 @@
 import XCTest
 
 final class InteractionUITests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
     @MainActor func testAutomaticInstructionTogglePreviewAndFixedReferenceAvailability() {
         let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
         let instruction = app.textFields["revoice.instruction"]
         XCTAssertTrue(instruction.waitForExistence(timeout:5)); let original = instruction.value as? String
         let automatic = app.switches["revoice.instruction.automatic"]
-        reveal(automatic,in:app); XCTAssertTrue(automatic.isEnabled); automatic.tap()
+        reveal(automatic,in:app); XCTAssertTrue(automatic.isEnabled)
+        XCTAssertEqual(automatic.value as? String,"0")
+        setSwitch(automatic,to:true,in:app)
         XCTAssertTrue(app.staticTexts["revoice.instruction.summary"].waitForExistence(timeout:3))
         let preview = app.buttons["查看本次自动指令"]
         reveal(preview,in:app); preview.tap()
         XCTAssertTrue(app.staticTexts["revoice.instruction.preview"].waitForExistence(timeout:3))
-        reveal(automatic,in:app); automatic.tap(); XCTAssertFalse(app.staticTexts["revoice.instruction.summary"].exists)
+        attach(app,"自动表达指令已开启与展开")
+        setSwitch(automatic,to:false,in:app)
+        XCTAssertFalse(app.staticTexts["revoice.instruction.summary"].exists)
         for _ in 0..<6 {
             if app.buttons["select.声线"].isHittable { break }
             let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:0.28))
@@ -21,7 +30,8 @@ final class InteractionUITests: XCTestCase {
         XCTAssertEqual(instruction.value as? String,original)
         app.buttons["select.声线"].tap(); app.buttons["choice.scholar-design"].tap()
         reveal(automatic,in:app); XCTAssertFalse(automatic.isEnabled)
-        XCTAssertTrue(app.staticTexts["固定参考声线不支持自动表达指令。"].exists)
+        let fixedReferenceNotice = app.staticTexts["固定参考声线不支持自动表达指令。"]
+        reveal(fixedReferenceNotice,in:app); XCTAssertTrue(fixedReferenceNotice.exists)
         attach(app,"自动表达指令开关与预览")
     }
     @MainActor func testBothLibraryScreensStopPreviewOnTabChangeAndNavigationBack() {
@@ -179,6 +189,16 @@ final class InteractionUITests: XCTestCase {
         XCTAssertEqual(instruction.value as? String,"slow and natural")
         XCTAssertTrue((editor.value as? String ?? "").contains("Large text draft."))
         attach(app,"大字体深色配音编辑")
+    }
+
+    @MainActor private func setSwitch(_ element:XCUIElement,to value:Bool,in app:XCUIApplication) {
+        reveal(element,in:app)
+        // Standalone SwiftUI Toggle exposes its label and track as one switch frame.
+        // Tap the trailing track; a center tap can land on the noninteractive label.
+        element.coordinate(withNormalizedOffset:CGVector(dx:0.92,dy:0.5)).tap()
+        let changed = XCTNSPredicateExpectation(
+            predicate:NSPredicate(format:"value == %@",value ? "1" : "0"),object:element)
+        XCTAssertEqual(XCTWaiter.wait(for:[changed],timeout:3),.completed)
     }
 
     @MainActor private func reveal(_ element:XCUIElement,in app:XCUIApplication) {
