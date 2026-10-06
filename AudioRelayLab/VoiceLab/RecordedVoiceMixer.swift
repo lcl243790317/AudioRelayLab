@@ -5,7 +5,11 @@ enum RecordedVoiceMixer {
         try volumes.validate()
         let voiceFile = try AVAudioFile(forReading:voiceURL)
         let seconds = Double(voiceFile.length)/voiceFile.processingFormat.sampleRate
-        let outputSeconds = try timing.outputDuration(voiceDuration:seconds)
+        let originalMusic = try AVAudioFile(forReading:musicURL)
+        let originalMusicDuration = Double(originalMusic.length)/originalMusic.processingFormat.sampleRate
+        let validatedSettings = try settings.validated(duration:originalMusicDuration)
+        let outputSeconds = try timing.outputDuration(voiceDuration:seconds,
+            musicDuration:validatedSettings.estimatedDuration(duration:originalMusicDuration))
         let musicSeconds = outputSeconds - timing.musicStartDelay
         let musicCopy = try RateAdjustedAudio.copy(of:musicURL,startOffset:settings.startOffset,
             rate:settings.playbackRate,duration:max(0.1,musicSeconds*Double(settings.playbackRate)),endOffset:settings.endOffset)
@@ -21,7 +25,8 @@ enum RecordedVoiceMixer {
         engine.mainMixerNode.outputVolume = volumes.master
         try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
         defer { voice.stop(); music.stop(); engine.stop(); engine.disableManualRenderingMode() }
-        voice.scheduleFile(voiceFile,at:nil)
+        let voiceStart = AVAudioFramePosition((timing.voiceStartDelay*voiceFile.processingFormat.sampleRate).rounded())
+        voice.scheduleFile(voiceFile,at:AVAudioTime(sampleTime:voiceStart,atRate:voiceFile.processingFormat.sampleRate))
         // Offline rendering uses the player's sample timeline, not wall-clock delays.
         let musicStart = AVAudioFramePosition((timing.musicStartDelay*musicFile.processingFormat.sampleRate).rounded())
         music.scheduleFile(musicFile,at:AVAudioTime(sampleTime:musicStart,atRate:musicFile.processingFormat.sampleRate))
@@ -43,7 +48,8 @@ enum RecordedVoiceMixer {
             // Ceil(voiceSeconds + tailSeconds) can add a spurious frame from floating-point addition.
             let voiceFrames = Int64(ceil(Double(voiceFile.length)*format.sampleRate/voiceFile.processingFormat.sampleRate))
             let tailFrames = Int64((timing.musicTailDuration*format.sampleRate).rounded())
-            let frames = voiceFrames + tailFrames
+            let introFrames = Int64((timing.voiceStartDelay*format.sampleRate).rounded())
+            let frames = introFrames + voiceFrames + tailFrames
             var written:Int64 = 0, stalls = 0
             while written < frames {
                 try Task.checkCancellation()

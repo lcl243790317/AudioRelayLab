@@ -8,6 +8,7 @@ struct MainView: View {
     @ObservedObject var session: AudioSessionManager
     @ObservedObject var voice: RawVoiceRecorder
     @State private var importing = false
+    @State private var choosingAudio = false
     @State private var showResult = false
     @State private var showTechnicalDetails = false
     @State private var customDelay = false
@@ -21,7 +22,7 @@ struct MainView: View {
     var body: some View {
         NavigationStack {
             PaperScreen {
-                PaperHeader(title:"音频接力",subtitle:"选一段声音，留一点时间。")
+                PaperHeader(title:"音频接力",subtitle:"选一段声音，按你的节奏播放。")
                 audioSection
                 PaperCard("播放与试听") { AudioEditorView(coordinator:coordinator) }
                 experimentSection
@@ -39,10 +40,20 @@ struct MainView: View {
                 }
             }
             .keyboardDone { focusedInput = nil }
-            .navigationTitle("AudioRelayLab")
+            .navigationTitle("播放")
             .buttonStyle(PaperButtonStyle())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() } }
+            .toolbar {
+                ToolbarItem(placement:.topBarTrailing) { AppToolsMenu(coordinator:coordinator) }
+                ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() }
+            }
+            .sheet(isPresented:$choosingAudio) {
+                NavigationStack {
+                    AudioLibraryPickerView(coordinator:coordinator,title:"选择播放音频",includesBundled:true) { asset in
+                        coordinator.selectLocal(asset); choosingAudio = false
+                    }
+                }
+            }
             .sheet(isPresented: $importing) {
                 AudioDocumentPicker(onSelection: { url in
                     // Acquire the scope and hand off the copied URL before dismissing the picker.
@@ -138,7 +149,7 @@ struct MainView: View {
                 Button("取消导入") { coordinator.cancelImport() }
             }
             if !coordinator.library.isEmpty {
-                NavigationLink("本地音频库（\(coordinator.library.count)）") { LocalAudioLibraryView(coordinator:coordinator) }
+                Button("从音频库选择") { focusedInput = nil; KeyboardDismiss.perform(); choosingAudio = true }
             }
         }
     }
@@ -158,15 +169,6 @@ struct MainView: View {
             }
             StablePicker(title:"播放引擎",selection:$coordinator.engineKind,
                 choices:PlaybackEngineKind.selectableCases.map { .init(id:$0,title:$0.rawValue) })
-            Toggle("自定义延迟", isOn: $customDelay)
-            if customDelay {
-                TextField("延迟秒数（0.1～60）", value: $coordinator.delay, format: .number)
-                    .focused($focusedInput,equals:"delay")
-                    .keyboardType(.decimalPad)
-            } else {
-                StablePicker(title:"延迟时间",selection:$coordinator.delay,
-                    choices:[1.0,2,3,4,5,7,10].map { .init(id:$0,title:"\(Int($0)) 秒") })
-            }
             Toggle("限制播放时长", isOn: Binding(
                 get: { coordinator.requestedDuration != nil },
                 set: { coordinator.requestedDuration = $0 ? min(10, maximumDuration) : nil }
@@ -214,8 +216,15 @@ struct MainView: View {
     private var experimentSection: some View {
         PaperCard("延迟播放") {
             volumeSection
-            StablePicker(title:"等待时间",selection:$coordinator.delay,
-                choices:[1.0,2,3,4,5,7,10].map { .init(id:$0,title:"\(Int($0)) 秒") }).disabled(coordinator.controlsLocked)
+            Toggle("自定义延迟", isOn: $customDelay)
+            if customDelay {
+                TextField("延迟秒数（0.1～60）", value: $coordinator.delay, format: .number)
+                    .focused($focusedInput,equals:"delay")
+                    .keyboardType(.decimalPad)
+            } else {
+                StablePicker(title:"延迟时间",selection:$coordinator.delay,
+                    choices:[1.0,2,3,4,5,7,10].map { .init(id:$0,title:"\(Int($0)) 秒") })
+            }
             LabeledContent("已应用开始位置", value: AudioPlaybackSettings.time(coordinator.applied.startOffset))
             LabeledContent("已应用结束位置", value: AudioPlaybackSettings.time(coordinator.applied.endPosition(duration:coordinator.audio?.duration ?? 0)))
             LabeledContent("已应用速度", value: String(format: "%gx", coordinator.applied.playbackRate))

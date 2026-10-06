@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-private enum RevoiceInputField:Hashable { case text, instruction }
+private enum RevoiceInputField:Hashable { case text, instruction, automaticInstruction }
 private enum RevoiceSheet:String,Identifiable {
     case connection, library
     var id:String { rawValue }
@@ -14,6 +14,7 @@ struct VoiceRevoiceView: View {
     let onMix:(AudioAsset)->Void
     @State private var sheet:RevoiceSheet?
     @FocusState private var focusedInput:RevoiceInputField?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var draftLocked:Bool { ai.stage == .recognizing || voice.isActive }
     private var generationLocked:Bool {
@@ -21,7 +22,7 @@ struct VoiceRevoiceView: View {
     }
     private var emptyDraft:Bool { ai.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }
     private var generateTitle:String {
-        if emptyDraft && ai.input != nil { return ai.kind == .preset ? "识别并生成配音" : "识别录音文字" }
+        if emptyDraft && ai.input != nil { return "识别文字" }
         return ai.hasPendingJob ? "按当前内容生成新的配音" : "生成配音"
     }
 
@@ -31,47 +32,57 @@ struct VoiceRevoiceView: View {
     }
 
     var body:some View {
-        VStack(alignment:.leading,spacing:16) {
-            RevoiceModeControl(kind:$ai.kind,disabled:draftLocked)
+        PaperScreen {
             PaperCard {
-                if ai.hasPendingJob { PaperCaption("当前草稿 · 修改只影响下一份配音") }
-                RevoiceVoiceSettings(kind:ai.kind,voices:ai.voices,speakers:ai.speakers,
-                    preset:$ai.selectedPreset,speaker:$ai.selectedSpeaker,
-                    instruction:ai.kind == .preset ? $ai.presetInstruction : $ai.instruction,
-                    editablePreset:ai.canEditPresetInstruction,serviceSupportsPreset:ai.supportsPresetInstruction,
-                    automatic:ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction,
-                    resetInstruction:ai.resetPresetInstruction,
-                    focus:$focusedInput,disabled:draftLocked)
-                Divider()
                 RevoiceTextComposer(text:$ai.text,focus:$focusedInput,disabled:draftLocked)
-                RevoiceAutomaticInstructionControl(ai:ai,disabled:draftLocked)
                 RevoiceInputControls(voice:voice,inputName:ai.input?.libraryName,
                     disabled:coordinator.controlsLocked,libraryEmpty:coordinator.library.isEmpty,
                     record:record,chooseAudio:chooseAudio,recognize:recognize)
-                if !voice.isActive {
-                    Button(generateTitle,action:generate).buttonStyle(PaperButtonStyle(primary:true))
-                        .disabled(generationLocked || !ai.configured || (emptyDraft && ai.input == nil))
-                        .accessibilityIdentifier("revoice.generate")
-                    if ai.hasPendingJob {
-                        PaperCaption("新生成按上面的最新内容提交，并停止等待上一份成品。")
-                    } else if !ai.configured {
-                        PaperCaption("先设置云端连接，即可生成。文字可以提前输入。")
-                    }
-                }
+            }
+            PaperCard("声线与表达") {
+                RevoiceModeControl(kind:Binding(get:{ai.kind},set:{ai.requestVoiceSelection(.mode($0),deferConfirmation:typeSize.isAccessibilitySize)}),
+                    disabled:draftLocked,onDismiss:ai.presentDeferredVoiceSelection)
+                RevoiceVoiceSettings(kind:ai.kind,voices:ai.voices,speakers:ai.speakers,
+                    preset:Binding(get:{ai.selectedPreset},set:{ai.requestVoiceSelection(.preset($0),deferConfirmation:true)}),
+                    speaker:Binding(get:{ai.selectedSpeaker},set:{ai.requestVoiceSelection(.speaker($0),deferConfirmation:true)}),
+                    instruction:ai.kind == .preset ? $ai.presetInstruction : $ai.instruction,
+                    editablePreset:ai.canEditPresetInstruction,serviceSupportsPreset:ai.supportsPresetInstruction,
+                    automatic:ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction,
+                    resetInstruction:ai.resetPresetInstruction,onSelectionDismissed:ai.presentDeferredVoiceSelection,
+                    focus:$focusedInput,disabled:draftLocked)
+                RevoiceAutomaticInstructionControl(ai:ai,disabled:draftLocked,focus:$focusedInput)
             }
             if let context = ai.pendingContext {
                 RevoicePendingCard(context:context,status:ai.status,error:ai.errorMessage,busy:ai.busy,
                     resume:resume,stop:stop)
-            } else {
+            } else if ai.configured || ai.busy || ai.errorMessage != nil {
                 RevoiceStatusNotice(status:ai.status,error:ai.errorMessage,busy:ai.busy,stop:stop)
             }
-            if !ai.configured { RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
-                importDisabled:ai.busy || ai.hasPendingJob || voice.isActive,
-                reconnectDisabled:ai.connecting || voice.isActive || (ai.busy && !ai.hasPendingJob),
-                open:openConnection,reconnect:ai.connect) }
+            if !ai.configured {
+                PaperCard {
+                    RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
+                        importDisabled:ai.busy || ai.hasPendingJob || voice.isActive,
+                        reconnectDisabled:ai.connecting || voice.isActive || (ai.busy && !ai.hasPendingJob),
+                        open:openConnection,reconnect:ai.connect)
+                    PaperCaption("录音在手机识别，生成配音需要连接云端。")
+                }
+            }
             if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result,onMix:onMix) }
         }
+        .safeAreaInset(edge:.bottom,spacing:0) {
+            if !voice.isActive {
+                Button(generateTitle,action:generate).buttonStyle(PaperButtonStyle(primary:true))
+                    .disabled(generationLocked || (emptyDraft && ai.input == nil) || (!emptyDraft && !ai.configured))
+                    .accessibilityIdentifier("revoice.generate")
+                    .padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:.infinity)
+                    .background(PaperTheme.paper)
+            }
+        }
         .keyboardDone { focusedInput = nil }
+        .alert("放弃手动调整的指令？",isPresented:Binding(get:{ai.pendingVoiceSelection != nil},set:{if !$0 { ai.cancelVoiceSelection() }}),presenting:ai.pendingVoiceSelection) { selection in
+            Button("取消",role:.cancel) { ai.cancelVoiceSelection() }
+            Button("放弃并切换",role:.destructive) { ai.confirmVoiceSelection(selection) }
+        } message: { _ in Text("切换后将按新声线重新匹配表达指令。取消会保留当前声线和草稿。") }
         .sheet(item:$sheet) { destination in
             switch destination {
             case .connection: CloudConnectionView(ai:ai)
@@ -101,11 +112,12 @@ private struct RevoiceModeControl:View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @Binding var kind:RevoiceController.Kind
     let disabled:Bool
+    var onDismiss:()->Void = {}
     var body:some View {
         Group {
             if typeSize.isAccessibilitySize {
                 StablePicker(title:"配音方式",selection:$kind,choices:[
-                    .init(id:.preset,title:"预设声线"),.init(id:.custom,title:"自定义配音")])
+                    .init(id:.preset,title:"预设声线"),.init(id:.custom,title:"自定义配音")],onDismiss:onDismiss)
             } else {
                 Picker("配音方式",selection:$kind) {
                     Text("预设声线").tag(RevoiceController.Kind.preset)
@@ -127,6 +139,7 @@ private struct RevoiceVoiceSettings:View {
     var serviceSupportsPreset = false
     var automatic = false
     var resetInstruction:()->Void = {}
+    var onSelectionDismissed:()->Void = {}
     let focus:FocusState<RevoiceInputField?>.Binding
     let disabled:Bool
     var body:some View {
@@ -134,14 +147,26 @@ private struct RevoiceVoiceSettings:View {
             if kind == .preset {
                 if !voices.isEmpty {
                     StablePicker(title:"声线",selection:$preset,
-                        choices:voices.map { .init(id:$0.id,title:$0.displayName) })
+                        choices:voices.map { .init(id:$0.id,title:$0.displayName) },onDismiss:onSelectionDismissed)
                 } else { Text("选择声线").font(.headline) }
-                PaperCaption("录完自动识别、配音")
+                PaperCaption("录完识别文字，确认内容后手动生成")
             } else {
                 StablePicker(title:"Speaker",selection:$speaker,
-                    choices:(speakers.isEmpty ? RevoiceSpeaker.all : speakers).map { .init(id:$0.id,title:$0.displayName) })
+                    choices:(speakers.isEmpty ? RevoiceSpeaker.all : speakers).map { .init(id:$0.id,title:$0.displayName) },onDismiss:onSelectionDismissed)
             }
             if kind == .custom || editablePreset {
+                if automatic {
+                    DisclosureGroup("角色基础风格 · 可选") { baselineEditor }
+                } else { baselineEditor }
+            } else if voices.first(where:{$0.id == preset})?.variant == "base" {
+                PaperCaption("固定参考声线沿用已认可的表达，暂不支持修改指令。")
+            } else if !voices.isEmpty && !serviceSupportsPreset {
+                PaperCaption("当前云端需升级后才能编辑预设指令。")
+            }
+        }.disabled(disabled)
+    }
+    private var baselineEditor:some View {
+        VStack(alignment:.leading,spacing:8) {
                 HStack {
                     Text(automatic ? "基础角色风格 · 可选" : "表达指令 · 可选").font(.subheadline)
                     Spacer()
@@ -153,8 +178,8 @@ private struct RevoiceVoiceSettings:View {
                 TextField("",text:$instruction,axis:.vertical)
                     .focused(focus,equals:.instruction).lineLimit(1...3)
                     .textFieldStyle(.plain).padding(10).frame(minHeight:44)
-                    .background(PaperTheme.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:6))
-                    .overlay(RoundedRectangle(cornerRadius:6).stroke(PaperTheme.line,lineWidth:1))
+                    .background(PaperTheme.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:16))
+                    .overlay(RoundedRectangle(cornerRadius:16).stroke(PaperTheme.line,lineWidth:1).allowsHitTesting(false))
                     .overlay(alignment:.leading) {
                         if instruction.isEmpty {
                             Text("例如：自然放松，语速稍慢").foregroundStyle(PaperTheme.secondary)
@@ -165,21 +190,19 @@ private struct RevoiceVoiceSettings:View {
                 PaperCaption(automatic
                     ? "\(instruction.unicodeScalars.count)/500 · 保留角色风格，本段表达按内容自动匹配"
                     : "\(instruction.unicodeScalars.count)/500 · 留空使用自然表达")
-            } else if voices.first(where:{$0.id == preset})?.variant == "base" {
-                PaperCaption("固定参考声线沿用已认可的表达，暂不支持修改指令。")
-            } else if !voices.isEmpty && !serviceSupportsPreset {
-                PaperCaption("当前云端需升级后才能编辑预设指令。")
-            }
-        }.disabled(disabled)
+        }
     }
+
 }
 
 private struct RevoiceAutomaticInstructionControl:View {
     @ObservedObject var ai:RevoiceController
     let disabled:Bool
+    let focus:FocusState<RevoiceInputField?>.Binding
+    @ScaledMetric(relativeTo:.body) private var editorHeight:CGFloat = 150
     private var automatic:Bool { ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction }
     var body:some View {
-        VStack(alignment:.leading,spacing:8) {
+        VStack(alignment:.leading,spacing:12) {
             Button { ai.usesAutomaticInstruction.toggle() } label: {
                 HStack(spacing:12) {
                     Text("按内容自动匹配表达指令").fixedSize(horizontal:false,vertical:true)
@@ -187,32 +210,36 @@ private struct RevoiceAutomaticInstructionControl:View {
                     Image(systemName:automatic ? "checkmark.circle.fill" : "circle")
                     Text(automatic ? "已开启" : "已关闭").fixedSize()
                 }.frame(maxWidth:.infinity)
-            }
-                .buttonStyle(PaperButtonStyle(primary:automatic))
+            }.buttonStyle(PaperButtonStyle(primary:automatic))
                 .disabled(disabled || !ai.canUseAutomaticInstruction)
-                .accessibilityAddTraits(.isButton)
                 .accessibilityLabel("按内容自动匹配表达指令")
                 .accessibilityValue(automatic ? "已开启" : "已关闭")
                 .accessibilityIdentifier("revoice.instruction.automatic")
             if !ai.canUseAutomaticInstruction {
-                PaperCaption(ai.selectedVoice?.variant == "base"
-                    ? "固定参考声线不支持自动表达指令。"
-                    : "连接支持预设表达指令的云端后，可开启自动匹配。")
-            } else if ai.usesAutomaticInstruction {
-                PaperCaption("在手机按文字中的情绪与标点线索匹配情绪、语速、口吻、腔调、气声、停顿和咬字。语音输入使用识别后的文字；可关闭并手动调整。")
-                if let preview = ai.automaticInstructionPreview {
-                    PaperCaption(RevoiceAutomaticInstruction.profile(text:ai.text).summary)
-                        .accessibilityIdentifier("revoice.instruction.summary")
-                    DisclosureGroup("查看本次自动指令") {
-                        Text(preview).font(.callout).textSelection(.enabled)
-                            .accessibilityIdentifier("revoice.instruction.preview")
-                    }
-                    if RevoiceAutomaticInstruction.baseWasShortened(text:ai.text,baseInstruction:ai.baseInstruction) {
-                        PaperCaption("基础描述较长，自动匹配时仅保留前 \(RevoiceAutomaticInstruction.baseInstructionBudget(text:ai.text)) 字符；原始草稿保留。")
-                    }
-                } else {
-                    PaperCaption("输入或识别文字后，会显示本次自动指令。")
+                PaperCaption(ai.selectedVoice?.variant == "base" ? "固定参考声线不支持自动表达指令。" : "连接支持预设表达指令的云端后，可开启自动匹配。")
+            } else if automatic {
+                HStack {
+                    Text("本次表达指令 · 可编辑").font(.subheadline)
+                    Spacer(minLength:4)
+                    PaperCaption("\(ai.automaticInstructionDraft?.text.unicodeScalars.count ?? 0)/500")
                 }
+                TextEditor(text:Binding(get:{ai.automaticInstructionDraft?.text ?? ""},set:ai.editAutomaticInstruction))
+                    .scrollDismissesKeyboard(.never)
+                    .focused(focus,equals:.automaticInstruction).frame(height:editorHeight)
+                    .scrollContentBackground(.hidden).padding(10)
+                    .background(PaperTheme.mist.opacity(0.35),in:RoundedRectangle(cornerRadius:16))
+                    .accessibilityLabel("本次表达指令").accessibilityIdentifier("revoice.instruction.preview")
+                    .disabled(disabled)
+                if ai.automaticInstructionIsStale {
+                    PaperCaption("内容或基础风格已变化，将使用你保留的手改指令；可重新匹配。")
+                        .accessibilityIdentifier("revoice.instruction.stale")
+                }
+                PaperCaption(ai.automaticInstructionDraft?.userEdited == true ? "已手动调整 · 生成时使用框内指令" : RevoiceAutomaticInstruction.profile(text:ai.text).summary)
+                    .accessibilityIdentifier("revoice.instruction.summary")
+                Button("重新匹配") { ai.rematchAutomaticInstruction() }
+                    .disabled(disabled || ai.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("revoice.instruction.rematch")
+                PaperCaption("仅在手机匹配文字线索；开启与修改不会提交配音。清空指令使用自然表达。")
             }
         }
     }
@@ -230,10 +257,11 @@ private struct RevoiceTextComposer:View {
                 VStack(alignment:.leading,spacing:4) { Text("要说的话").font(.headline); PaperCaption("\(text.unicodeScalars.count)/1,000 字符") }
             }
             TextEditor(text:$text).frame(height:editorHeight).accessibilityIdentifier("revoice.text")
+                .scrollDismissesKeyboard(.never)
                 .accessibilityLabel("要说的话").focused(focus,equals:.text)
                 .scrollContentBackground(.hidden).padding(8)
-                .background(PaperTheme.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:6))
-                .overlay(RoundedRectangle(cornerRadius:6).stroke(PaperTheme.line,lineWidth:1))
+                .background(PaperTheme.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:16))
+                .overlay(RoundedRectangle(cornerRadius:16).stroke(PaperTheme.line,lineWidth:1).allowsHitTesting(false))
                 .overlay(alignment:.topLeading) {
                     if text.isEmpty {
                         Text("输入要说的话，或使用下方语音输入")

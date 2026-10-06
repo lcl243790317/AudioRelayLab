@@ -1,35 +1,19 @@
-AudioRelayLab 1.6.4 / build 14 — 签名测试版验证状态
+AudioRelayLab 1.6.5 / build 15 — 签名测试版验证状态
 
-新增混音音乐加入时间、0～60 秒尾声、可选自动表达指令、离开音频库停止回听。
-自动指令使用手机本地文字/标点规则；不是云端语义模型，支持查看预览与关闭。
-分支 feature/revoice-ios-1.6.0；详细功能见 REVOICE-1.6.4-ZH.md。
-
-本地验证：94 项 Python 回归通过，App/测试静态检查通过。
+双向起播混音、统一手动配音、可编辑自动指令、音频库批量删除、键盘收起、主题与按钮改版。
+分支 feature/revoice-ios-1.6.0；功能见 REVOICE-1.6.5-ZH.md。
+本地 94 项 Python 回归通过，App/测试静态检查通过。静态检查不是 Swift 编译证据。
 
 本轮真实 CI 证据：
-- 源码提交：f021781327ab9790051502b76187eeb08392f580
-- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37465511866
-- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
-- 实际 iPhone Simulator XCTest：226 项，0 失败，TEST SUCCEEDED。
-- UI 测试：10 项通过；真实录屏见 build/ui-interaction.mp4。
-- 隔离 HTTPS 下载：8 次成功，202 续取回已验证；未发送长期密钥。
-- Python 自检：94 项通过。
-- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
-- unsigned IPA：dist/AudioRelayLab-unsigned.ipa；1428129 字节。
-- SHA-256：47d5aa953c79a262b4327fb21dbfa069c521e94e64e1ee5c48942c91dca048d6
-- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
-- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
-- Swift 编译警告：2；全部构建警告：'defer' statement at end of scope always executes immediately; replace with 'do' statement to silence this warning；Metadata extraction skipped. No AppIntents.framework dependency found.
-- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
-- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
+尚未完成 1.6.5 iOS CI；旧版本结果不代表本版通过。
 
 真机已有观察（历史版本）：
 重签名设备曾出现 NSCocoaErrorDomain:513 / NSPOSIXErrorDomain:1；1.6.3 已改前台取回路径。
 模拟器无法证明所有重签名权限、锁屏和后台调度行为；新版本仍需用户真机验收。
 
 本版真机检查：
-- 选择音乐加入时间，确认此前只有人声、之后开始播放所选音乐片段。
-- 设置几秒尾声，确认人声结束后音乐继续，成品长度增加；检查短音乐提示。
-- 自动指令开启/关闭、角色切换、文字修改和语音识别；试听实际情绪、语速与气声是否合适。
-- 两个音频库回听时导航返回、切换标签页及打开分享，确认播放停止。
-- IPA 自行重新签名；本轮不合并 main、不正式发布，也不需要部署云端或运行 GPU 推理。
+- 音乐先播、人声先播、同时开始、数值输入和音乐尾声；完整人声与短音乐提示。
+- 录音仅自动识别，点击生成才提交；自动指令手改、关闭与重开、切换声线确认和取消。
+- 两个库退出停止回听；批量选择、取消删除、成功和失败结果；保留草稿与旧任务。
+- 键盘失焦、滚动和退出；浅色、深色、小屏、大字体和按钮回弹。
+- IPA 自行重签名；实际听感、通话和后台行为由真机验收。

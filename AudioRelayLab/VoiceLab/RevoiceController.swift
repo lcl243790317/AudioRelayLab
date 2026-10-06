@@ -5,12 +5,17 @@ import UIKit
 @MainActor final class RevoiceController: ObservableObject {
     enum Kind:String,CaseIterable,Hashable { case preset, custom }
     enum Stage:Equatable { case idle, recognizing, generating, saving }
-    @Published var kind:Kind = .preset { didSet { if kind == .preset && oldValue != kind { resetPresetInstruction() } } }
-    @Published var selectedPreset = "serena-original" { didSet { if selectedPreset != oldValue { resetPresetInstruction() } } }
-    @Published var selectedSpeaker = "Serena"
-    @Published var instruction = ""
-    @Published var presetInstruction = ""
-    @Published var usesAutomaticInstruction = false
+    @Published var kind:Kind = .preset { didSet { if kind == .preset && oldValue != kind { resetPresetInstruction() }; refreshAutomaticInstruction() } }
+    @Published var selectedPreset = "serena-original" { didSet { if selectedPreset != oldValue { resetPresetInstruction() }; refreshAutomaticInstruction() } }
+    @Published var selectedSpeaker = "Serena" { didSet { refreshAutomaticInstruction() } }
+    @Published var instruction = "" { didSet { refreshAutomaticInstruction() } }
+    @Published var presetInstruction = "" { didSet { refreshAutomaticInstruction() } }
+    @Published var usesAutomaticInstruction = false { didSet { refreshAutomaticInstruction() } }
+    @Published private(set) var automaticInstructionDraft:AutomaticInstructionDraft?
+    enum VoiceSelection:Equatable { case mode(Kind), preset(String), speaker(String) }
+    @Published private(set) var pendingVoiceSelection:VoiceSelection?
+    private var deferredVoiceSelection:VoiceSelection?
+    private var restoringDraft = false
     @Published private(set) var supportsPresetInstruction = false
     private var instructionPresetID:String?
     var selectedVoice:RevoiceVoice? { voices.first { $0.id == selectedPreset } }
@@ -20,18 +25,66 @@ import UIKit
     var automaticInstructionPreview:String? {
         guard usesAutomaticInstruction, canUseAutomaticInstruction,
               !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return nil }
-        return RevoiceAutomaticInstruction.make(text:text,baseInstruction:baseInstruction)
+        return automaticInstructionDraft?.text
+    }
+    private var automaticSource:AutomaticInstructionSource {
+        .init(text:text.trimmingCharacters(in:.whitespacesAndNewlines),
+            baseInstruction:baseInstruction.trimmingCharacters(in:.whitespacesAndNewlines),
+            kind:kind.rawValue,voiceID:kind == .custom ? selectedSpeaker : selectedPreset)
+    }
+    var automaticInstructionIsStale:Bool {
+        automaticInstructionDraft.map { $0.userEdited && $0.source != automaticSource } ?? false
+    }
+    private func refreshAutomaticInstruction() {
+        guard !restoringDraft,usesAutomaticInstruction,canUseAutomaticInstruction,
+              automaticInstructionDraft?.userEdited != true,!automaticSource.text.isEmpty else { return }
+        rematchAutomaticInstruction()
+    }
+    func rematchAutomaticInstruction() {
+        guard canUseAutomaticInstruction,!automaticSource.text.isEmpty else { return }
+        automaticInstructionDraft = .init(text:RevoiceAutomaticInstruction.make(text:text,baseInstruction:baseInstruction),
+            userEdited:false,source:automaticSource)
+    }
+    func editAutomaticInstruction(_ value:String) {
+        automaticInstructionDraft = .init(text:value,userEdited:true,source:automaticInstructionDraft?.source ?? automaticSource)
+    }
+    func requestVoiceSelection(_ value:VoiceSelection,deferConfirmation:Bool = false) {
+        switch value {
+        case .mode(let value) where value == kind: return
+        case .preset(let value) where value == selectedPreset: return
+        case .speaker(let value) where value == selectedSpeaker: return
+        default: break
+        }
+        if automaticInstructionDraft?.userEdited == true {
+            if deferConfirmation { deferredVoiceSelection = value } else { pendingVoiceSelection = value }
+        } else { applyVoiceSelection(value) }
+    }
+    func presentDeferredVoiceSelection() {
+        if let value = deferredVoiceSelection { deferredVoiceSelection = nil; pendingVoiceSelection = value }
+    }
+    func cancelVoiceSelection() { pendingVoiceSelection = nil; deferredVoiceSelection = nil }
+    func confirmVoiceSelection(_ selection:VoiceSelection? = nil) {
+        guard let value = selection ?? pendingVoiceSelection else { return }
+        cancelVoiceSelection(); applyVoiceSelection(value)
+    }
+    private func applyVoiceSelection(_ value:VoiceSelection) {
+        restoringDraft = true; automaticInstructionDraft = nil
+        switch value { case .mode(let value): kind = value; case .preset(let value): selectedPreset = value; case .speaker(let value): selectedSpeaker = value }
+        restoringDraft = false; refreshAutomaticInstruction()
     }
     private func resolvedInstruction(_ base:String,text:String) throws -> String {
         try RevoiceLimits.instruction(base)
-        return usesAutomaticInstruction && canUseAutomaticInstruction
-            ? RevoiceAutomaticInstruction.make(text:text,baseInstruction:base) : base
+        if usesAutomaticInstruction && canUseAutomaticInstruction {
+            let value = automaticInstructionDraft?.text ?? RevoiceAutomaticInstruction.make(text:text,baseInstruction:base)
+            try RevoiceLimits.instruction(value); return value
+        }
+        return base
     }
     func resetPresetInstruction() {
         presetInstruction = selectedVoice?.instruction ?? ""
         instructionPresetID = selectedVoice == nil ? nil : selectedPreset
     }
-    @Published var text = ""
+    @Published var text = "" { didSet { refreshAutomaticInstruction() } }
     @Published private(set) var recognizedText:String?
     @Published private(set) var input:AudioAsset?
     @Published private(set) var result:AudioAsset?
@@ -129,6 +182,7 @@ import UIKit
                 self.supportsPresetInstruction = self.client.supportsPresetInstruction(for:connection)
                 if !voices.contains(where:{$0.id == self.selectedPreset}) { self.selectedPreset = voices[0].id }
                 if self.instructionPresetID != self.selectedPreset { self.resetPresetInstruction() }
+                self.refreshAutomaticInstruction()
                 if reportsConnectionStatus && !self.hasPendingJob && self.stage == .idle {
                     self.status = speakers.isEmpty ? "云端已连接 · 此服务暂未提供自定义配音" : "云端已连接 · 录音在手机转为文字"
                 }
@@ -148,14 +202,14 @@ import UIKit
     }
     func recorded(_ asset:AudioAsset) {
         guard selectInput(asset) else { return }
-        if foreground { recognize(autoGenerate:kind == .preset) }
+        if foreground { recognize() }
         else { pendingRecognition = true; status = "原声已保存，返回 App 后识别" }
     }
     func forgetAsset(_ id:UUID) {
-        if input?.id == id { selectInput(nil) }
+        if input?.id == id { input = nil }
         if result?.id == id { result = nil }
     }
-    func recognize(autoGenerate:Bool = false, start:Double = 0, limit:Double? = nil) {
+    func recognize(start:Double = 0, limit:Double? = nil) {
         guard !busy, let input else { return }
         let textAtStart = text
         let token = UUID(); generation = token; stage = .recognizing; errorMessage = nil; status = "识别中 · 在手机处理录音"
@@ -178,7 +232,6 @@ import UIKit
                 self.recognizedText = recognized
                 _ = try RevoiceLimits.text(recognized)
                 self.stage = .idle; self.task = nil; self.status = "识别完成，可以修改文字后重新生成"
-                if autoGenerate && !draftWasEdited && self.kind == .preset { self.task = nil; self.generate() }
             } catch {
                 guard self.generation == token else { return }
                 if !Task.isCancelled { self.errorMessage = RevoiceError.message(error); self.status = "识别未完成，原录音已保留" }
@@ -189,7 +242,7 @@ import UIKit
         guard canGenerateDraft else { return }
         if text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, input != nil {
             if hasPendingJob, !cancel() { return }
-            recognize(autoGenerate:kind == .preset); return
+            recognize(); return
         }
         do {
             guard let connection else { throw LabError.message("请先导入云端连接配置") }
@@ -211,7 +264,8 @@ import UIKit
                 instruction:effectiveInstruction,fixedReferenceID:reference,recognizedText:recognizedText,
                 text:usedText,sourceAudioID:input?.id,
                 usesAutomaticInstruction:usesAutomaticInstruction && canUseAutomaticInstruction,
-                baseInstruction:baseInstruction)
+                baseInstruction:baseInstruction,
+                automaticInstructionDraft:usesAutomaticInstruction && canUseAutomaticInstruction ? automaticInstructionDraft : nil)
             // A new generation always freezes the current draft with a new ID.
             // Recovering a previous ID is only the explicit resume action.
             if hasPendingJob, !cancel() { return }
@@ -245,6 +299,8 @@ import UIKit
         } catch { errorMessage = RevoiceError.message(error) }
     }
     private func restoreDraft(_ job:PendingRevoiceJob) {
+        restoringDraft = true
+        defer { restoringDraft = false }
         usesAutomaticInstruction = job.context.usesAutomaticInstruction ?? false
         if case .custom(let speaker,let value) = job.context.choice {
             kind = .custom; selectedSpeaker = speaker; instruction = job.context.baseInstruction ?? value
@@ -253,6 +309,10 @@ import UIKit
             presetInstruction = job.context.baseInstruction ?? job.context.instruction; instructionPresetID = id
         }
         text = job.context.text; recognizedText = job.context.recognizedText
+        automaticInstructionDraft = job.context.automaticInstructionDraft
+        if automaticInstructionDraft == nil, usesAutomaticInstruction {
+            automaticInstructionDraft = .init(text:job.context.instruction,userEdited:false,source:automaticSource)
+        }
         if let source = job.context.sourceAudioID { input = (try? AudioFileManager.listLocalAudio())?.first { $0.id == source } }
     }
     private func resumeSubmission(_ job:PendingRevoiceJob) {
@@ -291,6 +351,7 @@ import UIKit
                         self.voices = voices; self.speakers = speakers
                         self.supportsPresetInstruction = self.client.supportsPresetInstruction(for:connection)
                         if self.instructionPresetID != self.selectedPreset { self.resetPresetInstruction() }
+                        self.refreshAutomaticInstruction()
                     }
                 }
                 try Task.checkCancellation()
@@ -319,7 +380,7 @@ import UIKit
             pendingRecognition = true; status = "原声已保留，返回 App 后继续识别"
         }
         if active {
-            if pendingRecognition { pendingRecognition = false; recognize(autoGenerate:kind == .preset) }
+            if pendingRecognition { pendingRecognition = false; recognize() }
             resumePending()
         }
     }

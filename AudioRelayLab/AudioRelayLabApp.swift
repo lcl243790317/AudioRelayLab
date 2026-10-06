@@ -27,11 +27,12 @@ import SwiftUI
     }
     private var applicationContent:some View {
             TabView(selection:$selectedTab) {
-                MainView(coordinator:coordinator).tabItem { Label("音频",systemImage:"music.note") }.tag(0)
-                VoiceLabView(coordinator:coordinator).tabItem { Label("配音",systemImage:"mic") }.tag(1)
-                LibraryHubView(coordinator:coordinator).tabItem { Label("资料",systemImage:"folder") }.tag(2)
+                MainView(coordinator:coordinator).tabItem { Label("播放",systemImage:"music.note") }.tag(0)
+                VoiceLabView(coordinator:coordinator).tabItem { Label("工坊",systemImage:"mic") }.tag(1)
+                LibraryHubView(coordinator:coordinator).tabItem { Label("音频库",systemImage:"folder") }.tag(2)
             }
                 .tint(PaperTheme.accent)
+                .fontDesign(.rounded)
                 .preferredColorScheme(nightMode ? .dark : .light)
                 .transformEnvironment(\.dynamicTypeSize) { size in
                     #if DEBUG

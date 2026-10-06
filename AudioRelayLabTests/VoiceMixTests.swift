@@ -3,6 +3,51 @@ import XCTest
 @testable import AudioRelayLab
 
 final class VoiceMixTests:XCTestCase {
+    func testMusicFirstBoundsUseActualTrimmedRateDurationAndMaximumIs300Seconds() throws {
+        XCTAssertEqual(try AudioMixTiming(voiceStartDelay:60,musicTailDuration:60).outputDuration(voiceDuration:180,musicDuration:60),300)
+        for value in [-1.0,60.1,Double.nan,Double.infinity] {
+            XCTAssertThrowsError(try AudioMixTiming(voiceStartDelay:value).outputDuration(voiceDuration:2,musicDuration:80))
+        }
+        XCTAssertThrowsError(try AudioMixTiming(voiceStartDelay:1,musicStartDelay:1).outputDuration(voiceDuration:2,musicDuration:80))
+        XCTAssertThrowsError(try AudioMixTiming(voiceStartDelay:2).outputDuration(voiceDuration:2,musicDuration:1.9))
+        XCTAssertEqual(try AudioMixTiming(voiceStartDelay:2).outputDuration(voiceDuration:2,musicDuration:2),4)
+    }
+    @MainActor func testMusicFirstRequestFreezesTimingAndRejectsDelayPastSpeedAdjustedClip() throws {
+        let voice = asset(.aiConverted),music = asset(.imported,seconds:8),mix = VoiceMixController()
+        mix.voiceID = voice.id; mix.musicID = music.id
+        mix.settings = .init(startOffset:2,playbackRate:2,endOffset:6); mix.timing = .init(voiceStartDelay:2,musicTailDuration:1)
+        let frozen = try mix.request(library:[voice,music],volumes:.init())
+        mix.timing.voiceStartDelay = 2.1
+        XCTAssertThrowsError(try mix.request(library:[voice,music],volumes:.init()))
+        XCTAssertEqual(frozen.timing.voiceStartDelay,2); XCTAssertEqual(frozen.timing.musicTailDuration,1)
+    }
+    func testVersion164TimingWithoutVoiceDelayDecodesAsZero() throws {
+        let data = Data("{\"musicStartDelay\":2.5,\"musicTailDuration\":3}".utf8)
+        XCTAssertEqual(try JSONDecoder().decode(AudioMixTiming.self,from:data),.init(musicStartDelay:2.5,musicTailDuration:3))
+        let timing = AudioMixTiming(voiceStartDelay:1.2,musicTailDuration:2)
+        XCTAssertEqual(try JSONDecoder().decode(AudioMixTiming.self,from:JSONEncoder().encode(timing)),timing)
+    }
+    func testRenderedMusicIntroAndCompleteDelayedVoiceAcrossSampleRates() throws {
+        for rate in [24000.0,44100.0,48000.0] {
+            let voiceURL = try tone(seconds:0.8,sampleRate:rate),musicURL = try tone(seconds:2,sampleRate:44100)
+            defer { try? FileManager.default.removeItem(at:voiceURL); try? FileManager.default.removeItem(at:musicURL) }
+            let timing = AudioMixTiming(voiceStartDelay:0.35,musicTailDuration:0.4)
+            for volumes in [AudioMixParameters(voice:1,music:0,master:1),.init(voice:0,music:1,master:1)] {
+                let mixed = try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:.init(),volumes:volumes,timing:timing)
+                defer { try? AudioFileManager.removeAudio(mixed) }
+                XCTAssertEqual(mixed.duration,1.55,accuracy:2/48000.0)
+                if volumes.voice == 1 {
+                    XCTAssertLessThan(try energy(mixed,from:0.1,to:0.25),0.000001)
+                    XCTAssertGreaterThan(try energy(mixed,from:0.45,to:0.65),0.01)
+                    XCTAssertGreaterThan(try energy(mixed,from:1.02,to:1.12),0.01)
+                    XCTAssertLessThan(try energy(mixed,from:1.25,to:1.45),0.000001)
+                } else {
+                    XCTAssertGreaterThan(try energy(mixed,from:0.1,to:0.25),0.01)
+                    XCTAssertGreaterThan(try energy(mixed,from:1.25,to:1.45),0.01)
+                }
+            }
+        }
+    }
     private func asset(_ source:AudioSource,seconds:Double = 2) -> AudioAsset {
         .init(id:UUID(),fileName:"fixture.wav",sandboxFileName:"fixture.wav",duration:seconds,
             sampleRate:24000,channelCount:1,byteCount:96044,source:source)

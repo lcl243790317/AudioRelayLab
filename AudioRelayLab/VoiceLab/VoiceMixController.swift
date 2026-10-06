@@ -35,8 +35,10 @@ struct VoiceMixRequest {
               let music = Self.music(in:library).first(where:{$0.id == musicID}),voice.id != music.id else {
             throw LabError.message("请选择仍在库中的人声和背景音乐")
         }
-        _ = try timing.outputDuration(voiceDuration:voice.duration); try volumes.validate()
-        return .init(voice:voice,music:music,settings:try settings.validated(duration:music.duration),volumes:volumes,timing:timing)
+        let settings = try settings.validated(duration:music.duration)
+        _ = try timing.outputDuration(voiceDuration:voice.duration,musicDuration:settings.estimatedDuration(duration:music.duration))
+        try volumes.validate()
+        return .init(voice:voice,music:music,settings:settings,volumes:volumes,timing:timing)
     }
     func generate(coordinator:ExperimentCoordinator) {
         guard !busy else { return }

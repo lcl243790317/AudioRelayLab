@@ -164,10 +164,10 @@ jobs:
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab voice-custom-snapshot voice-recovery-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-voice-recovery.png
-          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab mix-snapshot day-snapshot
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab mix-snapshot mix-timing-snapshot day-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-mix.png
-          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab mix-snapshot voice-large-type night-snapshot
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab mix-snapshot mix-timing-snapshot voice-large-type night-snapshot
           sleep 3
           xcrun simctl io "$SIMULATOR_UDID" screenshot build/ui-mix-large-dark.png
           xcrun simctl terminate "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
@@ -195,8 +195,36 @@ jobs:
             test -only-testing:AudioRelayLabUITests 2>&1 | tee build-uitest.log
           kill -INT "$RECORD_PID" 2>/dev/null || true
           wait "$RECORD_PID" || true
+          xcrun xcresulttool export attachments --path build/ui-tests.xcresult --output-path build/ui-attachments
           cleanup_download_fixture
           trap - EXIT
+      - name: 在小屏 iPhone SE 验证已选音乐的主题与大字体布局
+        run: |
+          set -euo pipefail
+          xcrun simctl list runtimes --json > build/small-runtimes.json
+          SMALL_RUNTIME="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          runtimes=json.loads(Path('build/small-runtimes.json').read_text())['runtimes']
+          available=[r for r in runtimes if r.get('isAvailable') and r.get('name','').startswith('iOS')]
+          print(max(available,key=lambda r:tuple(map(int,r['version'].split('.'))))['identifier'])
+          PY
+          )"
+          SMALL_UDID="$(xcrun simctl create AudioRelayLab-SmallPhone com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$SMALL_RUNTIME")"
+          printf 'iPhone SE (3rd generation): %s; runtime: %s\n' "$SMALL_UDID" "$SMALL_RUNTIME" > build-small-destination.log
+          xcrun simctl boot "$SMALL_UDID"
+          xcrun simctl bootstatus "$SMALL_UDID" -b
+          xcrun simctl install "$SMALL_UDID" build/simulator/Build/Products/Debug-iphonesimulator/AudioRelayLab.app
+          xcodebuild -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
+            -configuration Debug -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$SMALL_UDID,arch=$(uname -m)" \
+            -destination-timeout 180 -parallel-testing-enabled NO \
+            -derivedDataPath build/simulator-tests -resultBundlePath build/small-ui-tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            test -only-testing:AudioRelayLabUITests/InteractionUITests/testSelectedMusicTimingScreenshotsAcrossThemesAndLargeType \
+            2>&1 | tee build-small-uitest.log
+          xcrun xcresulttool export attachments --path build/small-ui-tests.xcresult --output-path build/ui-small-attachments
+          xcrun simctl shutdown "$SMALL_UDID"
       - name: 编译 iPhoneOS Release
         run: |
           set -euo pipefail
@@ -247,8 +275,11 @@ jobs:
             REVOICE-1.6.2-ZH.md
             REVOICE-1.6.3-ZH.md
             REVOICE-1.6.4-ZH.md
+            REVOICE-1.6.5-ZH.md
             build/revoice-download-fixture-report.json
             build/ui-*.mp4
+            build/ui-attachments/
+            build/ui-small-attachments/
       - name: 记录最终状态
         if: always()
         env:

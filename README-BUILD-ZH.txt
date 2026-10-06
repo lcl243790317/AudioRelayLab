@@ -1,4 +1,4 @@
-当前 1.6.4 / build 14：混音音乐加入时间与尾声、可选本地自动表达指令、退出音频库停止回听。详细功能见 REVOICE-1.6.4-ZH.md；真实编译与交付证据见 BUILD-STATUS-ZH.txt。
+当前 1.6.5 / build 15：双向起播混音、统一手动配音、可编辑自动指令、批量删除、键盘收起及主题改版。详细功能见 REVOICE-1.6.5-ZH.md；实际编译与交付证据见 BUILD-STATUS-ZH.txt。
 
 AudioRelayLab — 构建与验证说明
 
@@ -27,7 +27,7 @@ Swift 自动测试由 CI 在真实 Apple 工具链执行，覆盖数据、状态
 3. 真实 GitHub Actions
 Actions：https://github.com/lcl243790317/AudioRelayLab/actions
 推送 main / develop、面向 main 的 PR 或 workflow_dispatch 可以触发。
-手动运行：Actions → “iOS 无签名构建” → Run workflow → feature/revoice-ios-1.6.0。本轮实际由草稿 PR 的分支同步触发，checkout 使用 PR head 的确切 SHA；不是 main 产物。
+手动运行：Actions → “iOS 无签名构建” → Run workflow → feature/revoice-ios-1.6.0。本轮使用功能分支 workflow_dispatch，checkout 使用确切源码 SHA。
 
 CI 默认 contents: read，构建不扩大写权限。
 不得提交 Apple certificate、private key、密码、provisioning profile、GitHub token 或账户秘密。

@@ -109,7 +109,7 @@ import UniformTypeIdentifiers
         }
         if audio == nil { useTestAudio() }
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("mix-interaction-test"),let source = audio,
+        if ProcessInfo.processInfo.arguments.contains("mix-interaction-test") || ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") || ProcessInfo.processInfo.arguments.contains("library-interaction-test"),let source = try? AudioFileManager.loadBundledAudio(),
            let sourceURL = try? AudioFileManager.url(for:source),let folder = try? AudioFileManager.audioDirectory() {
             let id = UUID(uuidString:"16300000-0000-4000-8000-000000000013") ?? UUID()
             let target = folder.appendingPathComponent("混音测试原声.wav")
@@ -118,8 +118,25 @@ import UniformTypeIdentifiers
                 try? AudioFileManager.register(fixture)
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("library-interaction-test"),
+           let source = try? AudioFileManager.loadBundledAudio(),let sourceURL = try? AudioFileManager.url(for:source),
+           let folder = try? AudioFileManager.audioDirectory() {
+            for (suffix,name,kind) in [(14,"批删测试原声",AudioSource.voiceLabRecording),(15,"批删测试音乐一",.imported),(16,"批删测试音乐二",.imported)] {
+                let id = UUID(uuidString:String(format:"16300000-0000-4000-8000-%012d",suffix)) ?? UUID()
+                let target = folder.appendingPathComponent(name+".wav")
+                if !FileManager.default.fileExists(atPath:target.path) { try? FileManager.default.copyItem(at:sourceURL,to:target) }
+                if let fixture = try? AudioFileManager.inspect(url:target,displayName:name,id:id,source:kind) { try? AudioFileManager.register(fixture) }
+            }
+        }
         #endif
         refreshLibrary()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") {
+            voiceMix.voiceID = UUID(uuidString:"16300000-0000-4000-8000-000000000013")
+            voiceMix.musicID = UUID(uuidString:"00000000-0000-4000-8000-000000000001")
+            voiceMix.timing = .init(voiceStartDelay:2,musicTailDuration:3)
+        }
+        #endif
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
         }
@@ -179,22 +196,48 @@ import UniformTypeIdentifiers
         do { library = try AudioFileManager.listLocalAudio() }
         catch { logger.log("音频库读取失败", diagnosticError(error)) }
     }
-    func deleteAudio(_ asset: AudioAsset) {
-        guard !controlsLocked, !aiVoice.connecting, asset.source != .bundled else { return }
+    @discardableResult func deleteAudio(_ asset: AudioAsset) -> BatchAudioDeleteResult {
+        deleteAudio(ids:[asset.id])
+    }
+    @discardableResult func deleteAudio(ids:Set<UUID>,remove:(AudioAsset)throws->Void = AudioFileManager.removeAudio) -> BatchAudioDeleteResult {
+        var result = BatchAudioDeleteResult()
+        guard !controlsLocked,!aiVoice.connecting else {
+            result.failures = Dictionary(uniqueKeysWithValues:ids.map { ($0,"请先结束当前操作") }); return result
+        }
+        let current = Dictionary(uniqueKeysWithValues:library.map { ($0.id,$0) })
         preview.reset()
-        do {
-            try AudioFileManager.removeAudio(asset)
+        for id in ids {
+            guard let asset = current[id],asset.source != .bundled else {
+                result.failures[id] = "音频已不存在或是受保护的内置音频"; continue
+            }
+            do { try remove(asset) }
+            catch {
+                // A sidecar failure after the audio was removed must still clear
+                // references to that audio; successful deletions are never rolled back.
+                guard let url = try? AudioFileManager.url(for:asset),
+                      !FileManager.default.fileExists(atPath:url.path) else {
+                    result.failures[id] = userFacingAudioError(error); continue
+                }
+                do {
+                    let sidecar = url.appendingPathExtension("metadata.json")
+                    if FileManager.default.fileExists(atPath:sidecar.path) { try FileManager.default.removeItem(at:sidecar) }
+                } catch {
+                    result.cleanupWarnings.append("\(asset.libraryName)：附属文件清理未完成")
+                    logger.log("删除附属文件失败",diagnosticError(error))
+                }
+            }
+            result.deletedIDs.insert(id)
             aiVoice.forgetAsset(asset.id)
             revoice.forgetAsset(asset.id)
             voiceMix.forgetAsset(asset.id)
-            if audio?.id == asset.id { useTestAudio() }
-            refreshLibrary()
-            try rawRecorder.removeRecord(for: asset.id)
+            do { try rawRecorder.removeRecord(for:asset.id) }
+            catch { result.cleanupWarnings.append("录音索引清理未完成"); logger.log("删除索引清理失败",diagnosticError(error)) }
             logger.log("音频删除", "asset=\(asset.id)，来源=\(asset.source.rawValue)；实验历史保留。")
-        } catch {
-            refreshLibrary()
-            report(error, message:"删除音频未完成，请检查诊断后重试。")
         }
+        if let selected = audio?.id,result.deletedIDs.contains(selected) { useTestAudio() }
+        refreshLibrary()
+        errorMessage = result.failures.isEmpty && result.cleanupWarnings.isEmpty ? nil : result.summary
+        return result
     }
     func selectAudio(_ asset: AudioAsset) throws {
         guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { throw LabError.message("请先结束正式实验、变声或混音") }

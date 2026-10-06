@@ -27,7 +27,7 @@ struct AudioEditorView: View {
             PaperCaption("拖动左圆点设置起点，右圆点设置终点；播放与 AI 使用已应用的区间。")
             DisclosureGroup("微调起止位置") {
               Picker("调整位置",selection:$adjustingEnd) { Text("起点").tag(false); Text("终点").tag(true) }.pickerStyle(.segmented)
-              HStack {
+              LazyVGrid(columns:[GridItem(.adaptive(minimum:100))],spacing:8) {
                 ForEach([-1.0, -0.1, 0.1, 1], id: \.self) { step in
                     Button(String(format: "%+.1fs", step)) {
                         if adjustingEnd { end.wrappedValue += step } else { offset.wrappedValue += step }

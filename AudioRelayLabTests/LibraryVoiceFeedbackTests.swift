@@ -3,6 +3,60 @@ import XCTest
 @testable import AudioRelayLab
 
 final class LibraryVoiceFeedbackTests: XCTestCase {
+    @MainActor func testBatchDeletionReportsPartialFailureAndRetryClearsReferencesWithoutLosingDraft() throws {
+        let savedSelection = UserDefaults.standard.data(forKey:"selectedAudio")
+        defer { UserDefaults.standard.set(savedSelection,forKey:"selectedAudio") }
+        let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
+        let first = try AudioFileManager.copyIntoLibrary(fixture,displayName:"first.wav",source:.voiceLabRecording)
+        let second = try AudioFileManager.copyIntoLibrary(fixture,displayName:"second.wav",source:.imported)
+        defer { try? AudioFileManager.removeAudio(first); try? AudioFileManager.removeAudio(second) }
+        let history = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:history) }
+        let model = ExperimentCoordinator(historyDirectoryURL:history)
+        try model.selectAudio(first); model.prepare(); model.stop()
+        let count = model.store.experiments.count
+        model.aiVoice.selectInput(first); model.revoice.selectInput(first)
+        model.revoice.kind = .custom; model.revoice.text = "保留的用户草稿"; model.revoice.usesAutomaticInstruction = true
+        model.revoice.editAutomaticInstruction("手动表达"); let draft = model.revoice.automaticInstructionDraft
+        model.voiceMix.voiceID = first.id; model.voiceMix.musicID = second.id
+        model.audition(first,owner:UUID())
+        let result = model.deleteAudio(ids:[first.id,second.id]) { asset in
+            if asset.id == second.id { throw LabError.message("测试删除失败") }
+            try AudioFileManager.removeAudio(asset)
+        }
+        XCTAssertEqual(result.deletedIDs,[first.id]); XCTAssertEqual(Set(result.failures.keys),[second.id])
+        XCTAssertFalse(model.preview.isActive); XCTAssertNil(model.aiVoice.input); XCTAssertNil(model.revoice.input)
+        XCTAssertNil(model.voiceMix.voiceID); XCTAssertEqual(model.voiceMix.musicID,second.id)
+        XCTAssertEqual(model.revoice.text,"保留的用户草稿"); XCTAssertEqual(model.revoice.automaticInstructionDraft,draft)
+        XCTAssertEqual(model.store.experiments.count,count); XCTAssertEqual(model.audio?.source,.bundled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:first).appendingPathExtension("metadata.json").path))
+        XCTAssertTrue(model.library.contains { $0.id == second.id })
+        let retried = model.deleteAudio(ids:Set(result.failures.keys))
+        XCTAssertEqual(retried.deletedIDs,[second.id]); XCTAssertTrue(retried.failures.isEmpty)
+        XCTAssertNil(model.voiceMix.musicID); XCTAssertEqual(model.store.experiments.count,count)
+    }
+    @MainActor func testBatchDeletionProtectsBuiltinAndDoesNotRollbackOtherSuccesses() throws {
+        let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
+        let asset = try AudioFileManager.importFile(from:fixture)
+        defer { try? AudioFileManager.removeAudio(asset) }
+        let model = ExperimentCoordinator(),builtin = try AudioFileManager.loadBundledAudio()
+        model.refreshLibrary()
+        let result = model.deleteAudio(ids:[asset.id,builtin.id])
+        XCTAssertEqual(result.deletedIDs,[asset.id]); XCTAssertEqual(Set(result.failures.keys),[builtin.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:builtin).path))
+        XCTAssertFalse(model.library.contains { $0.id == asset.id })
+    }
+    @MainActor func testBatchDeletionDuringMixingRejectsEveryItemBeforeRemovingAnything() throws {
+        let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
+        let asset = try AudioFileManager.importFile(from:fixture)
+        defer { try? AudioFileManager.removeAudio(asset) }
+        let model = ExperimentCoordinator(); model.refreshLibrary(); try model.beginMixing()
+        defer { model.endMixing() }
+        var called = false
+        let result = model.deleteAudio(ids:[asset.id]) { _ in called = true }
+        XCTAssertFalse(called); XCTAssertTrue(result.deletedIDs.isEmpty); XCTAssertNotNil(result.failures[asset.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:asset).path))
+    }
     func testGeneratedNamesDistinguishSourceAndTakeInFilesAndLibrary() throws {
         let date = Date(timeIntervalSince1970: 1_800_000_000)
         let id = UUID()

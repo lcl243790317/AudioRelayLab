@@ -18,6 +18,7 @@ struct StablePicker<Value: Hashable>: View {
     let title: String
     @Binding var selection: Value
     let choices: [SelectionChoice<Value>]
+    var onDismiss:(()->Void)? = nil
     @State private var snapshot: SelectionSnapshot<Value>?
     @Environment(\.keyboardDismissAction) private var clearFocus
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -49,9 +50,9 @@ struct StablePicker<Value: Hashable>: View {
                 }
             }.frame(minHeight: 44).contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PaperButtonStyle())
         .accessibilityIdentifier("select.\(title)")
-        .sheet(item: $snapshot) { opened in
+        .sheet(item: $snapshot,onDismiss:onDismiss) { opened in
             NavigationStack {
                 List(opened.choices) { choice in
                     Button {
@@ -65,11 +66,11 @@ struct StablePicker<Value: Hashable>: View {
                                 Image(systemName: "checkmark").foregroundStyle(PaperTheme.accent)
                             }
                         }.frame(minHeight: 44).contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityIdentifier("choice.\(choice.id)")
+                    }.buttonStyle(PaperButtonStyle()).accessibilityIdentifier("choice.\(choice.id)")
                 }
-                .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+                .paperList().navigationTitle(title).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { snapshot = nil }.buttonStyle(.plain)
+                    Button("取消") { snapshot = nil }.buttonStyle(PaperButtonStyle(compact:true))
                 } }
             }
             .transaction { $0.animation = nil }
@@ -98,13 +99,61 @@ extension EnvironmentValues {
 private struct KeyboardDone: ViewModifier {
     let clearFocus:(()->Void)?
     func body(content: Content) -> some View {
-        content.scrollDismissesKeyboard(.interactively)
+        content.scrollDismissesKeyboard(.immediately)
+            .background(OutsideKeyboardDismiss(clearFocus:clearFocus).frame(width:0,height:0))
+            .onDisappear { clearFocus?(); KeyboardDismiss.perform() }
             .environment(\.keyboardDismissAction,{ clearFocus?(); KeyboardDismiss.perform() })
             .toolbar { ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("完成") { clearFocus?(); KeyboardDismiss.perform() }
-                    .buttonStyle(.plain).accessibilityIdentifier("keyboard.done")
+                    .buttonStyle(PaperButtonStyle(compact:true)).accessibilityIdentifier("keyboard.done")
             } }
+    }
+}
+
+private struct OutsideKeyboardDismiss:UIViewRepresentable {
+    let clearFocus:(()->Void)?
+    func makeCoordinator() -> Coordinator { Coordinator(clearFocus:clearFocus) }
+    func makeUIView(context:Context) -> Host {
+        let view = Host(); view.isUserInteractionEnabled = false
+        view.changedWindow = { [weak coordinator = context.coordinator] window in coordinator?.attach(window) }
+        return view
+    }
+    func updateUIView(_ view:Host,context:Context) { context.coordinator.clearFocus = clearFocus }
+    static func dismantleUIView(_ view:Host,coordinator:Coordinator) { coordinator.attach(nil) }
+    final class Host:UIView {
+        var changedWindow:((UIWindow?)->Void)?
+        override func didMoveToWindow() { super.didMoveToWindow(); changedWindow?(window) }
+    }
+    @MainActor final class Coordinator:NSObject,UIGestureRecognizerDelegate {
+        var clearFocus:(()->Void)?
+        private weak var window:UIWindow?
+        private lazy var tap:UITapGestureRecognizer = {
+            let value = UITapGestureRecognizer(target:self,action:#selector(dismissKeyboard))
+            value.cancelsTouchesInView = false; value.delaysTouchesBegan = false; value.delaysTouchesEnded = false
+            value.delegate = self; return value
+        }()
+        init(clearFocus:(()->Void)?) { self.clearFocus = clearFocus }
+        func attach(_ value:UIWindow?) {
+            guard window !== value else { return }
+            window?.removeGestureRecognizer(tap); window = value; value?.addGestureRecognizer(tap)
+        }
+        @objc private func dismissKeyboard() { clearFocus?(); KeyboardDismiss.perform() }
+        func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldReceive touch:UITouch) -> Bool {
+            guard let window else { return false }
+            // SwiftUI's touch view can be a hosting view rather than the native editor.
+            // Exclude editor frames as well as their descendants to preserve focus/selection.
+            func hitsEditor(_ view:UIView) -> Bool {
+                guard !view.isHidden,view.alpha > 0.01 else { return false }
+                if view.clipsToBounds,!view.bounds.contains(touch.location(in:view)) { return false }
+                if view is UITextField || view is UITextView {
+                    if view.bounds.contains(touch.location(in:view)) { return true }
+                }
+                return view.subviews.contains(where:hitsEditor)
+            }
+            return !hitsEditor(window)
+        }
+        func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith other:UIGestureRecognizer) -> Bool { true }
     }
 }
 
