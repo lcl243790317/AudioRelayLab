@@ -179,11 +179,16 @@ private struct RevoiceAutomaticInstructionControl:View {
     let disabled:Bool
     var body:some View {
         VStack(alignment:.leading,spacing:8) {
-            Toggle("按内容自动匹配表达指令",isOn:Binding(
-                get:{ ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction },
-                set:{ ai.usesAutomaticInstruction = $0 }))
-                .disabled(disabled || !ai.canUseAutomaticInstruction)
-                .accessibilityIdentifier("revoice.instruction.automatic")
+            HStack(spacing:12) {
+                Text("按内容自动匹配表达指令").accessibilityHidden(true)
+                Spacer(minLength:0)
+                Toggle("按内容自动匹配表达指令",isOn:ai.canUseAutomaticInstruction
+                    ? $ai.usesAutomaticInstruction : .constant(false))
+                    .labelsHidden().toggleStyle(.switch).buttonStyle(.plain).fixedSize()
+                    .disabled(disabled || !ai.canUseAutomaticInstruction)
+                    .accessibilityLabel("按内容自动匹配表达指令")
+                    .accessibilityIdentifier("revoice.instruction.automatic")
+            }
             if !ai.canUseAutomaticInstruction {
                 PaperCaption(ai.selectedVoice?.variant == "base"
                     ? "固定参考声线不支持自动表达指令。"

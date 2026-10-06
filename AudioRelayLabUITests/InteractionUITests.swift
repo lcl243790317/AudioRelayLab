@@ -14,10 +14,12 @@ final class InteractionUITests: XCTestCase {
         reveal(automatic,in:app); XCTAssertTrue(automatic.isEnabled)
         XCTAssertEqual(automatic.value as? String,"0")
         setSwitch(automatic,to:true,in:app)
-        XCTAssertTrue(app.staticTexts["revoice.instruction.summary"].waitForExistence(timeout:3))
+        let summary = app.staticTexts["revoice.instruction.summary"]
+        reveal(summary,in:app); XCTAssertTrue(summary.waitForExistence(timeout:3))
         let preview = app.buttons["查看本次自动指令"]
         reveal(preview,in:app); preview.tap()
-        XCTAssertTrue(app.staticTexts["revoice.instruction.preview"].waitForExistence(timeout:3))
+        let previewText = app.staticTexts["revoice.instruction.preview"]
+        reveal(previewText,in:app); XCTAssertTrue(previewText.waitForExistence(timeout:3))
         attach(app,"自动表达指令已开启与展开")
         setSwitch(automatic,to:false,in:app)
         XCTAssertFalse(app.staticTexts["revoice.instruction.summary"].exists)
@@ -193,12 +195,13 @@ final class InteractionUITests: XCTestCase {
 
     @MainActor private func setSwitch(_ element:XCUIElement,to value:Bool,in app:XCUIApplication) {
         reveal(element,in:app)
-        // Standalone SwiftUI Toggle exposes its label and track as one switch frame.
-        // Tap the trailing track; a center tap can land on the noninteractive label.
-        element.coordinate(withNormalizedOffset:CGVector(dx:0.92,dy:0.5)).tap()
+        print("Automatic switch before tap: \(element.debugDescription)")
+        element.tap()
         let changed = XCTNSPredicateExpectation(
             predicate:NSPredicate(format:"value == %@",value ? "1" : "0"),object:element)
-        XCTAssertEqual(XCTWaiter.wait(for:[changed],timeout:3),.completed)
+        let result = XCTWaiter.wait(for:[changed],timeout:3)
+        print("Automatic switch after tap: \(element.debugDescription)")
+        XCTAssertEqual(result,.completed)
     }
 
     @MainActor private func reveal(_ element:XCUIElement,in app:XCUIApplication) {
