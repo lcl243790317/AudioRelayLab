@@ -19,7 +19,7 @@ jobs:
   build:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.diagnosticOnly != 'true'
     runs-on: macos-latest
-    timeout-minutes: 50
+    timeout-minutes: 75
     env:
       AUDIOLAB_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     defaults:
@@ -211,6 +211,14 @@ jobs:
       - name: 在小屏 iPhone SE 验证已选音乐的主题与大字体布局
         run: |
           set -euo pipefail
+          # Release the regular phone before booting a second simulator on the hosted runner.
+          REGULAR_UDID="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          print(re.search(r'UDID: ([0-9A-F-]+)',Path('build-test-destination.log').read_text())[1])
+          PY
+          )"
+          xcrun simctl shutdown "$REGULAR_UDID"
           xcrun simctl list runtimes --json > build/small-runtimes.json
           SMALL_RUNTIME="$(python3 - <<'PY'
           import json
@@ -221,6 +229,7 @@ jobs:
           PY
           )"
           SMALL_UDID="$(xcrun simctl create AudioRelayLab-SmallPhone com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$SMALL_RUNTIME")"
+          trap 'xcrun simctl shutdown "$SMALL_UDID" 2>/dev/null || true' EXIT
           printf 'iPhone SE (3rd generation): %s; runtime: %s\n' "$SMALL_UDID" "$SMALL_RUNTIME" > build-small-destination.log
           xcrun simctl boot "$SMALL_UDID"
           xcrun simctl bootstatus "$SMALL_UDID" -b
@@ -231,17 +240,18 @@ jobs:
             -destination-timeout 180 -parallel-testing-enabled NO \
             -derivedDataPath build/simulator-tests -resultBundlePath build/small-ui-tests.xcresult \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            test -only-testing:AudioRelayLabUITests/InteractionUITests/testSelectedMusicTimingScreenshotsAcrossThemesAndLargeType \
+            test-without-building -only-testing:AudioRelayLabUITests/InteractionUITests/testSelectedMusicTimingScreenshotsAcrossThemesAndLargeType \
             2>&1 | tee build-small-uitest.log
           xcrun simctl shutdown "$SMALL_UDID"
+          trap - EXIT
       - name: 导出真实 UI 测试截图（包含失败诊断）
         if: always()
         run: |
           set -euo pipefail
-          if [ -d build/ui-tests.xcresult ]; then
+          if [ -f build/ui-tests.xcresult/Info.plist ]; then
             xcrun xcresulttool export attachments --path build/ui-tests.xcresult --output-path build/ui-attachments
           fi
-          if [ -d build/small-ui-tests.xcresult ]; then
+          if [ -f build/small-ui-tests.xcresult/Info.plist ]; then
             xcrun xcresulttool export attachments --path build/small-ui-tests.xcresult --output-path build/ui-small-attachments
           fi
       - name: 编译 iPhoneOS Release
