@@ -347,7 +347,13 @@ final class InteractionUITests: XCTestCase {
             let distance = finite ? min(travel*0.75,max(40/app.frame.height,abs(rect.midY-center)/app.frame.height)) : travel*0.75
             let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper : lower))
             let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper+distance : lower-distance))
-            start.press(forDuration:0.05,thenDragTo:end)
+            if app.frame.height < 750 {
+                // A short viewport cannot absorb a fling past the pinned workshop picker.
+                // Hold the finger at the end so the scroll settles at the requested offset.
+                start.press(forDuration:0.05,thenDragTo:end,withVelocity:.slow,thenHoldForDuration:0.2)
+            } else {
+                start.press(forDuration:0.05,thenDragTo:end)
+            }
             XCTAssertEqual(app.state,.runningForeground,"滚动手势必须留在 App 内")
         }
         XCTFail("控件未进入可点击区域，最后坐标=\(lastFrame)")
