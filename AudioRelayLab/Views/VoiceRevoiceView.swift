@@ -190,7 +190,7 @@ private struct RevoiceAutomaticInstructionControl:View {
             }
                 .buttonStyle(PaperButtonStyle(primary:automatic))
                 .disabled(disabled || !ai.canUseAutomaticInstruction)
-                .accessibilityElement(children:.ignore)
+                .accessibilityAddTraits(.isButton)
                 .accessibilityLabel("按内容自动匹配表达指令")
                 .accessibilityValue(automatic ? "已开启" : "已关闭")
                 .accessibilityIdentifier("revoice.instruction.automatic")

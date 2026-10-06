@@ -10,6 +10,7 @@ final class InteractionUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
         let instruction = app.textFields["revoice.instruction"]
         XCTAssertTrue(instruction.waitForExistence(timeout:5)); let original = instruction.value as? String
+        print("Automatic instruction screen: \(app.debugDescription)")
         let automatic = app.buttons["revoice.instruction.automatic"]
         reveal(automatic,in:app); XCTAssertTrue(automatic.isEnabled)
         XCTAssertEqual(automatic.value as? String,"已关闭")
