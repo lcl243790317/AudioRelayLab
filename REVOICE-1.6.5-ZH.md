@@ -42,4 +42,4 @@
 
 自动测试覆盖音乐前奏、人声延后、音乐延后、尾声、完整人声、不同采样率、时长边界和旧元数据；覆盖手动提交、手改草稿、切换确认、旧任务恢复、批删及引用清理。UI 测试覆盖键盘、单次点击、指令编辑、批删、主题和大字体。已选音乐后的时间控件在常规屏幕及 iPhone SE（第三代）小屏截图中验证。
 
-实际通过数量以 CI 日志为准。无签名 IPA 需用户重签名安装；实际听感、后台与通话环境由真机验收。本轮不调整云端模型或部署，不合并 main。
+Python 94 项、Simulator XCTest 241 项、UI XCTest 13 项及 iPhone SE 小屏截图测试 1 项全部通过；Simulator Debug / iPhoneOS Release 构建成功。 [Actions](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37542874118)；见 `REVOICE-1.6.5-TEST-REPORT-ZH.md`。无签名 IPA 需用户重签名安装；实际听感、后台与通话环境由真机验收。本轮不调整云端模型或部署，不合并 main。

@@ -1,11 +1,26 @@
-AudioRelayLab 1.6.5 / build 15 — 签名测试版验证状态
+AudioRelayLab 1.6.5 / build 15 — 无签名测试版验证状态
 
 双向起播混音、统一手动配音、可编辑自动指令、音频库批量删除、键盘收起、主题与按钮改版。
 分支 feature/revoice-ios-1.6.0；功能见 REVOICE-1.6.5-ZH.md。
 本地 94 项 Python 回归通过，App/测试静态检查通过。静态检查不是 Swift 编译证据。
 
 本轮真实 CI 证据：
-尚未完成 1.6.5 iOS CI；旧版本结果不代表本版通过。
+- 源码提交：229f1950a6b430c2f2b68ae0b0a3c4b4bf91786e
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37542874118
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：241 项，0 失败，TEST SUCCEEDED。
+- UI 测试：13 项通过；真实录屏见 build/ui-interaction.mp4。
+- 小屏布局：iPhone SE（第三代）UI 截图测试 1 项通过；常规屏及小屏附件展示已选音乐后的浅色、深色和大字体时间控件。
+- 隔离 HTTPS 下载：8 次成功，202 续取回已验证；未发送长期密钥。
+- Python 自检：94 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- 本地交付 IPA：dist/AudioRelayLab-1.6.5-unsigned.ipa；1514792 字节（CI Artifact 内原名为 dist/AudioRelayLab-unsigned.ipa）。
+- SHA-256：a81e44e6cf6839f3b0eaf1eb5a5bb108246a43635e19bbec2382b6f9bcc657f4
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
+- Swift 编译警告：2；全部构建警告：'defer' statement at end of scope always executes immediately; replace with 'do' statement to silence this warning；Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
 
 真机已有观察（历史版本）：
 重签名设备曾出现 NSCocoaErrorDomain:513 / NSPOSIXErrorDomain:1；1.6.3 已改前台取回路径。

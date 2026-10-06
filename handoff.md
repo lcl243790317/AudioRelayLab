@@ -4,9 +4,9 @@
 
 ## 2026-10-06 1.6.5 功能与 UI 改版
 
-当前正在交付 **1.6.5 / build 15**。底部入口改为播放／工坊／音频库；增加音乐前奏与人声延后、统一手动生成、可编辑自动指令及切换确认、两种音频库批删、统一收键盘、浅深主题和按钮回弹。取消生成进度条，保留真实处理状态。详细说明见 `REVOICE-1.6.5-ZH.md`。
+当前已交付 **1.6.5 / build 15 无签名 IPA**。底部入口改为播放／工坊／音频库；增加音乐前奏与人声延后、统一手动生成、可编辑自动指令及切换确认、两种音频库批删、统一收键盘、浅深主题和按钮回弹。取消生成进度条，保留真实处理状态。详细说明见 `REVOICE-1.6.5-ZH.md`。
 
-本地 94 项 Python 回归及静态检查通过；新增 Swift 与 UI 回归等待公开 CI 实际执行。完成后更新本版源码、测试计数、版本与 SHA256。本轮不调整云端模型或部署，不合并 main。
+Python 94 项、Simulator XCTest 241 项、UI XCTest 13 项及 iPhone SE 小屏截图测试 1 项全部通过；Simulator Debug / iPhoneOS Release 构建成功。 [实际构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37542874118)；源码 `229f1950a6b430c2f2b68ae0b0a3c4b4bf91786e`；IPA `dist/AudioRelayLab-1.6.5-unsigned.ipa`；SHA256 `a81e44e6cf6839f3b0eaf1eb5a5bb108246a43635e19bbec2382b6f9bcc657f4`。见 `REVOICE-1.6.5-TEST-REPORT-ZH.md`。本轮不调整云端模型或部署，不合并 main。
 
 ## 2026-10-06 1.6.4 历史交付
 
