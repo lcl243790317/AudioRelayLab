@@ -60,7 +60,9 @@ enum RevoiceAutomaticInstruction {
     }
 
     static func profile(text:String) -> Profile {
-        let source = scalarPrefix(text,maximumAnalysisScalars)
+        // Generation trims the draft before validation. Match its text here so a
+        // padded preview never loses a cue at the analysis limit or adds a paragraph.
+        let source = scalarPrefix(text.trimmingCharacters(in:.whitespacesAndNewlines),maximumAnalysisScalars)
             .lowercased(with:Locale(identifier:"en_US_POSIX"))
             .replacingOccurrences(of:"’",with:"'")
         let moods:[(Emotion,[String])] = [

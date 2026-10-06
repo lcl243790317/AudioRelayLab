@@ -101,4 +101,19 @@ final class RevoiceAutomaticInstructionTests:XCTestCase {
         XCTAssertEqual(RevoiceAutomaticInstruction.profile(text:"").emotion,.neutral)
         XCTAssertLessThanOrEqual(RevoiceAutomaticInstruction.make(text:"你好。",baseInstruction:"").unicodeScalars.count,500)
     }
+
+    func testOuterWhitespacePreservesPreviewAndDeliveryAtTheAnalysisLimit() {
+        let nearLimit = String(repeating:"话",count:997) + "开心"
+        XCTAssertEqual(nearLimit.unicodeScalars.count,999)
+        XCTAssertEqual(RevoiceAutomaticInstruction.profile(text:nearLimit).emotion,.happy)
+        let baseline = "保持温润的角色风格。"
+        for draft in [nearLimit,"明天下午三点在大厅见。","为什么我这么难过？"] {
+            let expectedProfile = RevoiceAutomaticInstruction.profile(text:draft)
+            let expectedInstruction = RevoiceAutomaticInstruction.make(text:draft,baseInstruction:baseline)
+            for padded in ["  " + draft,"\n " + draft + " \r\n\t",draft + "\n\n"] {
+                XCTAssertEqual(RevoiceAutomaticInstruction.profile(text:padded),expectedProfile)
+                XCTAssertEqual(RevoiceAutomaticInstruction.make(text:padded,baseInstruction:baseline),expectedInstruction)
+            }
+        }
+    }
 }
