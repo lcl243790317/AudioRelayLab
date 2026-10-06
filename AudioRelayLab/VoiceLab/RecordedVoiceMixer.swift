@@ -39,7 +39,11 @@ enum RecordedVoiceMixer {
             let writer = try AVAudioFile(forWriting:destination,settings:[AVFormatIDKey:kAudioFormatLinearPCM,
                 AVSampleRateKey:48000,AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,
                 AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
-            let frames = Int64(ceil(outputSeconds*48000))
+            // Convert the complete voice first, then quantize the added tail.
+            // Ceil(voiceSeconds + tailSeconds) can add a spurious frame from floating-point addition.
+            let voiceFrames = Int64(ceil(Double(voiceFile.length)*format.sampleRate/voiceFile.processingFormat.sampleRate))
+            let tailFrames = Int64((timing.musicTailDuration*format.sampleRate).rounded())
+            let frames = voiceFrames + tailFrames
             var written:Int64 = 0, stalls = 0
             while written < frames {
                 try Task.checkCancellation()
