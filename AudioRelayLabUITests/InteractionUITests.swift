@@ -305,6 +305,8 @@ final class InteractionUITests: XCTestCase {
     }
 
     @MainActor private func reveal(_ element:XCUIElement,in app:XCUIApplication) {
+        // The manual generate action lives outside the scroll view's viewport.
+        if element.identifier == "revoice.generate", element.isHittable { return }
         for _ in 0..<18 {
             let scroll = app.scrollViews["screen.scroll"].firstMatch
             let viewport = scroll.exists ? scroll.frame : app.frame
