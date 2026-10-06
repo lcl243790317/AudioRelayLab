@@ -6,6 +6,7 @@
 
 - “背景音乐从成品第 X 秒开始”：在成品时间轴上选择音乐加入时间，人声仍从第 0 秒开始。此设置独立于音乐文件的片段起点、终点和速度。
 - “人声结束后保留 X 秒音乐尾声”：可选 0～60 秒。成品长度为完整人声长度加尾声长度；音乐加入时间必须早于成品结束。
+- 人声最长 180 秒，加尾声后混音成品最长约 240 秒；实际长度按音频采样帧计算。
 - 两项默认均为 0 秒，保持原有混音行为。音量偏好仍单独保留。
 - 工坊独立混音与电脑变声高级入口的混音均支持这两项设置。
 - 音乐按所选片段和速度播放，不自动循环。如果音乐片段提前结束，界面提示结束时间及尾声的静音区间；可延长片段或缩短尾声。
@@ -31,7 +32,7 @@
 
 ## 验证与安装
 
-本地 94 项 Python 回归与静态检查通过。实际 Swift 编译、Simulator XCTest、UI XCTest、iPhoneOS Release 与 IPA 校验结果以本次 Actions 及 `BUILD-STATUS-ZH.txt` 为准；代码提交前尚未运行新版本 iOS CI。
+Python 94 项、Simulator XCTest 226 项、UI XCTest 10 项全部通过；Simulator Debug / iPhoneOS Release 构建成功。 [Actions](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37465511866)；详见 `REVOICE-1.6.4-TEST-REPORT-ZH.md` 和 `BUILD-STATUS-ZH.txt`。
 
 新增回归覆盖实际离线渲染中的音乐加入时间、尾声、完整人声、跨采样率、速度和片段；自动指令开关、最新参数、固定参考限制、设备识别、旧任务恢复；两种库页面的回听退出行为。
 
