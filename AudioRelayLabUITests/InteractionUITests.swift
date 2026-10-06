@@ -308,14 +308,18 @@ final class InteractionUITests: XCTestCase {
         var lastFrame = CGRect.null
         for attempt in 0..<12 {
             let scroll = app.scrollViews["screen.scroll"].firstMatch
-            let viewport = scroll.exists && scroll.isHittable ? scroll.frame : app.frame
+            let candidate = scroll.exists && scroll.isHittable ? scroll.frame : app.frame
+            let viewport = candidate.minY.isFinite && candidate.maxY.isFinite ? candidate.intersection(app.frame) : app.frame
             var top = max(viewport.minY,app.navigationBars.firstMatch.frame.maxY)+4
             let workshop = app.segmentedControls["workshop.mode"]
             if workshop.exists { top = max(top,workshop.frame.maxY+12) }
             let largeWorkshop = app.buttons["select.工坊功能"]
             if largeWorkshop.exists { top = max(top,largeWorkshop.frame.maxY+12) }
-            var bottom = viewport.maxY-4
             let tabs = app.tabBars.firstMatch
+            let hasTabs = tabs.exists
+            // Keep gestures inside the app, away from the home indicator and
+            // floating tab background even when an AX frame extends offscreen.
+            var bottom = min(viewport.maxY-4,app.frame.maxY-(hasTabs ? 110 : 40))
             // Floating tab chrome extends above its accessibility frame.
             if tabs.exists { bottom = min(bottom,tabs.frame.minY-32) }
             let generate = app.buttons["revoice.generate"]
@@ -337,13 +341,14 @@ final class InteractionUITests: XCTestCase {
             if exists && visible && (element.isHittable || !element.isEnabled) { return }
             let center = (top+bottom)/2
             let above = finite ? rect.midY < center : (attempt < 6 ? towardTop : !towardTop)
-            let upper = (top+24-app.frame.minY)/app.frame.height
-            let lower = (bottom-24-app.frame.minY)/app.frame.height
+            let lower = min(hasTabs ? 0.86 : 0.92,(bottom-24-app.frame.minY)/app.frame.height)
+            let upper = max(0.12,min(lower-0.05,(top+24-app.frame.minY)/app.frame.height))
             let travel = max(0.03,lower-upper)
             let distance = finite ? min(travel*0.75,max(40/app.frame.height,abs(rect.midY-center)/app.frame.height)) : travel*0.75
             let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper : lower))
             let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper+distance : lower-distance))
             start.press(forDuration:0.05,thenDragTo:end)
+            XCTAssertEqual(app.state,.runningForeground,"滚动手势必须留在 App 内")
         }
         XCTFail("控件未进入可点击区域，最后坐标=\(lastFrame)")
     }
