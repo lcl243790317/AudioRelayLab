@@ -22,8 +22,12 @@ struct VoiceMixView:View {
                 Divider()
                 MixVolumeControl(title:"人声",value:$volumes.voice)
                 MixVolumeControl(title:"音乐",value:$volumes.music)
-                PaperCaption("保留完整人声；音乐从头播放，默认音量 4%。")
+                PaperCaption("保留完整人声；音乐默认音量 4%，加入时间与尾声可单独设置。")
                 if let music = coordinator.library.first(where:{$0.id == mix.musicID}) {
+                    if let voice = coordinator.library.first(where:{$0.id == mix.voiceID}) {
+                        MusicMixTimingOptions(timing:$mix.timing,voiceDuration:voice.duration,
+                            musicDuration:mix.settings.estimatedDuration(duration:music.duration))
+                    }
                     DisclosureGroup("音乐片段与速度") {
                         MusicMixOptions(settings:$mix.settings,duration:music.duration)
                         MixVolumeControl(title:"总音量",value:$volumes.master)
@@ -38,6 +42,32 @@ struct VoiceMixView:View {
             if let error = mix.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
             if let result = mix.result { RevoiceResultTools(coordinator:coordinator,result:result,title:"混音成品") }
         }
+    }
+}
+
+struct MusicMixTimingOptions:View {
+    @Binding var timing:AudioMixTiming
+    let voiceDuration:Double
+    let musicDuration:Double
+    private var outputDuration:Double { voiceDuration + timing.musicTailDuration }
+    private var latestStart:Double { max(0,outputDuration-0.1) }
+    private func seconds(_ value:Double) -> String { String(format:"%.1f",value) }
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            Text("背景音乐从成品第 \(seconds(timing.musicStartDelay)) 秒开始").font(.subheadline)
+            Slider(value:$timing.musicStartDelay,in:0...latestStart,step:0.1)
+                .accessibilityLabel("背景音乐加入时间").accessibilityIdentifier("mix.musicStartDelay")
+            Text("人声结束后保留 \(seconds(timing.musicTailDuration)) 秒音乐尾声").font(.subheadline)
+            Slider(value:$timing.musicTailDuration,in:0...AudioMixTiming.maximumTailSeconds,step:0.5)
+                .onChange(of:timing.musicTailDuration) { _,_ in
+                    timing.musicStartDelay = min(timing.musicStartDelay,latestStart)
+                }.accessibilityLabel("背景音乐尾声时长").accessibilityIdentifier("mix.musicTailDuration")
+            PaperCaption("人声从第 0 秒开始；成品总长 \(seconds(outputDuration)) 秒。音乐加入时间与音乐文件的片段起点相互独立。")
+            if timing.musicStartDelay + musicDuration < outputDuration {
+                PaperCaption("所选音乐将在成品第 \(seconds(timing.musicStartDelay+musicDuration)) 秒播完，不自动循环；之后仅保留人声，未覆盖的尾声为静音。可延长音乐片段或缩短尾声。")
+            }
+        }
+        .onChange(of:voiceDuration) { _,_ in timing.musicStartDelay = min(timing.musicStartDelay,latestStart) }
     }
 }
 
@@ -61,12 +91,12 @@ private struct MusicMixOptions:View {
         VStack(alignment:.leading,spacing:8) {
             StablePicker(title:"音乐速度",selection:$settings.playbackRate,
                 choices:AudioPlaybackSettings.rates.map { .init(id:$0,title:String(format:"%.2gx",$0)) })
-            Text("开始 \(AudioPlaybackSettings.time(settings.startOffset))").font(.caption)
+            Text("片段起点 \(AudioPlaybackSettings.time(settings.startOffset))").font(.caption)
             Slider(value:$settings.startOffset,in:0...max(0,duration-0.01))
                 .onChange(of:settings.startOffset) { _,start in
                     if let end = settings.endOffset,end <= start { settings.endOffset = nil }
                 }.accessibilityLabel("音乐开始位置")
-            Text("结束 \(AudioPlaybackSettings.time(settings.endPosition(duration:duration)))").font(.caption)
+            Text("片段终点 \(AudioPlaybackSettings.time(settings.endPosition(duration:duration)))").font(.caption)
             Slider(value:Binding(get:{settings.endPosition(duration:duration)},set:{settings.endOffset = $0}),
                 in:min(duration,settings.startOffset+0.01)...duration).accessibilityLabel("音乐结束位置")
             Button("恢复从头播放") { settings = .init() }

@@ -231,9 +231,9 @@ import UniformTypeIdentifiers
         guard !controlsLocked, let audio else { return }
         preview.play(asset: audio, settings: editing, fiveSeconds: fiveSeconds)
     }
-    func audition(_ asset: AudioAsset) {
+    func audition(_ asset: AudioAsset, owner: UUID? = nil) {
         guard !controlsLocked, !aiVoice.connecting else { return }
-        preview.play(asset: asset, settings: AudioPlaybackSettings(), fiveSeconds: false)
+        preview.play(asset: asset, settings: AudioPlaybackSettings(), fiveSeconds: false, owner: owner)
     }
     private func rememberAudio(_ metadata: AudioFileMetadata) throws {
         UserDefaults.standard.set(try JSONEncoder().encode(metadata), forKey: "selectedAudio")

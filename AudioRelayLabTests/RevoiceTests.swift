@@ -127,6 +127,88 @@ private final class RevoiceHTTPProtocol:URLProtocol,@unchecked Sendable {
 }
 
 final class RevoiceTests:XCTestCase {
+    @MainActor func testAutomaticCustomInstructionUsesLatestTextWithoutChangingManualDraft() async throws {
+        try await exercise { ai,recognizer,_ in
+            ai.kind = .custom; ai.selectedSpeaker = "Vivian"; ai.instruction = "保留明亮的角色声线"
+            ai.text = "终于成功了，太开心了！"; ai.usesAutomaticInstruction = true
+            let expected = try XCTUnwrap(ai.automaticInstructionPreview)
+            ai.generate(); try await self.settle(ai)
+            let first = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
+            XCTAssertEqual(first["instruction"],expected); XCTAssertEqual(first["text"],ai.text)
+            XCTAssertEqual(first["speaker"],"Vivian"); XCTAssertEqual(ai.instruction,"保留明亮的角色声线")
+            XCTAssertEqual(ai.result?.revoice?.instruction,expected)
+            XCTAssertEqual(ai.result?.revoice?.usesAutomaticInstruction,true)
+            ai.text = "我很难过，真的舍不得你。"
+            let changed = try XCTUnwrap(ai.automaticInstructionPreview); XCTAssertNotEqual(changed,expected)
+            ai.generate(); try await self.settle(ai)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["instruction"],changed)
+            ai.usesAutomaticInstruction = false; ai.generate(); try await self.settle(ai)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["instruction"],"保留明亮的角色声线")
+            XCTAssertEqual(ai.result?.revoice?.usesAutomaticInstruction,false); XCTAssertEqual(recognizer.calls,0)
+        }
+    }
+    @MainActor func testAutomaticPresetNeverOverridesFixedReferenceOrLegacyServer() async throws {
+        try await exercise { ai,_,_ in
+            ai.usesAutomaticInstruction = true; ai.text = "太开心了！"
+            XCTAssertFalse(ai.canUseAutomaticInstruction); XCTAssertNil(ai.automaticInstructionPreview)
+            ai.generate(); try await self.settle(ai)
+            XCTAssertNil(RevoiceHTTPProtocol.state.submissions.last?["instruction"])
+            RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
+            XCTAssertTrue(ai.canUseAutomaticInstruction)
+            let expected = try XCTUnwrap(ai.automaticInstructionPreview)
+            ai.generate(); try await self.settle(ai)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["instruction"],expected)
+            ai.selectedPreset = "scholar-design"
+            XCTAssertFalse(ai.canUseAutomaticInstruction); XCTAssertNil(ai.automaticInstructionPreview)
+            ai.generate(); try await self.settle(ai)
+            XCTAssertNil(RevoiceHTTPProtocol.state.submissions.last?["instruction"])
+            XCTAssertEqual(ai.result?.revoice?.usesAutomaticInstruction,false)
+        }
+    }
+    @MainActor func testAutomaticInstructionUsesDeviceRecognizedText() async throws {
+        try await exercise { ai,recognizer,input in
+            RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
+            ai.usesAutomaticInstruction = true; ai.selectInput(input); ai.recognize(autoGenerate:true)
+            try await self.settle(ai)
+            XCTAssertEqual(recognizer.calls,1); XCTAssertEqual(ai.text,"嗯，我，我想明天再去。")
+            let expected = RevoiceAutomaticInstruction.make(text:ai.text,baseInstruction:ai.presetInstruction)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["instruction"],expected)
+            XCTAssertEqual(ai.result?.revoice?.recognizedText,ai.text)
+        }
+    }
+    @MainActor func testAutomaticPendingInstructionStaysFrozenAndRestartRestoresBaseDraft() async throws {
+        try await exerciseAsync { ai,_,manager,store in
+            ai.kind = .custom; ai.usesAutomaticInstruction = true; ai.instruction = "温润的角色风格"
+            ai.text = "太开心了，我们成功了！"; let expected = try XCTUnwrap(ai.automaticInstructionPreview)
+            RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
+            let previous = try XCTUnwrap(ai.pendingJobID), frozen = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
+            XCTAssertEqual(store.job(previous)?.context.instruction,expected)
+            let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [RevoiceHTTPProtocol.self]
+            let session = URLSession(configuration:config); defer { session.invalidateAndCancel() }
+            let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",
+                proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
+            let restarted = RevoiceController(client:CloudRevoiceClient(session:session),recognizer:RevoiceTestRecognizer(),
+                connection:connection,saveConnection:{_ in},backgroundTransfers:manager)
+            defer { restarted.cancel() }
+            XCTAssertTrue(restarted.usesAutomaticInstruction); XCTAssertEqual(restarted.instruction,"温润的角色风格")
+            XCTAssertEqual(restarted.automaticInstructionPreview,expected)
+            restarted.text = "我很难过。"; restarted.instruction = "新的角色风格"; restarted.usesAutomaticInstruction = false
+            RevoiceHTTPProtocol.state.failAfterSubmission = true; restarted.resumePending()
+            try await self.waitForSubmissions(2); try await self.settle(restarted)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last,frozen)
+            XCTAssertEqual(restarted.text,"我很难过。"); XCTAssertEqual(restarted.instruction,"新的角色风格")
+            restarted.usesAutomaticInstruction = true; restarted.instruction = String(repeating:"字",count:501)
+            restarted.generate(); XCTAssertEqual(restarted.pendingJobID,previous)
+            XCTAssertNotNil(restarted.errorMessage); XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,2)
+        }
+    }
+    func testLegacySaveContextDecodesWithManualInstructionMode() throws {
+        let context = RevoiceSaveContext(id:UUID(),createdAt:Date(),choice:.custom(speaker:"Serena",instruction:"旧指令"),
+            voiceName:"Serena",instruction:"旧指令",fixedReferenceID:nil,recognizedText:nil,text:"旧文字。",sourceAudioID:nil)
+        let decoded = try JSONDecoder().decode(RevoiceSaveContext.self,from:JSONEncoder().encode(context))
+        XCTAssertNil(decoded.usesAutomaticInstruction); XCTAssertNil(decoded.baseInstruction)
+        XCTAssertEqual(decoded.instruction,"旧指令")
+    }
     func testLegacyPresetChoiceDecodesWithoutInstructionAndNewOverrideRoundTrips() throws {
         let old = Data("{\"preset\":{\"id\":\"serena-original\",\"variant\":\"custom\"}}".utf8)
         XCTAssertEqual(try JSONDecoder().decode(RevoiceChoice.self,from:old),.preset(id:"serena-original",variant:"custom"))

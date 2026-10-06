@@ -23,7 +23,8 @@ enum RevoiceSaving {
                 recognizedText:context.recognizedText,synthesisText:context.text,sourceAudioID:context.sourceAudioID,
                 modelVariant:context.choice.variant,modelRevision:audio.revision,sha256:audio.sha256,
                 generationSeconds:audio.generationSeconds,totalSeconds:audio.totalSeconds,
-                voiceName:context.voiceName,fixedReferenceID:context.fixedReferenceID,jobID:jobID)
+                voiceName:context.voiceName,fixedReferenceID:context.fixedReferenceID,jobID:jobID,
+                usesAutomaticInstruction:context.usesAutomaticInstruction)
             asset.addedAt = Date(); try AudioFileManager.register(asset)
             return asset
         } catch {

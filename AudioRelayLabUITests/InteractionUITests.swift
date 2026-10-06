@@ -1,6 +1,58 @@
 import XCTest
 
 final class InteractionUITests: XCTestCase {
+    @MainActor func testAutomaticInstructionTogglePreviewAndFixedReferenceAvailability() {
+        let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
+        let instruction = app.textFields["revoice.instruction"]
+        XCTAssertTrue(instruction.waitForExistence(timeout:5)); let original = instruction.value as? String
+        let automatic = app.switches["revoice.instruction.automatic"]
+        reveal(automatic,in:app); XCTAssertTrue(automatic.isEnabled); automatic.tap()
+        XCTAssertTrue(app.staticTexts["revoice.instruction.summary"].waitForExistence(timeout:3))
+        let preview = app.buttons["查看本次自动指令"]
+        reveal(preview,in:app); preview.tap()
+        XCTAssertTrue(app.staticTexts["revoice.instruction.preview"].waitForExistence(timeout:3))
+        reveal(automatic,in:app); automatic.tap(); XCTAssertFalse(app.staticTexts["revoice.instruction.summary"].exists)
+        for _ in 0..<6 {
+            if app.buttons["select.声线"].isHittable { break }
+            let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:0.28))
+            let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:0.80))
+            start.press(forDuration:0.05,thenDragTo:end)
+        }
+        XCTAssertEqual(instruction.value as? String,original)
+        app.buttons["select.声线"].tap(); app.buttons["choice.scholar-design"].tap()
+        reveal(automatic,in:app); XCTAssertFalse(automatic.isEnabled)
+        XCTAssertTrue(app.staticTexts["固定参考声线不支持自动表达指令。"].exists)
+        attach(app,"自动表达指令开关与预览")
+    }
+    @MainActor func testBothLibraryScreensStopPreviewOnTabChangeAndNavigationBack() {
+        let app = XCUIApplication(); app.launchArguments = ["mix-interaction-test","day-snapshot"]; app.launch()
+        app.tabBars.buttons["资料"].tap()
+        for library in ["本地音频库","录音与 AI 声音"] {
+            app.buttons[library].tap()
+            let stop = app.buttons["library.preview.stop"]
+            XCTAssertTrue(stop.waitForExistence(timeout:5)); XCTAssertFalse(stop.isEnabled)
+            app.buttons["回听"].firstMatch.tap()
+            let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在回听"),object:stop)
+            XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:5),.completed)
+            XCTAssertTrue(stop.isEnabled)
+
+            app.tabBars.buttons["音频"].tap()
+            app.tabBars.buttons["资料"].tap()
+            XCTAssertTrue(stop.waitForExistence(timeout:3)); XCTAssertFalse(stop.isEnabled)
+            XCTAssertEqual(stop.value as? String,"未在回听")
+
+            app.buttons["回听"].firstMatch.tap()
+            let replaying = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在回听"),object:stop)
+            XCTAssertEqual(XCTWaiter.wait(for:[replaying],timeout:5),.completed)
+            app.navigationBars.buttons["资料"].tap()
+            app.buttons[library].tap()
+            XCTAssertTrue(stop.waitForExistence(timeout:3)); XCTAssertFalse(stop.isEnabled)
+            XCTAssertEqual(stop.value as? String,"未在回听")
+            app.navigationBars.buttons["资料"].tap()
+        }
+        attach(app,"两个音频库退出后停止回听")
+    }
+
     @MainActor func testIndependentMixWorksWithoutLatestRevoiceResult() {
         let app = XCUIApplication(); app.launchArguments = ["mix-snapshot","mix-interaction-test","day-snapshot"]; app.launch()
         let save = app.buttons["mix.save"]
@@ -11,6 +63,9 @@ final class InteractionUITests: XCTestCase {
         app.buttons["select.背景音乐"].tap()
         let music = app.buttons.matching(NSPredicate(format:"identifier CONTAINS %@","00000000-0000-4000-8000-000000000001")).firstMatch
         XCTAssertTrue(music.waitForExistence(timeout:3)); music.tap()
+        let startDelay = app.sliders["mix.musicStartDelay"],tail = app.sliders["mix.musicTailDuration"]
+        reveal(tail,in:app); tail.adjust(toNormalizedSliderPosition:0.05)
+        reveal(startDelay,in:app); startDelay.adjust(toNormalizedSliderPosition:0.1)
         reveal(save,in:app); XCTAssertTrue(save.isEnabled); save.tap()
         XCTAssertTrue(app.staticTexts["混音已保存到录音库"].waitForExistence(timeout:15))
         reveal(app.buttons["分享成品"],in:app); XCTAssertTrue(app.buttons["用于延迟播放"].exists)
@@ -129,8 +184,9 @@ final class InteractionUITests: XCTestCase {
     @MainActor private func reveal(_ element:XCUIElement,in app:XCUIApplication) {
         for _ in 0..<14 {
             if element.isHittable { return }
-            let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:0.80))
-            let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:0.28))
+            let above = element.exists && element.frame.midY < app.frame.minY + 120
+            let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? 0.28 : 0.80))
+            let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? 0.80 : 0.28))
             start.press(forDuration:0.05,thenDragTo:end)
         }
         XCTAssertTrue(element.isHittable)

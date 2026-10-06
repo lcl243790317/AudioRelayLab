@@ -11,6 +11,7 @@ import Combine
     private var player: AVAudioPlayer?
     private var timer: Timer?
     private var token = UUID()
+    private var owner: UUID?
     private var deadline: TimeInterval?
     private var ownsSession = false
     private var preparation: Task<Void, Never>?
@@ -20,9 +21,11 @@ import Combine
     init(session: AudioSessionManager, logger: DiagnosticsLogger) { self.session = session; self.logger = logger }
     deinit { timer?.invalidate(); preparation?.cancel(); if let processedURL { try? FileManager.default.removeItem(at:processedURL) } }
     var isActive: Bool { state == .preparing || state == .playing }
+    func isOwned(by owner: UUID) -> Bool { self.owner == owner && isActive }
     var preparedDuration: Double? { player.map { $0.duration-startInPlayer } }
-    func play(asset: AudioAsset, settings: AudioPlaybackSettings, fiveSeconds: Bool) {
+    func play(asset: AudioAsset, settings: AudioPlaybackSettings, fiveSeconds: Bool, owner: UUID? = nil) {
         stop()
+        self.owner = owner
         errorMessage = nil
         let currentToken = UUID(); token = currentToken
         state = .preparing
@@ -73,7 +76,14 @@ import Combine
           }
         }
     }
+    /// A screen only stops the preview it started. A late disappearance must not
+    /// cancel playback that a different screen has already taken over.
+    func stop(owner: UUID) {
+        guard self.owner == owner else { return }
+        stop()
+    }
     func stop() {
+        owner = nil
         token = UUID(); timer?.invalidate(); timer = nil
         preparation?.cancel(); preparation = nil
         player?.delegate = nil; player?.stop(); player = nil; deadline = nil

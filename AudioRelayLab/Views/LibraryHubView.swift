@@ -40,6 +40,7 @@ struct LocalAudioLibraryView: View {
     @ObservedObject var coordinator:ExperimentCoordinator
     var recordingsOnly = false
     @State private var share:ShareItem?
+    @State private var previewOwner = UUID()
     private var assets:[AudioAsset] {
         recordingsOnly ? coordinator.library.filter { [.voiceLabRecording,.mixedRecording,.aiConverted].contains($0.source) } : coordinator.library
     }
@@ -60,9 +61,12 @@ struct LocalAudioLibraryView: View {
                         Text(asset.libraryName).font(.headline).lineLimit(3)
                         PaperCaption("\(AudioPlaybackSettings.time(asset.duration)) · \(asset.formatDescription)")
                         HStack {
-                            Button("回听") { coordinator.audition(asset) }
+                            Button("回听") { coordinator.audition(asset,owner:previewOwner) }
                             Button("使用") { coordinator.selectLocal(asset) }
-                            Button("分享") { if let url = try? AudioFileManager.url(for:asset) { share = ShareItem(url:url) } }
+                            Button("分享") {
+                                coordinator.preview.stop(owner:previewOwner)
+                                if let url = try? AudioFileManager.url(for:asset) { share = ShareItem(url:url) }
+                            }
                         }.disabled(locked)
                         if let conversion = asset.aiConversion {
                             PaperCaption("\(conversion.voiceName) · \(conversion.modeTitle)")
@@ -99,9 +103,22 @@ struct LocalAudioLibraryView: View {
         }.paperList()
             .buttonStyle(.borderless)
             .onAppear { coordinator.refreshLibrary() }
+            .onDisappear { coordinator.preview.stop(owner:previewOwner) }
             .navigationTitle(recordingsOnly ? "录音与 AI 声音" : "本地音频库")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { Button("停止回听") { coordinator.preview.stop() } }
+            .toolbar {
+                LibraryPreviewStopButton(preview:coordinator.preview)
+            }
             .sheet(item:$share) { ShareSheet(url:$0.url) }
+    }
+}
+
+private struct LibraryPreviewStopButton: View {
+    @ObservedObject var preview:PreviewPlaybackController
+    var body: some View {
+        Button("停止回听") { preview.stop() }
+            .disabled(!preview.isActive)
+            .accessibilityIdentifier("library.preview.stop")
+            .accessibilityValue(preview.state == .playing ? "正在回听" : "未在回听")
     }
 }

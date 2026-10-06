@@ -1,13 +1,14 @@
 import AVFAudio
 
 enum RecordedVoiceMixer {
-    static func mix(voiceURL:URL, musicURL:URL, settings:AudioPlaybackSettings, volumes:AudioMixParameters,voiceAsset:AudioAsset? = nil,musicAsset:AudioAsset? = nil) throws -> AudioAsset {
+    static func mix(voiceURL:URL, musicURL:URL, settings:AudioPlaybackSettings, volumes:AudioMixParameters,timing:AudioMixTiming = .init(),voiceAsset:AudioAsset? = nil,musicAsset:AudioAsset? = nil) throws -> AudioAsset {
         try volumes.validate()
         let voiceFile = try AVAudioFile(forReading:voiceURL)
         let seconds = Double(voiceFile.length)/voiceFile.processingFormat.sampleRate
-        try RevoiceLimits.output(seconds)
+        let outputSeconds = try timing.outputDuration(voiceDuration:seconds)
+        let musicSeconds = outputSeconds - timing.musicStartDelay
         let musicCopy = try RateAdjustedAudio.copy(of:musicURL,startOffset:settings.startOffset,
-            rate:settings.playbackRate,duration:seconds*Double(settings.playbackRate),endOffset:settings.endOffset)
+            rate:settings.playbackRate,duration:max(0.1,musicSeconds*Double(settings.playbackRate)),endOffset:settings.endOffset)
         defer { try? FileManager.default.removeItem(at:musicCopy) }
         let musicFile = try AVAudioFile(forReading:musicCopy)
         let engine = AVAudioEngine(), voice = AVAudioPlayerNode(), music = AVAudioPlayerNode()
@@ -20,7 +21,10 @@ enum RecordedVoiceMixer {
         engine.mainMixerNode.outputVolume = volumes.master
         try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
         defer { voice.stop(); music.stop(); engine.stop(); engine.disableManualRenderingMode() }
-        voice.scheduleFile(voiceFile,at:nil); music.scheduleFile(musicFile,at:nil)
+        voice.scheduleFile(voiceFile,at:nil)
+        // Offline rendering uses the player's sample timeline, not wall-clock delays.
+        let musicStart = AVAudioFramePosition((timing.musicStartDelay*musicFile.processingFormat.sampleRate).rounded())
+        music.scheduleFile(musicFile,at:AVAudioTime(sampleTime:musicStart,atRate:musicFile.processingFormat.sampleRate))
         try engine.start(); voice.play(); music.play()
         let id = UUID()
         let revoice = voiceAsset?.revoice
@@ -35,7 +39,7 @@ enum RecordedVoiceMixer {
             let writer = try AVAudioFile(forWriting:destination,settings:[AVFormatIDKey:kAudioFormatLinearPCM,
                 AVSampleRateKey:48000,AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,
                 AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
-            let frames = Int64(ceil(seconds*48000))
+            let frames = Int64(ceil(outputSeconds*48000))
             var written:Int64 = 0, stalls = 0
             while written < frames {
                 try Task.checkCancellation()
@@ -58,7 +62,7 @@ enum RecordedVoiceMixer {
             asset.aiConversion = voiceAsset?.aiConversion
             if let voiceAsset, let musicAsset {
                 asset.mixSource = .init(voiceAssetID:voiceAsset.id,musicAssetID:musicAsset.id,
-                    revoice:voiceAsset.revoice,settings:settings,volumes:volumes)
+                    revoice:voiceAsset.revoice,settings:settings,volumes:volumes,timing:timing)
             }
             asset.addedAt = Date()
             try AudioFileManager.register(asset)

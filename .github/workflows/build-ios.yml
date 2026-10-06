@@ -240,6 +240,7 @@ jobs:
             REVOICE-1.6.1-ZH.md
             REVOICE-1.6.2-ZH.md
             REVOICE-1.6.3-ZH.md
+            REVOICE-1.6.4-ZH.md
             build/revoice-download-fixture-report.json
             build/ui-*.mp4
       - name: 记录最终状态

@@ -1,4 +1,4 @@
-当前 1.6.3 / build 13：前台直接读取成品、预设表达指令编辑、独立混音和声音工坊简化；云端 scaledown_window=75 秒。实际 CI 与交付见 REVOICE-1.6.3-TEST-REPORT-ZH.md。main 合并等待签名验收。
+当前 1.6.4 / build 14：混音音乐加入时间与尾声、可选本地自动表达指令、退出音频库停止回听。详细功能见 REVOICE-1.6.4-ZH.md；真实编译与交付证据见 BUILD-STATUS-ZH.txt。
 
 AudioRelayLab — 构建与验证说明
 

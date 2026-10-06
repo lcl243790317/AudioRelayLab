@@ -10,10 +10,23 @@ import UIKit
     @Published var selectedSpeaker = "Serena"
     @Published var instruction = ""
     @Published var presetInstruction = ""
+    @Published var usesAutomaticInstruction = false
     @Published private(set) var supportsPresetInstruction = false
     private var instructionPresetID:String?
     var selectedVoice:RevoiceVoice? { voices.first { $0.id == selectedPreset } }
     var canEditPresetInstruction:Bool { supportsPresetInstruction && selectedVoice?.supportsInstruction == true }
+    var canUseAutomaticInstruction:Bool { kind == .custom || canEditPresetInstruction }
+    var baseInstruction:String { kind == .custom ? instruction : presetInstruction }
+    var automaticInstructionPreview:String? {
+        guard usesAutomaticInstruction, canUseAutomaticInstruction,
+              !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return nil }
+        return RevoiceAutomaticInstruction.make(text:text,baseInstruction:baseInstruction)
+    }
+    private func resolvedInstruction(_ base:String,text:String) throws -> String {
+        try RevoiceLimits.instruction(base)
+        return usesAutomaticInstruction && canUseAutomaticInstruction
+            ? RevoiceAutomaticInstruction.make(text:text,baseInstruction:base) : base
+    }
     func resetPresetInstruction() {
         presetInstruction = selectedVoice?.instruction ?? ""
         instructionPresetID = selectedVoice == nil ? nil : selectedPreset
@@ -180,21 +193,25 @@ import UIKit
         }
         do {
             guard let connection else { throw LabError.message("请先导入云端连接配置") }
+            let usedText = try RevoiceLimits.text(text)
             let choice:RevoiceChoice, label:String, effectiveInstruction:String, reference:String?
             if kind == .custom {
                 guard speakers.contains(where:{$0.id == selectedSpeaker}) else { throw LabError.message("请连接支持自定义配音的云端服务") }
-                choice = .custom(speaker:selectedSpeaker,instruction:instruction)
-                label = selectedSpeaker; effectiveInstruction = instruction; reference = nil
+                effectiveInstruction = try resolvedInstruction(instruction,text:usedText)
+                choice = .custom(speaker:selectedSpeaker,instruction:effectiveInstruction)
+                label = selectedSpeaker; reference = nil
             } else {
                 guard let voice = voices.first(where:{$0.id == selectedPreset}) else { throw LabError.message("请先连接云端并选择声线") }
-                let override = canEditPresetInstruction ? presetInstruction : nil
+                let override = canEditPresetInstruction ? try resolvedInstruction(presetInstruction,text:usedText) : nil
                 choice = .preset(id:voice.id,variant:voice.variant,instruction:override)
                 label = voice.displayName; effectiveInstruction = override ?? voice.instruction ?? ""; reference = voice.fixedReferenceID
             }
-            let usedText = try RevoiceLimits.text(text); _ = try choice.body(text:usedText)
+            _ = try choice.body(text:usedText)
             let context = RevoiceSaveContext(id:UUID(),createdAt:Date(),choice:choice,voiceName:label,
                 instruction:effectiveInstruction,fixedReferenceID:reference,recognizedText:recognizedText,
-                text:usedText,sourceAudioID:input?.id)
+                text:usedText,sourceAudioID:input?.id,
+                usesAutomaticInstruction:usesAutomaticInstruction && canUseAutomaticInstruction,
+                baseInstruction:baseInstruction)
             // A new generation always freezes the current draft with a new ID.
             // Recovering a previous ID is only the explicit resume action.
             if hasPendingJob, !cancel() { return }
@@ -228,11 +245,12 @@ import UIKit
         } catch { errorMessage = RevoiceError.message(error) }
     }
     private func restoreDraft(_ job:PendingRevoiceJob) {
+        usesAutomaticInstruction = job.context.usesAutomaticInstruction ?? false
         if case .custom(let speaker,let value) = job.context.choice {
-            kind = .custom; selectedSpeaker = speaker; instruction = value
+            kind = .custom; selectedSpeaker = speaker; instruction = job.context.baseInstruction ?? value
         } else if case .preset(let id,_,_) = job.context.choice {
             kind = .preset; selectedPreset = id
-            presetInstruction = job.context.instruction; instructionPresetID = id
+            presetInstruction = job.context.baseInstruction ?? job.context.instruction; instructionPresetID = id
         }
         text = job.context.text; recognizedText = job.context.recognizedText
         if let source = job.context.sourceAudioID { input = (try? AudioFileManager.listLocalAudio())?.first { $0.id == source } }

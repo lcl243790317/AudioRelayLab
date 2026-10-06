@@ -10,6 +10,7 @@ struct VoiceAIView: View {
     @State private var useAppliedRange = false
     @State private var share: ShareItem?
     @State private var backgroundID: UUID?
+    @State private var mixTiming = AudioMixTiming()
     @State private var mixing = false
     @State private var mixStatus = ""
     init(coordinator: ExperimentCoordinator, showConnection: @escaping () -> Void) {
@@ -110,7 +111,13 @@ struct VoiceAIView: View {
                             choices:[.init(id:nil,title:"请选择音乐")] + coordinator.library.filter { $0.id != result.id }.map { .init(id:Optional($0.id),title:$0.fileName) }).disabled(mixing || coordinator.controlsLocked)
                         volume("人声",value:$volumes.voice)
                         volume("音乐",value:$volumes.music)
-                        PaperCaption("使用完整 AI 人声；背景音乐从头以原速加入。音乐默认 4%。")
+                        PaperCaption("使用完整 AI 人声；音乐默认音量 4%。")
+                        if let music = coordinator.library.first(where:{$0.id == backgroundID}) {
+                            MusicMixTimingOptions(timing:$mixTiming,voiceDuration:result.duration,
+                                musicDuration:(music.id == coordinator.audio?.id ? coordinator.applied : AudioPlaybackSettings())
+                                    .estimatedDuration(duration:music.duration))
+                                .disabled(mixing || coordinator.controlsLocked)
+                        }
                         Button(mixing ? "正在保存混音…" : "保存混合音频") { mix(result) }
                             .disabled(mixing || coordinator.controlsLocked || backgroundID == nil)
                         if !mixStatus.isEmpty { PaperCaption(mixStatus) }
@@ -136,6 +143,14 @@ struct VoiceAIView: View {
     }
     private func mix(_ result:AudioAsset) {
         guard let music = coordinator.library.first(where:{$0.id == backgroundID}) else { return }
+        let timing = mixTiming
+        let selectedSettings = music.id == coordinator.audio?.id ? coordinator.applied : AudioPlaybackSettings()
+        let settings:AudioPlaybackSettings
+        do {
+            _ = try timing.outputDuration(voiceDuration:result.duration)
+            settings = try selectedSettings.validated(duration:music.duration)
+        }
+        catch { mixStatus = userFacingAudioError(error); return }
         do { try coordinator.beginMixing() }
         catch { mixStatus = userFacingAudioError(error); return }
         mixing = true; coordinator.preview.stop()
@@ -144,8 +159,7 @@ struct VoiceAIView: View {
             defer { mixing = false; coordinator.endMixing() }
             do {
                 let voiceURL = try AudioFileManager.url(for:result), musicURL = try AudioFileManager.url(for:music)
-                let settings = music.id == coordinator.audio?.id ? coordinator.applied : AudioPlaybackSettings()
-                _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:settings,volumes:volumes,voiceAsset:result,musicAsset:music) }.value
+                _ = try await Task.detached { try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:settings,volumes:volumes,timing:timing,voiceAsset:result,musicAsset:music) }.value
                 coordinator.refreshLibrary(); mixStatus = "已保存，可在录音库回听或应用。"
             } catch { mixStatus = userFacingAudioError(error) }
         }

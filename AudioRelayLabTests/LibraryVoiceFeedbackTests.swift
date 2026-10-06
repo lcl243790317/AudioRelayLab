@@ -128,4 +128,70 @@ final class LibraryVoiceFeedbackTests: XCTestCase {
         coordinator.preview.stop()
     }
 
+    @MainActor func testLibraryExitCancelsPreparingPreviewAndItsLateCompletion() async throws {
+        let original = UserDefaults.standard.data(forKey:"selectedAudio")
+        defer { UserDefaults.standard.set(original,forKey:"selectedAudio") }
+        let coordinator = ExperimentCoordinator()
+        let asset = try XCTUnwrap(coordinator.audio)
+        let owner = UUID()
+        defer { coordinator.preview.stop() }
+        coordinator.audition(asset,owner:owner)
+        XCTAssertEqual(coordinator.preview.state,.preparing)
+        coordinator.preview.stop(owner:owner)
+        XCTAssertEqual(coordinator.preview.state,.idle)
+        // Give the cancelled preparation task a chance to run after leaving.
+        await Task.yield()
+        await Task.yield()
+        XCTAssertEqual(coordinator.preview.state,.idle)
+        XCTAssertFalse(coordinator.preview.isActive)
+    }
+
+    @MainActor func testLibraryExitOnlyStopsItsOwnPreview() throws {
+        let original = UserDefaults.standard.data(forKey:"selectedAudio")
+        defer { UserDefaults.standard.set(original,forKey:"selectedAudio") }
+        let coordinator = ExperimentCoordinator()
+        let asset = try XCTUnwrap(coordinator.audio)
+        let firstLibrary = UUID(), nextLibrary = UUID()
+        defer { coordinator.preview.stop() }
+        coordinator.audition(asset,owner:firstLibrary)
+        coordinator.audition(asset,owner:nextLibrary)
+        coordinator.preview.stop(owner:firstLibrary)
+        XCTAssertEqual(coordinator.preview.state,.preparing)
+        coordinator.preview.stop(owner:nextLibrary)
+        XCTAssertEqual(coordinator.preview.state,.idle)
+
+        coordinator.audition(asset)
+        coordinator.preview.stop(owner:firstLibrary)
+        XCTAssertEqual(coordinator.preview.state,.preparing)
+    }
+
+    @MainActor func testLibraryExitStopsAlreadyPlayingPreview() async throws {
+        let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
+        let asset = try AudioFileManager.importFile(from:fixture)
+        defer { try? AudioFileManager.removeAudio(asset) }
+        let logger = DiagnosticsLogger(), session = AudioSessionManager(logger:logger)
+        let preview = PreviewPlaybackController(session:session,logger:logger)
+        let owner = UUID()
+        defer { preview.stop() }
+        preview.play(asset:asset,settings:.init(volume:0),fiveSeconds:false,owner:owner)
+        for _ in 0..<100 where preview.state == .preparing { try await Task.sleep(for:.milliseconds(10)) }
+        XCTAssertEqual(preview.state,.playing,preview.errorMessage ?? "")
+        preview.stop(owner:owner)
+        XCTAssertEqual(preview.state,.idle)
+        XCTAssertNil(preview.preparedDuration)
+        XCTAssertFalse(preview.isActive)
+    }
+
+    @MainActor func testLeavingLibraryKeepsPreparedDelayedExperiment() throws {
+        let original = UserDefaults.standard.data(forKey:"selectedAudio")
+        defer { UserDefaults.standard.set(original,forKey:"selectedAudio") }
+        let coordinator = ExperimentCoordinator()
+        defer { coordinator.stop(); coordinator.preview.stop() }
+        coordinator.prepare()
+        XCTAssertEqual(coordinator.state,.preparing)
+        coordinator.preview.stop(owner:UUID())
+        XCTAssertEqual(coordinator.state,.preparing)
+        XCTAssertTrue(coordinator.isRunning)
+    }
+
 }

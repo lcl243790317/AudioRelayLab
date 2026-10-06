@@ -166,6 +166,7 @@ struct RevoiceMetadata: Codable, Sendable {
     var voiceName:String? = nil
     var fixedReferenceID:String? = nil
     var jobID:String? = nil
+    var usesAutomaticInstruction:Bool? = nil
 }
 
 struct MixSourceMetadata: Codable {
@@ -174,6 +175,8 @@ struct MixSourceMetadata: Codable {
     let revoice:RevoiceMetadata?
     let settings:AudioPlaybackSettings
     let volumes:AudioMixParameters
+    var timing:AudioMixTiming? = nil
+    var effectiveTiming:AudioMixTiming { timing ?? .init() }
 }
 
 struct RevoiceAudio: Sendable {

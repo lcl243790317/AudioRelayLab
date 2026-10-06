@@ -39,10 +39,12 @@ struct VoiceRevoiceView: View {
                     preset:$ai.selectedPreset,speaker:$ai.selectedSpeaker,
                     instruction:ai.kind == .preset ? $ai.presetInstruction : $ai.instruction,
                     editablePreset:ai.canEditPresetInstruction,serviceSupportsPreset:ai.supportsPresetInstruction,
+                    automatic:ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction,
                     resetInstruction:ai.resetPresetInstruction,
                     focus:$focusedInput,disabled:draftLocked)
                 Divider()
                 RevoiceTextComposer(text:$ai.text,focus:$focusedInput,disabled:draftLocked)
+                RevoiceAutomaticInstructionControl(ai:ai,disabled:draftLocked)
                 RevoiceInputControls(voice:voice,inputName:ai.input?.libraryName,
                     disabled:coordinator.controlsLocked,libraryEmpty:coordinator.library.isEmpty,
                     record:record,chooseAudio:chooseAudio,recognize:recognize)
@@ -123,6 +125,7 @@ private struct RevoiceVoiceSettings:View {
     @Binding var instruction:String
     var editablePreset = false
     var serviceSupportsPreset = false
+    var automatic = false
     var resetInstruction:()->Void = {}
     let focus:FocusState<RevoiceInputField?>.Binding
     let disabled:Bool
@@ -140,7 +143,7 @@ private struct RevoiceVoiceSettings:View {
             }
             if kind == .custom || editablePreset {
                 HStack {
-                    Text("表达指令 · 可选").font(.subheadline)
+                    Text(automatic ? "基础角色风格 · 可选" : "表达指令 · 可选").font(.subheadline)
                     Spacer()
                     if kind == .preset {
                         Button("恢复默认",action:resetInstruction).font(.caption)
@@ -159,13 +162,49 @@ private struct RevoiceVoiceSettings:View {
                         }
                     }
                     .accessibilityLabel("表达指令").accessibilityIdentifier("revoice.instruction")
-                PaperCaption("\(instruction.unicodeScalars.count)/500 · 留空使用自然表达")
+                PaperCaption(automatic
+                    ? "\(instruction.unicodeScalars.count)/500 · 保留角色风格，本段表达按内容自动匹配"
+                    : "\(instruction.unicodeScalars.count)/500 · 留空使用自然表达")
             } else if voices.first(where:{$0.id == preset})?.variant == "base" {
                 PaperCaption("固定参考声线沿用已认可的表达，暂不支持修改指令。")
             } else if !voices.isEmpty && !serviceSupportsPreset {
                 PaperCaption("当前云端需升级后才能编辑预设指令。")
             }
         }.disabled(disabled)
+    }
+}
+
+private struct RevoiceAutomaticInstructionControl:View {
+    @ObservedObject var ai:RevoiceController
+    let disabled:Bool
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            Toggle("按内容自动匹配表达指令",isOn:Binding(
+                get:{ ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction },
+                set:{ ai.usesAutomaticInstruction = $0 }))
+                .disabled(disabled || !ai.canUseAutomaticInstruction)
+                .accessibilityIdentifier("revoice.instruction.automatic")
+            if !ai.canUseAutomaticInstruction {
+                PaperCaption(ai.selectedVoice?.variant == "base"
+                    ? "固定参考声线不支持自动表达指令。"
+                    : "连接支持预设表达指令的云端后，可开启自动匹配。")
+            } else if ai.usesAutomaticInstruction {
+                PaperCaption("在手机按文字中的情绪与标点线索匹配情绪、语速、口吻、腔调、气声、停顿和咬字。语音输入使用识别后的文字；可关闭并手动调整。")
+                if let preview = ai.automaticInstructionPreview {
+                    PaperCaption(RevoiceAutomaticInstruction.profile(text:ai.text).summary)
+                        .accessibilityIdentifier("revoice.instruction.summary")
+                    DisclosureGroup("查看本次自动指令") {
+                        Text(preview).font(.callout).textSelection(.enabled)
+                            .accessibilityIdentifier("revoice.instruction.preview")
+                    }
+                    if RevoiceAutomaticInstruction.baseWasShortened(text:ai.text,baseInstruction:ai.baseInstruction) {
+                        PaperCaption("基础描述较长，自动匹配时仅保留前 \(RevoiceAutomaticInstruction.baseInstructionBudget(text:ai.text)) 字符；原始草稿保留。")
+                    }
+                } else {
+                    PaperCaption("输入或识别文字后，会显示本次自动指令。")
+                }
+            }
+        }
     }
 }
 

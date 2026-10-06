@@ -6,12 +6,14 @@ struct VoiceMixRequest {
     let music:AudioAsset
     let settings:AudioPlaybackSettings
     let volumes:AudioMixParameters
+    let timing:AudioMixTiming
 }
 
 @MainActor final class VoiceMixController:ObservableObject {
     @Published var voiceID:UUID?
     @Published var musicID:UUID? { didSet { if oldValue != musicID { settings = .init() } } }
     @Published var settings = AudioPlaybackSettings()
+    @Published var timing = AudioMixTiming()
     @Published private(set) var result:AudioAsset?
     @Published private(set) var busy = false
     @Published private(set) var status = "选择人声和音乐，保存一份新的混音。"
@@ -33,8 +35,8 @@ struct VoiceMixRequest {
               let music = Self.music(in:library).first(where:{$0.id == musicID}),voice.id != music.id else {
             throw LabError.message("请选择仍在库中的人声和背景音乐")
         }
-        try RevoiceLimits.output(voice.duration); try volumes.validate()
-        return .init(voice:voice,music:music,settings:try settings.validated(duration:music.duration),volumes:volumes)
+        _ = try timing.outputDuration(voiceDuration:voice.duration); try volumes.validate()
+        return .init(voice:voice,music:music,settings:try settings.validated(duration:music.duration),volumes:volumes,timing:timing)
     }
     func generate(coordinator:ExperimentCoordinator) {
         guard !busy else { return }
@@ -48,7 +50,7 @@ struct VoiceMixRequest {
                     let voiceURL = try AudioFileManager.url(for:request.voice),musicURL = try AudioFileManager.url(for:request.music)
                     result = try await Task.detached {
                         try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:request.settings,
-                            volumes:request.volumes,voiceAsset:request.voice,musicAsset:request.music)
+                            volumes:request.volumes,timing:request.timing,voiceAsset:request.voice,musicAsset:request.music)
                     }.value
                     coordinator.refreshLibrary(); status = "混音已保存到录音库"
                 } catch { errorMessage = userFacingAudioError(error); status = "混音未保存，请检查所选音频" }

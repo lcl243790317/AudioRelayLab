@@ -52,6 +52,8 @@ struct RevoiceSaveContext: Codable, Sendable {
     let recognizedText:String?
     let text:String
     let sourceAudioID:UUID?
+    var usesAutomaticInstruction:Bool? = nil
+    var baseInstruction:String? = nil
 }
 
 struct PendingRevoiceJob: Codable, Sendable, Identifiable {
