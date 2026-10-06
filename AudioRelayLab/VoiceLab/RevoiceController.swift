@@ -231,7 +231,7 @@ import UIKit
                 if !draftWasEdited { self.text = recognized }
                 self.recognizedText = recognized
                 _ = try RevoiceLimits.text(recognized)
-                self.stage = .idle; self.task = nil; self.status = "识别完成，可以修改文字后重新生成"
+                self.stage = .idle; self.task = nil; self.status = "识别完成，请确认文字后生成配音"
             } catch {
                 guard self.generation == token else { return }
                 if !Task.isCancelled { self.errorMessage = RevoiceError.message(error); self.status = "识别未完成，原录音已保留" }

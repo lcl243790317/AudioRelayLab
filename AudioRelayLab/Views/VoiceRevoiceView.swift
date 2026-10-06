@@ -36,6 +36,7 @@ struct VoiceRevoiceView: View {
             PaperCard {
                 RevoiceTextComposer(text:$ai.text,focus:$focusedInput,disabled:draftLocked)
                 RevoiceInputControls(voice:voice,inputName:ai.input?.libraryName,
+                    canRecognizeAgain:!emptyDraft,
                     disabled:coordinator.controlsLocked,libraryEmpty:coordinator.library.isEmpty,
                     record:record,chooseAudio:chooseAudio,recognize:recognize)
             }
@@ -278,6 +279,7 @@ private struct RevoiceTextComposer:View {
 private struct RevoiceInputControls:View {
     @ObservedObject var voice:RawVoiceRecorder
     let inputName:String?
+    let canRecognizeAgain:Bool
     let disabled:Bool
     let libraryEmpty:Bool
     let record:()->Void
@@ -287,7 +289,7 @@ private struct RevoiceInputControls:View {
         VStack(alignment:.leading,spacing:8) {
             if let inputName {
                 Text("录音：\(inputName)").font(.caption).lineLimit(2)
-                Button("重新识别这段录音",action:recognize).disabled(disabled)
+                if canRecognizeAgain { Button("重新识别这段录音",action:recognize).disabled(disabled) }
             }
             if voice.isActive {
                 ProgressView(voice.status,value:Double(min(1,max(0,voice.inputLevel))))

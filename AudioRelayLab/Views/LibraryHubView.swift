@@ -41,7 +41,7 @@ struct LocalAudioLibraryView: View {
                     .listRowBackground(PaperTheme.background)
             }
             if let deletionSummary { Text(deletionSummary).font(.callout).accessibilityIdentifier("library.delete.summary") }
-            ForEach(deletionDetails,id:\.self) { Text($0).font(.callout) }
+            ForEach(Array(deletionDetails.enumerated()),id:\.offset) { _,detail in Text(detail).font(.callout) }
             Section {
                 if assets.isEmpty { Text("录制、生成或导入声音后，会保存在这里。") }
                 ForEach(assets) { asset in

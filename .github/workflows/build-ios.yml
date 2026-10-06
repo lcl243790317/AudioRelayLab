@@ -181,10 +181,22 @@ jobs:
             -resultBundlePath build/unit-tests.xcresult \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             test -only-testing:AudioRelayLabTests 2>&1 | tee build-xctest.log
+          cleanup_download_fixture
+          trap - EXIT
+      - name: 在 iPhone Simulator 运行完整界面回归并导出截图
+        run: |
+          set -euo pipefail
+          SIMULATOR_UDID="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          print(re.search(r'UDID: ([0-9A-F-]+)',Path('build-test-destination.log').read_text())[1])
+          PY
+          )"
+          SIMULATOR_ARCH="$(uname -m)"
           # Record actual selection scrolling while the same parent updates four times per second.
           xcrun simctl io "$SIMULATOR_UDID" recordVideo --codec=h264 build/ui-interaction.mp4 > build-ui-recording.log 2>&1 &
           RECORD_PID=$!
-          trap 'kill -INT "$RECORD_PID" 2>/dev/null || true; cleanup_download_fixture' EXIT
+          trap 'kill -INT "$RECORD_PID" 2>/dev/null || true' EXIT
           xcodebuild \
             -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
             -configuration Debug -sdk iphonesimulator \
@@ -195,8 +207,6 @@ jobs:
             test -only-testing:AudioRelayLabUITests 2>&1 | tee build-uitest.log
           kill -INT "$RECORD_PID" 2>/dev/null || true
           wait "$RECORD_PID" || true
-          xcrun xcresulttool export attachments --path build/ui-tests.xcresult --output-path build/ui-attachments
-          cleanup_download_fixture
           trap - EXIT
       - name: 在小屏 iPhone SE 验证已选音乐的主题与大字体布局
         run: |
@@ -223,8 +233,17 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             test -only-testing:AudioRelayLabUITests/InteractionUITests/testSelectedMusicTimingScreenshotsAcrossThemesAndLargeType \
             2>&1 | tee build-small-uitest.log
-          xcrun xcresulttool export attachments --path build/small-ui-tests.xcresult --output-path build/ui-small-attachments
           xcrun simctl shutdown "$SMALL_UDID"
+      - name: 导出真实 UI 测试截图（包含失败诊断）
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -d build/ui-tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/ui-tests.xcresult --output-path build/ui-attachments
+          fi
+          if [ -d build/small-ui-tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/small-ui-tests.xcresult --output-path build/ui-small-attachments
+          fi
       - name: 编译 iPhoneOS Release
         run: |
           set -euo pipefail

@@ -3,6 +3,19 @@ import XCTest
 @testable import AudioRelayLab
 
 final class VoiceMixTests:XCTestCase {
+    func testDelayedVoiceAt11025HzRetainsItsLastFrameAfterRateConversion() throws {
+        let rate = 11025.0,delay = 0.3,tail = 0.1
+        let voiceURL = try tone(seconds:1.1,sampleRate:rate),musicURL = try tone(seconds:2)
+        defer { try? FileManager.default.removeItem(at:voiceURL); try? FileManager.default.removeItem(at:musicURL) }
+        let voice = try AVAudioFile(forReading:voiceURL)
+        let expectedEnd = (Double(voice.length)+(delay*rate).rounded())/rate+tail
+        let mixed = try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,settings:.init(),
+            volumes:.init(voice:1,music:0,master:1),timing:.init(voiceStartDelay:delay,musicTailDuration:tail))
+        defer { try? AudioFileManager.removeAudio(mixed) }
+        XCTAssertGreaterThanOrEqual(mixed.duration,expectedEnd)
+        XCTAssertLessThanOrEqual(mixed.duration-expectedEnd,2/48000.0)
+        XCTAssertGreaterThan(try energy(mixed,from:1.3,to:1.39),0.01)
+    }
     func testMusicFirstBoundsUseActualTrimmedRateDurationAndMaximumIs300Seconds() throws {
         XCTAssertEqual(try AudioMixTiming(voiceStartDelay:60,musicTailDuration:60).outputDuration(voiceDuration:180,musicDuration:60),300)
         for value in [-1.0,60.1,Double.nan,Double.infinity] {

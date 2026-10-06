@@ -8,16 +8,24 @@ enum RecordedVoiceMixer {
         let originalMusic = try AVAudioFile(forReading:musicURL)
         let originalMusicDuration = Double(originalMusic.length)/originalMusic.processingFormat.sampleRate
         let validatedSettings = try settings.validated(duration:originalMusicDuration)
-        let outputSeconds = try timing.outputDuration(voiceDuration:seconds,
+        _ = try timing.outputDuration(voiceDuration:seconds,
             musicDuration:validatedSettings.estimatedDuration(duration:originalMusicDuration))
+        guard let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:1),
+            let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:4096) else { throw LabError.invalidFormat }
+        let voiceStart = AVAudioFramePosition((timing.voiceStartDelay*voiceFile.processingFormat.sampleRate).rounded())
+        let voiceFrames = Int64(ceil(Double(voiceFile.length)*format.sampleRate/voiceFile.processingFormat.sampleRate))
+        let tailFrames = Int64((timing.musicTailDuration*format.sampleRate).rounded())
+        // Player placement is quantized at the source rate. Round its converted
+        // start up so an unusual sample rate cannot cut the last voice frame.
+        let introFrames = Int64(ceil(Double(voiceStart)*format.sampleRate/voiceFile.processingFormat.sampleRate))
+        let frames = introFrames + voiceFrames + tailFrames
+        let outputSeconds = Double(frames)/format.sampleRate
         let musicSeconds = outputSeconds - timing.musicStartDelay
         let musicCopy = try RateAdjustedAudio.copy(of:musicURL,startOffset:settings.startOffset,
             rate:settings.playbackRate,duration:max(0.1,musicSeconds*Double(settings.playbackRate)),endOffset:settings.endOffset)
         defer { try? FileManager.default.removeItem(at:musicCopy) }
         let musicFile = try AVAudioFile(forReading:musicCopy)
         let engine = AVAudioEngine(), voice = AVAudioPlayerNode(), music = AVAudioPlayerNode()
-        guard let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:1),
-            let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:4096) else { throw LabError.invalidFormat }
         engine.attach(voice); engine.attach(music)
         engine.connect(voice,to:engine.mainMixerNode,format:voiceFile.processingFormat)
         engine.connect(music,to:engine.mainMixerNode,format:musicFile.processingFormat)
@@ -25,7 +33,6 @@ enum RecordedVoiceMixer {
         engine.mainMixerNode.outputVolume = volumes.master
         try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
         defer { voice.stop(); music.stop(); engine.stop(); engine.disableManualRenderingMode() }
-        let voiceStart = AVAudioFramePosition((timing.voiceStartDelay*voiceFile.processingFormat.sampleRate).rounded())
         voice.scheduleFile(voiceFile,at:AVAudioTime(sampleTime:voiceStart,atRate:voiceFile.processingFormat.sampleRate))
         // Offline rendering uses the player's sample timeline, not wall-clock delays.
         let musicStart = AVAudioFramePosition((timing.musicStartDelay*musicFile.processingFormat.sampleRate).rounded())
@@ -44,12 +51,6 @@ enum RecordedVoiceMixer {
             let writer = try AVAudioFile(forWriting:destination,settings:[AVFormatIDKey:kAudioFormatLinearPCM,
                 AVSampleRateKey:48000,AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,
                 AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
-            // Convert the complete voice first, then quantize the added tail.
-            // Ceil(voiceSeconds + tailSeconds) can add a spurious frame from floating-point addition.
-            let voiceFrames = Int64(ceil(Double(voiceFile.length)*format.sampleRate/voiceFile.processingFormat.sampleRate))
-            let tailFrames = Int64((timing.musicTailDuration*format.sampleRate).rounded())
-            let introFrames = Int64((timing.voiceStartDelay*format.sampleRate).rounded())
-            let frames = introFrames + voiceFrames + tailFrames
             var written:Int64 = 0, stalls = 0
             while written < frames {
                 try Task.checkCancellation()

@@ -53,7 +53,7 @@ struct PaperScreen<Content:View>: View {
         ScrollView {
             VStack(alignment:.leading,spacing:20) { content }
                 .padding(20).frame(maxWidth:680).frame(maxWidth:.infinity)
-        }.background(PaperTexture().ignoresSafeArea())
+        }.accessibilityIdentifier("screen.scroll").background(PaperTexture().ignoresSafeArea())
             .foregroundStyle(PaperTheme.ink).font(PaperTheme.body)
     }
 }

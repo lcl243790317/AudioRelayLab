@@ -112,7 +112,7 @@ final class InteractionUITests: XCTestCase {
         reveal(instruction,in:app); instruction.tap(); instruction.typeText(" relaxed"); app.buttons["keyboard.done"].tap()
         XCTAssertTrue((instruction.value as? String ?? "").contains("relaxed"))
         reveal(app.buttons["revoice.instruction.reset"],in:app); app.buttons["revoice.instruction.reset"].tap(); XCTAssertEqual(instruction.value as? String,original)
-        instruction.tap(); instruction.typeText(" temporary"); app.buttons["keyboard.done"].tap()
+        reveal(instruction,in:app); instruction.tap(); instruction.typeText(" temporary"); app.buttons["keyboard.done"].tap()
         reveal(app.buttons["select.声线"],in:app); app.buttons["select.声线"].tap(); app.buttons["choice.vivian-original"].tap()
         XCTAssertFalse((instruction.value as? String ?? "").contains("temporary"))
         app.buttons["select.声线"].tap(); app.buttons["choice.serena-original"].tap()
@@ -123,7 +123,7 @@ final class InteractionUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["interaction-test"]; app.launch()
         app.buttons["select.背景音乐"].tap()
         let row = app.buttons["choice.100"]
-        for _ in 0..<20 {
+        for _ in 0..<40 {
             if row.isHittable { break }
             app.swipeUp(velocity:400)
         }
@@ -201,7 +201,7 @@ final class InteractionUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["voice-custom-snapshot","voice-large-type","night-snapshot"]; app.launch()
         let speaker = app.buttons["select.Speaker"]
         XCTAssertTrue(speaker.waitForExistence(timeout:5)); reveal(speaker,in:app)
-        speaker.tap(); app.buttons["choice.Dylan"].tap()
+        speaker.tap(); XCTAssertTrue(app.buttons["choice.Dylan"].waitForExistence(timeout:5)); app.buttons["choice.Dylan"].tap()
         let instruction = app.textFields["revoice.instruction"]
         reveal(instruction,in:app); instruction.tap(); instruction.typeText("slow and natural")
         app.buttons["keyboard.done"].tap()
@@ -305,14 +305,37 @@ final class InteractionUITests: XCTestCase {
     }
 
     @MainActor private func reveal(_ element:XCUIElement,in app:XCUIApplication) {
-        for _ in 0..<14 {
-            if element.isHittable { return }
-            let above = element.exists && element.frame.midY < app.frame.minY + 120
-            let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? 0.28 : 0.80))
-            let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? 0.80 : 0.28))
+        for _ in 0..<18 {
+            let scroll = app.scrollViews["screen.scroll"].firstMatch
+            let viewport = scroll.exists ? scroll.frame : app.frame
+            var top = max(viewport.minY,app.navigationBars.firstMatch.frame.maxY)+4
+            let workshop = app.segmentedControls["workshop.mode"]
+            if workshop.exists { top = max(top,workshop.frame.maxY+12) }
+            let largeWorkshop = app.buttons["select.工坊功能"]
+            if largeWorkshop.exists { top = max(top,largeWorkshop.frame.maxY+12) }
+            var bottom = viewport.maxY-4
+            let tabs = app.tabBars.firstMatch
+            if tabs.exists { bottom = min(bottom,tabs.frame.minY-4) }
+            let generate = app.buttons["revoice.generate"]
+            if generate.exists { bottom = min(bottom,generate.frame.minY-4) }
+            if app.keyboards.firstMatch.exists {
+                bottom = min(bottom,app.keyboards.firstMatch.frame.minY-4)
+                let done = app.buttons["keyboard.done"]
+                if done.exists { bottom = min(bottom,done.frame.minY-4) }
+            }
+            if bottom-top < 80 { top = app.navigationBars.firstMatch.frame.maxY+4 }
+            let rect = element.frame
+            let fits = rect.height <= bottom-top
+            let visible = fits ? rect.minY >= top && rect.maxY <= bottom : rect.midY > top+8 && rect.midY < bottom-8
+            if element.isHittable && visible { return }
+            let above = element.exists && rect.midY < top+(bottom-top)/2
+            let upper = (top+24-app.frame.minY)/app.frame.height
+            let lower = (bottom-24-app.frame.minY)/app.frame.height
+            let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper : lower))
+            let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? lower : upper))
             start.press(forDuration:0.05,thenDragTo:end)
         }
-        XCTAssertTrue(element.isHittable)
+        XCTFail("控件未进入可点击区域：\(element.identifier)，frame=\(element.frame)")
     }
 
     @MainActor private func attach(_ app:XCUIApplication,_ name:String) {

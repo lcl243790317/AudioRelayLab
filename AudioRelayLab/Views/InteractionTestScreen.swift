@@ -23,8 +23,10 @@ struct InteractionTestScreen: View {
                 StablePicker(title:"背景音乐",selection:$selected,
                     choices:(0..<(expanded ? 600 : 500)).map { .init(id:$0,title:String(format:"音乐 %03d",$0)) })
                 Text("已选择 \(selected)").accessibilityIdentifier("interaction.selection")
-                TextField("连接地址",text:$connection).focused($editing,equals:.connection).frame(minHeight:44).accessibilityIdentifier("interaction.connection")
-                SecureField("密钥",text:$key).focused($editing,equals:.key).frame(minHeight:44).accessibilityIdentifier("interaction.key")
+                HStack {
+                    TextField("连接地址",text:$connection).focused($editing,equals:.connection).frame(minHeight:44).accessibilityIdentifier("interaction.connection")
+                    SecureField("密钥",text:$key).focused($editing,equals:.key).frame(minHeight:44).accessibilityIdentifier("interaction.key")
+                }
                 TextField("数值",value:$number,format:.number).keyboardType(.decimalPad).focused($editing,equals:.number).frame(minHeight:44).accessibilityIdentifier("interaction.number")
                 TextEditor(text:$notes).scrollDismissesKeyboard(.never).focused($editing,equals:.notes).frame(height:100).accessibilityIdentifier("interaction.notes")
                 Text("点这里收起键盘").frame(minHeight:44).accessibilityIdentifier("interaction.outside")
