@@ -141,6 +141,16 @@ private struct OutsideKeyboardDismiss:UIViewRepresentable {
         @objc private func dismissKeyboard() { clearFocus?(); KeyboardDismiss.perform() }
         func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldReceive touch:UITouch) -> Bool {
             guard let window else { return false }
+            var touched = touch.view
+            var hitsChrome = false
+            while let view = touched {
+                if view is UITextField || view is UITextView { return false }
+                if view is UINavigationBar || view is UITabBar || view is UIControl { hitsChrome = true }
+                touched = view.superview
+            }
+            // Chrome/controls can cover an editor's offscreen accessibility frame.
+            // Prefer the actual hit view, while preserving taps within an editor.
+            if hitsChrome { return true }
             // SwiftUI's touch view can be a hosting view rather than the native editor.
             // Exclude editor frames as well as their descendants to preserve focus/selection.
             func hitsEditor(_ view:UIView) -> Bool {

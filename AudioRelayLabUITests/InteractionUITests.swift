@@ -22,7 +22,7 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue((previewText.value as? String ?? "").contains("warm and slow"))
         let edited = previewText.value as? String
         let content = app.textViews["revoice.text"]
-        reveal(content,in:app); content.tap(); content.typeText(" Updated words."); app.buttons["keyboard.done"].tap()
+        reveal(content,in:app,towardTop:true); content.tap(); content.typeText(" Updated words."); app.buttons["keyboard.done"].tap()
         reveal(previewText,in:app); XCTAssertEqual(previewText.value as? String,edited)
         reveal(app.staticTexts["revoice.instruction.stale"],in:app)
         XCTAssertFalse(app.buttons["revoice.generate"].isEnabled)
@@ -169,7 +169,7 @@ final class InteractionUITests: XCTestCase {
         let instruction = app.textFields["revoice.instruction"]
         reveal(instruction,in:app); instruction.tap(); instruction.typeText("relaxed and clear")
         app.buttons["keyboard.done"].tap()
-        reveal(editor,in:app); editor.tap(); editor.typeText(" Latest words.")
+        reveal(editor,in:app,towardTop:true); editor.tap(); editor.typeText(" Latest words.")
         app.buttons["keyboard.done"].tap()
         XCTAssertTrue((editor.value as? String ?? "").contains("Latest words."))
         XCTAssertEqual(instruction.value as? String,"relaxed and clear")
@@ -206,10 +206,10 @@ final class InteractionUITests: XCTestCase {
         reveal(instruction,in:app); instruction.tap(); instruction.typeText("slow and natural")
         app.buttons["keyboard.done"].tap()
         let editor = app.textViews["revoice.text"]
-        reveal(editor,in:app); editor.tap(); editor.typeText(" Large text draft.")
+        reveal(editor,in:app,towardTop:true); editor.tap(); editor.typeText(" Large text draft.")
         app.buttons["keyboard.done"].tap()
         let generate = app.buttons["revoice.generate"]
-        reveal(generate,in:app); XCTAssertFalse(generate.isEnabled)
+        XCTAssertTrue(generate.exists); XCTAssertTrue(app.frame.contains(generate.frame)); XCTAssertFalse(generate.isEnabled)
         XCTAssertEqual(instruction.value as? String,"slow and natural")
         XCTAssertTrue((editor.value as? String ?? "").contains("Large text draft."))
         attach(app,"大字体深色配音编辑")
@@ -278,7 +278,7 @@ final class InteractionUITests: XCTestCase {
         start.press(forDuration:0.05,thenDragTo:end)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         XCTAssertEqual(notes.value as? String,"note\nsecond")
-        reveal(editor,in:app); editor.tap()
+        reveal(editor,in:app,towardTop:true); editor.tap()
         app.buttons["离开输入页"].tap()
         XCTAssertTrue(app.staticTexts["输入页已离开"].exists); XCTAssertFalse(app.keyboards.firstMatch.exists)
     }
@@ -304,12 +304,11 @@ final class InteractionUITests: XCTestCase {
         }
     }
 
-    @MainActor private func reveal(_ element:XCUIElement,in app:XCUIApplication) {
-        // The manual generate action lives outside the scroll view's viewport.
-        if element.identifier == "revoice.generate", element.isHittable { return }
-        for _ in 0..<18 {
+    @MainActor private func reveal(_ element:XCUIElement,in app:XCUIApplication,towardTop:Bool = false) {
+        var lastFrame = CGRect.null
+        for attempt in 0..<12 {
             let scroll = app.scrollViews["screen.scroll"].firstMatch
-            let viewport = scroll.exists ? scroll.frame : app.frame
+            let viewport = scroll.exists && scroll.isHittable ? scroll.frame : app.frame
             var top = max(viewport.minY,app.navigationBars.firstMatch.frame.maxY)+4
             let workshop = app.segmentedControls["workshop.mode"]
             if workshop.exists { top = max(top,workshop.frame.maxY+12) }
@@ -317,27 +316,36 @@ final class InteractionUITests: XCTestCase {
             if largeWorkshop.exists { top = max(top,largeWorkshop.frame.maxY+12) }
             var bottom = viewport.maxY-4
             let tabs = app.tabBars.firstMatch
-            if tabs.exists { bottom = min(bottom,tabs.frame.minY-4) }
+            // Floating tab chrome extends above its accessibility frame.
+            if tabs.exists { bottom = min(bottom,tabs.frame.minY-32) }
             let generate = app.buttons["revoice.generate"]
-            if generate.exists { bottom = min(bottom,generate.frame.minY-4) }
+            if (workshop.exists || largeWorkshop.exists) && generate.exists { bottom = min(bottom,generate.frame.minY-20) }
+            let delete = app.buttons["library.delete.selected"]
+            if delete.exists { bottom = min(bottom,delete.frame.minY-20) }
             if app.keyboards.firstMatch.exists {
                 bottom = min(bottom,app.keyboards.firstMatch.frame.minY-4)
                 let done = app.buttons["keyboard.done"]
                 if done.exists { bottom = min(bottom,done.frame.minY-4) }
             }
             if bottom-top < 80 { top = app.navigationBars.firstMatch.frame.maxY+4 }
-            let rect = element.frame
-            let fits = rect.height <= bottom-top
-            let visible = fits ? rect.minY >= top && rect.maxY <= bottom : rect.midY > top+8 && rect.midY < bottom-8
-            if element.isHittable && visible { return }
-            let above = element.exists && rect.midY < top+(bottom-top)/2
+            let exists = element.exists
+            let rect = exists ? element.frame : CGRect.null
+            lastFrame = rect
+            let finite = rect.midY.isFinite && rect.height > 0
+            let visible = finite && rect.midY > top+12 && rect.midY < bottom-12
+            // Protected/disabled controls are inspected without tapping them.
+            if exists && visible && (element.isHittable || !element.isEnabled) { return }
+            let center = (top+bottom)/2
+            let above = finite ? rect.midY < center : (attempt < 6 ? towardTop : !towardTop)
             let upper = (top+24-app.frame.minY)/app.frame.height
             let lower = (bottom-24-app.frame.minY)/app.frame.height
+            let travel = max(0.03,lower-upper)
+            let distance = finite ? min(travel*0.75,max(40/app.frame.height,abs(rect.midY-center)/app.frame.height)) : travel*0.75
             let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper : lower))
-            let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? lower : upper))
+            let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper+distance : lower-distance))
             start.press(forDuration:0.05,thenDragTo:end)
         }
-        XCTFail("控件未进入可点击区域：\(element.identifier)，frame=\(element.frame)")
+        XCTFail("控件未进入可点击区域，最后坐标=\(lastFrame)")
     }
 
     @MainActor private func attach(_ app:XCUIApplication,_ name:String) {
