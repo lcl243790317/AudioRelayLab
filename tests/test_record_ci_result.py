@@ -21,16 +21,19 @@ class CIEvidenceTests(unittest.TestCase):
             module.require_success("** BUILD SUCCEEDED **\n** BUILD FAILED **\n", "BUILD", "Device")
 
     def test_rejects_tests_without_test_success(self):
-        with self.assertRaises(ValueError):
-            module.parse_xctest("Executed 65 tests, with 0 failures")
+        for marker in ["", "** TEST EXECUTE FAILED **", "** TEST EXECUTE FAILED **\n** TEST SUCCEEDED **"]:
+            with self.subTest(marker=marker), self.assertRaises(ValueError):
+                module.parse_xctest("Executed 65 tests, with 0 failures\n"+marker)
 
     def test_rejects_nonzero_test_failures(self):
         with self.assertRaisesRegex(ValueError, "非零失败"):
             module.parse_xctest("Executed 65 tests, with 1 failure\n** TEST SUCCEEDED **\n")
 
     def test_reads_final_aggregate_test_count(self):
-        text = "Executed 12 tests, with 0 failures\nExecuted 65 tests, with 0 failures\n** TEST SUCCEEDED **\n"
-        self.assertEqual(module.parse_xctest(text, 65), 65)
+        for marker in ["** TEST SUCCEEDED **", "** TEST EXECUTE SUCCEEDED **"]:
+            with self.subTest(marker=marker):
+                text = "Executed 12 tests, with 0 failures\nExecuted 65 tests, with 0 failures\n"+marker+"\n"
+                self.assertEqual(module.parse_xctest(text, 65), 65)
 
     def test_rejects_incomplete_test_execution(self):
         with self.assertRaisesRegex(ValueError, "不一致"):

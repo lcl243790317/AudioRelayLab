@@ -16,7 +16,9 @@ from verify_ipa import verify
 
 def require_success(text, kind, label):
     clean = re.sub(r"\x1b\[[0-9;]*m", "", text)
-    markers = re.findall(rf"^\s*\*\*\s+{re.escape(kind)}\s+(SUCCEEDED|FAILED)\s+\*\*\s*$", clean, re.M)
+    # xcodebuild test-without-building reports TEST EXECUTE rather than TEST.
+    kind_pattern = r"TEST(?:\s+EXECUTE)?" if kind == "TEST" else re.escape(kind)
+    markers = re.findall(rf"^\s*\*\*\s+{kind_pattern}\s+(SUCCEEDED|FAILED)\s+\*\*\s*$", clean, re.M)
     if not markers or markers[-1] != "SUCCEEDED" or "FAILED" in markers:
         raise ValueError(f"{label} 缺少唯一成功结果或存在失败标记")
 
