@@ -177,18 +177,23 @@ private struct RevoiceVoiceSettings:View {
 private struct RevoiceAutomaticInstructionControl:View {
     @ObservedObject var ai:RevoiceController
     let disabled:Bool
+    private var automatic:Bool { ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction }
     var body:some View {
         VStack(alignment:.leading,spacing:8) {
-            HStack(spacing:12) {
-                Text("按内容自动匹配表达指令").accessibilityHidden(true)
-                Spacer(minLength:0)
-                Toggle("按内容自动匹配表达指令",isOn:ai.canUseAutomaticInstruction
-                    ? $ai.usesAutomaticInstruction : .constant(false))
-                    .labelsHidden().toggleStyle(.switch).buttonStyle(.plain).fixedSize()
-                    .disabled(disabled || !ai.canUseAutomaticInstruction)
-                    .accessibilityLabel("按内容自动匹配表达指令")
-                    .accessibilityIdentifier("revoice.instruction.automatic")
+            Button { ai.usesAutomaticInstruction.toggle() } label: {
+                HStack(spacing:12) {
+                    Text("按内容自动匹配表达指令").fixedSize(horizontal:false,vertical:true)
+                    Spacer(minLength:0)
+                    Image(systemName:automatic ? "checkmark.circle.fill" : "circle")
+                    Text(automatic ? "已开启" : "已关闭").fixedSize()
+                }.frame(maxWidth:.infinity)
             }
+                .buttonStyle(PaperButtonStyle(primary:automatic))
+                .disabled(disabled || !ai.canUseAutomaticInstruction)
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel("按内容自动匹配表达指令")
+                .accessibilityValue(automatic ? "已开启" : "已关闭")
+                .accessibilityIdentifier("revoice.instruction.automatic")
             if !ai.canUseAutomaticInstruction {
                 PaperCaption(ai.selectedVoice?.variant == "base"
                     ? "固定参考声线不支持自动表达指令。"

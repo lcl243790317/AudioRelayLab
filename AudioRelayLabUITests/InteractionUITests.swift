@@ -10,10 +10,10 @@ final class InteractionUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
         let instruction = app.textFields["revoice.instruction"]
         XCTAssertTrue(instruction.waitForExistence(timeout:5)); let original = instruction.value as? String
-        let automatic = app.switches["revoice.instruction.automatic"]
+        let automatic = app.buttons["revoice.instruction.automatic"]
         reveal(automatic,in:app); XCTAssertTrue(automatic.isEnabled)
-        XCTAssertEqual(automatic.value as? String,"0")
-        setSwitch(automatic,to:true,in:app)
+        XCTAssertEqual(automatic.value as? String,"已关闭")
+        setAutomaticInstruction(automatic,to:true,in:app)
         let summary = app.staticTexts["revoice.instruction.summary"]
         reveal(summary,in:app); XCTAssertTrue(summary.waitForExistence(timeout:3))
         let preview = app.buttons["查看本次自动指令"]
@@ -21,7 +21,7 @@ final class InteractionUITests: XCTestCase {
         let previewText = app.staticTexts["revoice.instruction.preview"]
         reveal(previewText,in:app); XCTAssertTrue(previewText.waitForExistence(timeout:3))
         attach(app,"自动表达指令已开启与展开")
-        setSwitch(automatic,to:false,in:app)
+        setAutomaticInstruction(automatic,to:false,in:app)
         XCTAssertFalse(app.staticTexts["revoice.instruction.summary"].exists)
         for _ in 0..<6 {
             if app.buttons["select.声线"].isHittable { break }
@@ -193,14 +193,12 @@ final class InteractionUITests: XCTestCase {
         attach(app,"大字体深色配音编辑")
     }
 
-    @MainActor private func setSwitch(_ element:XCUIElement,to value:Bool,in app:XCUIApplication) {
+    @MainActor private func setAutomaticInstruction(_ element:XCUIElement,to value:Bool,in app:XCUIApplication) {
         reveal(element,in:app)
-        print("Automatic switch before tap: \(element.debugDescription)")
         element.tap()
         let changed = XCTNSPredicateExpectation(
-            predicate:NSPredicate(format:"value == %@",value ? "1" : "0"),object:element)
+            predicate:NSPredicate(format:"value == %@",value ? "已开启" : "已关闭"),object:element)
         let result = XCTWaiter.wait(for:[changed],timeout:3)
-        print("Automatic switch after tap: \(element.debugDescription)")
         XCTAssertEqual(result,.completed)
     }
 

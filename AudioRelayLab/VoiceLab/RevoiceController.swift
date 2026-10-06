@@ -10,15 +10,7 @@ import UIKit
     @Published var selectedSpeaker = "Serena"
     @Published var instruction = ""
     @Published var presetInstruction = ""
-    @Published var usesAutomaticInstruction = false {
-        didSet {
-            #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("voice-snapshot") {
-                print("Automatic instruction mode changed: \(usesAutomaticInstruction); available: \(canUseAutomaticInstruction)")
-            }
-            #endif
-        }
-    }
+    @Published var usesAutomaticInstruction = false
     @Published private(set) var supportsPresetInstruction = false
     private var instructionPresetID:String?
     var selectedVoice:RevoiceVoice? { voices.first { $0.id == selectedPreset } }
