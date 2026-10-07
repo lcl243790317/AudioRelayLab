@@ -259,8 +259,8 @@ final class InteractionUITests: XCTestCase {
             reveal(changed,in:app,towardTop:true); changed.tap()
             delete.tap(); assertDeletion(names,in:app)
             app.buttons["library.delete.confirm"].tap()
-            let summary = app.staticTexts["library.delete.summary"]
-            XCTAssertTrue(summary.waitForExistence(timeout:5)); XCTAssertFalse(summary.label.contains("未删除"))
+            let summary = deletionSummary(in:app)
+            XCTAssertFalse(summary.label.contains("未删除"))
             XCTAssertTrue(summary.label.contains("已删除 5 项"))
             XCTAssertFalse(app.buttons["library.delete.selected"].exists)
             if scope == "本地音频" { XCTAssertTrue(app.buttons["回听"].exists) }
@@ -314,8 +314,8 @@ final class InteractionUITests: XCTestCase {
         reveal(name,in:app); name.swipeLeft(); app.buttons["library.delete.single."+id].tap()
         assertDeletion([id:label],in:app); attach(app,"single-delete-after-cancel")
         app.buttons["library.delete.confirm"].tap()
-        let summary = app.staticTexts["library.delete.summary"]
-        XCTAssertTrue(summary.waitForExistence(timeout:5)); XCTAssertTrue(summary.label.contains("已删除 1 项"))
+        let summary = deletionSummary(in:app)
+        XCTAssertTrue(summary.label.contains("已删除 1 项"))
     }
 
     @MainActor func testCloudConnectionBothEntriesFollowThemeAndLargeType() {
@@ -407,6 +407,16 @@ final class InteractionUITests: XCTestCase {
             }
         }
         attach(app,"playback-preview-stopped-after-exit")
+    }
+
+    @MainActor private func deletionSummary(in app:XCUIApplication) -> XCUIElement {
+        let dismissed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.buttons["library.delete.confirm"])
+        XCTAssertEqual(XCTWaiter.wait(for:[dismissed],timeout:5),.completed)
+        let summary = app.staticTexts["library.delete.summary"]
+        // List virtualizes offscreen rows; deleting a middle row preserves the scroll position.
+        reveal(summary,in:app,towardTop:true)
+        XCTAssertTrue(summary.exists)
+        return summary
     }
 
     @MainActor private func assertDeletion(_ names:[String:String],in app:XCUIApplication) {
