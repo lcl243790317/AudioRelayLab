@@ -20,4 +20,4 @@
 
 新增回归覆盖首次逐项选择五个文件、取消重开、改变选择、单删、详情收起与恢复、两个连接入口的浅深色和大字体、4%／20% 正式音量保留、实际任务参数，以及准备中和播放中的试听退出。
 
-本版完整 CI 尚待执行；实际通过数量、截图、源码提交、IPA 版本及 SHA256 将在完成后记录。1.6.5 的结果属于历史证据。本轮不调整云端模型或部署，不合并 main。交付 1.6.6 / build 16 无签名 IPA，安装需自行重签名，听感及通话环境继续由真机验收。
+Python 94 项、Simulator XCTest 249 项、UI XCTest 18 项及 iPhone SE 小屏截图测试 1 项全部通过；Simulator Debug / iPhoneOS Release 构建成功。 [实际构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763)；见 `REVOICE-1.6.6-TEST-REPORT-ZH.md`。本轮不调整云端模型或部署，不合并 main。交付 1.6.6 / build 16 无签名 IPA，安装需自行重签名，听感及通话环境继续由真机验收。
