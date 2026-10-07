@@ -304,13 +304,16 @@ final class InteractionUITests: XCTestCase {
         reveal(name,in:app); let label = name.label
         for _ in 0..<2 {
             reveal(name,in:app); name.swipeLeft()
-            let remove = app.buttons["删除"].firstMatch
+            let remove = app.buttons["library.delete.single."+id]
             XCTAssertTrue(remove.waitForExistence(timeout:3)); remove.tap()
             assertDeletion([id:label],in:app)
             app.buttons["取消"].tap()
+            XCTAssertTrue(name.waitForExistence(timeout:3))
+            XCTAssertEqual(name.label,label)
         }
-        reveal(name,in:app); name.swipeLeft(); app.buttons["删除"].firstMatch.tap()
-        assertDeletion([id:label],in:app); app.buttons["library.delete.confirm"].tap()
+        reveal(name,in:app); name.swipeLeft(); app.buttons["library.delete.single."+id].tap()
+        assertDeletion([id:label],in:app); attach(app,"single-delete-after-cancel")
+        app.buttons["library.delete.confirm"].tap()
         let summary = app.staticTexts["library.delete.summary"]
         XCTAssertTrue(summary.waitForExistence(timeout:5)); XCTAssertTrue(summary.label.contains("已删除 1 项"))
     }

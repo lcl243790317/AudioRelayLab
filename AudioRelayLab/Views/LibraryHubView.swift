@@ -96,8 +96,11 @@ struct LocalAudioLibraryView: View {
                     }.padding(.vertical,8)
                         .swipeActions(edge:.trailing,allowsFullSwipe:false) {
                             if asset.source != .bundled && !locked && !selecting {
-                                Button("删除",systemImage:"trash",role:.destructive) { requestDeletion([asset]) }
-                                    .buttonStyle(.automatic)
+                                // This action opens confirmation; the row remains until deletion is confirmed.
+                                // A destructive swipe role removes it optimistically before the sheet is shown.
+                                Button("删除",systemImage:"trash") { requestDeletion([asset]) }
+                                    .buttonStyle(.automatic).tint(.red)
+                                    .accessibilityIdentifier("library.delete.single.\(asset.id.uuidString)")
                             }
                         }
                         .listRowBackground(PaperTheme.paper)

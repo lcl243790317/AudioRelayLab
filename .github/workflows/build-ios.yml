@@ -9,7 +9,7 @@ on:
       diagnosticScope:
         description: '单项诊断范围'
         type: choice
-        options: [automatic, small]
+        options: [automatic, small, single-delete]
         default: automatic
   push:
     branches: [main, develop]
@@ -391,6 +391,9 @@ jobs:
           PY
           then :; else xcrun simctl boot "$SIMULATOR_UDID"; fi
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          if [ "$DIAGNOSTIC_SCOPE" = single-delete ]; then
+            UI_CASE=AudioRelayLabUITests/InteractionUITests/testSingleDeletionShowsSameFileAfterCancelAndReopen
+          fi
           xcrun simctl io "$SIMULATOR_UDID" recordVideo --codec=h264 build/ui-automatic.mp4 > build/recording.log 2>&1 &
           RECORD_PID=$!
           trap 'kill -INT "$RECORD_PID" 2>/dev/null || true; wait "$RECORD_PID" || true' EXIT
