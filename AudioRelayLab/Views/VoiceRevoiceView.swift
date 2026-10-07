@@ -421,6 +421,7 @@ struct CloudConnectionView:View {
                     PaperCaption("导入电脑上的 modal-client.json，或复制其中的完整 JSON。配置包含你的私有密钥，请只保存在自己的设备上。")
                     Button("从文件导入") { editingConfiguration = false; KeyboardDismiss.perform(); importFile = true }.disabled(ai.busy)
                     SecureField("粘贴完整连接 JSON",text:$configuration).focused($editingConfiguration)
+                        .accessibilityIdentifier("cloud.connection.configuration")
                         .textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder).disabled(ai.busy)
                         .submitLabel(.done).onSubmit { editingConfiguration = false; KeyboardDismiss.perform() }
                     Button("保存并连接") {
@@ -432,8 +433,9 @@ struct CloudConnectionView:View {
                     if let error = ai.errorMessage ?? fileError { Text(error).font(.callout).foregroundStyle(.orange) }
                     PaperCaption("连接配置保存在本机钥匙串。重新签名、重装或更换密钥后，可以再次导入。")
                 }
-            }.keyboardDone { editingConfiguration = false }.navigationTitle("云端连接").navigationBarTitleDisplayMode(.inline)
-                .toolbar { Button("完成") { configuration = ""; dismiss() } }
+            }.accessibilityIdentifier("cloud.connection.screen")
+                .keyboardDone { editingConfiguration = false }.navigationTitle("云端连接").navigationBarTitleDisplayMode(.inline)
+                .toolbar { Button("完成") { configuration = ""; dismiss() }.accessibilityIdentifier("cloud.connection.done") }
         }
         .sheet(isPresented:$importFile) {
             JSONDocumentPicker(onSelection: { url in
@@ -442,6 +444,7 @@ struct CloudConnectionView:View {
                 catch { fileError = "无法读取有效的连接 JSON（最大 8 KiB），请下载到手机后重新导入" }
             }, onCancel: { importFile = false })
         }
+        .appSheetAppearance()
         .onDisappear { configuration = "" }
     }
 }

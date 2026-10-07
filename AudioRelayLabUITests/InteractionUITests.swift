@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class InteractionUITests: XCTestCase {
     override func setUp() {
@@ -234,23 +235,199 @@ final class InteractionUITests: XCTestCase {
                 let builtin = app.buttons["library.select.00000000-0000-4000-8000-000000000001"]
                 reveal(builtin,in:app); XCTAssertFalse(builtin.isEnabled)
             }
-            app.buttons["library.selectAll"].tap()
+            let suffixes = scope == "本地音频" ? [19,18,17,15,14] : [19,18,17,14,13]
+            var names:[String:String] = [:]
+            for suffix in suffixes {
+                let id = String(format:"16300000-0000-4000-8000-%012d",suffix)
+                let select = app.buttons["library.select."+id]
+                reveal(select,in:app,towardTop:true)
+                names[id] = app.staticTexts["library.name."+id].label
+                select.tap(); XCTAssertEqual(select.value as? String,"已选择")
+            }
             let delete = app.buttons["library.delete.selected"]
             XCTAssertTrue(delete.isEnabled); delete.tap()
-            XCTAssertTrue(app.buttons["library.delete.confirm"].waitForExistence(timeout:3))
-            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","批删测试原声")).firstMatch.exists)
+            assertDeletion(names,in:app)
+            attach(app,"first-five-delete-"+(scope == "本地音频" ? "local" : "recordings"))
             app.buttons["取消"].tap()
-            XCTAssertTrue(delete.isEnabled)
-            app.buttons["library.selectAll"].tap(); XCTAssertFalse(delete.isEnabled)
-            app.buttons["library.selectAll"].tap(); delete.tap()
+            XCTAssertTrue(delete.isEnabled); XCTAssertTrue(delete.label.contains("5"))
+            delete.tap(); assertDeletion(names,in:app); app.buttons["取消"].tap()
+            let changedID = "16300000-0000-4000-8000-000000000019"
+            let changed = app.buttons["library.select."+changedID]
+            reveal(changed,in:app,towardTop:true); changed.tap()
+            var fewer = names; fewer.removeValue(forKey:changedID)
+            delete.tap(); assertDeletion(fewer,in:app); app.buttons["取消"].tap()
+            reveal(changed,in:app,towardTop:true); changed.tap()
+            delete.tap(); assertDeletion(names,in:app)
             app.buttons["library.delete.confirm"].tap()
             let summary = app.staticTexts["library.delete.summary"]
             XCTAssertTrue(summary.waitForExistence(timeout:5)); XCTAssertFalse(summary.label.contains("未删除"))
+            XCTAssertTrue(summary.label.contains("已删除 5 项"))
             XCTAssertFalse(app.buttons["library.delete.selected"].exists)
             if scope == "本地音频" { XCTAssertTrue(app.buttons["回听"].exists) }
             else { XCTAssertFalse(app.buttons["回听"].exists) }
             attach(app,"批量删除_"+scope); app.terminate()
         }
+    }
+
+    @MainActor func testSelectionModeClosesDetailsAndRestoresCollapsedEntries() {
+        let app = XCUIApplication(); app.launchArguments = ["library-interaction-test","day-snapshot"]; app.launch()
+        app.tabBars.buttons["音频库"].tap()
+        let revoiceID = "16300000-0000-4000-8000-000000000017"
+        let mixID = "16300000-0000-4000-8000-000000000019"
+        let revoice = app.buttons["library.revoice.details."+revoiceID]
+        let mix = app.buttons["library.mix.details."+mixID]
+        reveal(revoice,in:app); revoice.tap()
+        XCTAssertTrue(app.staticTexts["批删测试配音正文 17"].exists)
+        reveal(mix,in:app,towardTop:true); mix.tap()
+        let origin = app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","人声：16300000")).firstMatch
+        XCTAssertTrue(origin.exists)
+        app.buttons["library.selection"].tap()
+        XCTAssertFalse(revoice.exists); XCTAssertFalse(mix.exists)
+        XCTAssertFalse(app.staticTexts["批删测试配音正文 17"].exists); XCTAssertFalse(origin.exists)
+        XCTAssertFalse(app.buttons["回听"].exists); XCTAssertFalse(app.buttons["使用"].exists); XCTAssertFalse(app.buttons["分享"].exists)
+        let select = app.buttons["library.select."+mixID]
+        reveal(select,in:app,towardTop:true); select.tap(); XCTAssertEqual(select.value as? String,"已选择")
+        app.buttons["library.selection"].tap()
+        reveal(revoice,in:app)
+        XCTAssertFalse(app.staticTexts["批删测试配音正文 17"].exists)
+        revoice.tap(); XCTAssertTrue(app.staticTexts["批删测试配音正文 17"].exists)
+        reveal(mix,in:app,towardTop:true); XCTAssertFalse(origin.exists)
+        mix.tap(); XCTAssertTrue(origin.exists)
+        attach(app,"selection-details-restored")
+    }
+
+    @MainActor func testSingleDeletionShowsSameFileAfterCancelAndReopen() {
+        let app = XCUIApplication(); app.launchArguments = ["library-interaction-test","day-snapshot"]; app.launch()
+        app.tabBars.buttons["音频库"].tap()
+        let id = "16300000-0000-4000-8000-000000000015"
+        let name = app.staticTexts["library.name."+id]
+        reveal(name,in:app); let label = name.label
+        for _ in 0..<2 {
+            reveal(name,in:app); name.swipeLeft()
+            let remove = app.buttons["删除"].firstMatch
+            XCTAssertTrue(remove.waitForExistence(timeout:3)); remove.tap()
+            assertDeletion([id:label],in:app)
+            app.buttons["取消"].tap()
+        }
+        reveal(name,in:app); name.swipeLeft(); app.buttons["删除"].firstMatch.tap()
+        assertDeletion([id:label],in:app); app.buttons["library.delete.confirm"].tap()
+        let summary = app.staticTexts["library.delete.summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout:5)); XCTAssertTrue(summary.label.contains("已删除 1 项"))
+    }
+
+    @MainActor func testCloudConnectionBothEntriesFollowThemeAndLargeType() {
+        let app = XCUIApplication()
+        for night in [false,true] {
+            for large in [false,true] {
+                app.launchArguments = ["voice-snapshot",night ? "night-snapshot" : "day-snapshot"]
+                if large { app.launchArguments.append("voice-large-type") }
+                app.launch()
+                for entry in ["tools","workshop"] {
+                    if entry == "tools" {
+                        app.buttons["workshop.tools"].tap(); app.buttons["云端连接设置"].tap()
+                    } else {
+                        let open = app.buttons["revoice.connection"]
+                        reveal(open,in:app); open.tap()
+                    }
+                    let field = app.secureTextFields["cloud.connection.configuration"]
+                    XCTAssertTrue(field.waitForExistence(timeout:5)); reveal(field,in:app)
+                    assertCloudBackground(night:night,in:app)
+                    attach(app,"cloud-"+entry+(night ? "-dark" : "-light")+(large ? "-large" : "-normal"))
+                    app.buttons["cloud.connection.done"].tap()
+                }
+                app.terminate()
+            }
+        }
+        app.launchArguments = ["voice-snapshot"]; app.launch()
+        app.buttons["workshop.tools"].tap(); app.buttons["云端连接设置"].tap()
+        XCTAssertTrue(app.secureTextFields["cloud.connection.configuration"].waitForExistence(timeout:5))
+        assertCloudBackground(night:true,in:app); app.buttons["cloud.connection.done"].tap()
+        app.buttons["切换到日间主题"].tap()
+        app.buttons["workshop.tools"].tap(); app.buttons["云端连接设置"].tap()
+        XCTAssertTrue(app.secureTextFields["cloud.connection.configuration"].waitForExistence(timeout:5))
+        assertCloudBackground(night:false,in:app)
+    }
+
+    @MainActor func testApplyKeepsAppVolumeSeparateFromPreviewVolume() {
+        let app = XCUIApplication(); app.launchArguments = ["day-snapshot"]; app.launch()
+        let disclosure = app.buttons["试听音量与时长"]
+        reveal(disclosure,in:app); disclosure.tap()
+        let previewVolume = app.sliders["playback.preview.volume"]
+        reveal(previewVolume,in:app); previewVolume.adjust(toNormalizedSliderPosition:0.9)
+        let formal = app.sliders["playback.volume"]
+        for value in [0.04,0.20] {
+            reveal(formal,in:app); formal.adjust(toNormalizedSliderPosition:value)
+            let chosen = formal.value as? String
+            XCTAssertNotEqual(chosen,"50%")
+            for _ in 0..<2 {
+                let apply = app.buttons["playback.apply"]
+                reveal(apply,in:app,towardTop:true); apply.tap()
+                reveal(formal,in:app); XCTAssertEqual(formal.value as? String,chosen)
+            }
+        }
+        attach(app,"playback-volume-after-apply")
+    }
+
+    @MainActor func testPlaybackPreviewsStopOnTabsPickerNavigationAndConnection() {
+        let app = XCUIApplication(); app.launchArguments = ["mix-interaction-test","day-snapshot"]; app.launch()
+        let stop = app.buttons["playback.preview.stop"]
+        for mode in ["playback.preview.full","playback.preview.fiveSeconds"] {
+            for destination in ["工坊","音频库","picker","history","cloud","speed"] {
+                let start = app.buttons[mode]
+                reveal(start,in:app,towardTop:true); start.tap()
+                let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在试听"),object:stop)
+                XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:5),.completed)
+                switch destination {
+                case "工坊","音频库":
+                    app.tabBars.buttons[destination].tap(); app.tabBars.buttons["播放"].tap()
+                case "picker":
+                    let choose = app.buttons["playback.chooseAudio"]; reveal(choose,in:app,towardTop:true); choose.tap()
+                    XCTAssertTrue(app.navigationBars["选择播放音频"].waitForExistence(timeout:3)); app.buttons["取消"].tap()
+                case "history":
+                    app.buttons["workshop.tools"].tap(); app.buttons["实验历史"].tap()
+                    app.navigationBars.buttons["播放"].tap()
+                case "cloud":
+                    app.buttons["workshop.tools"].tap(); app.buttons["云端连接设置"].tap()
+                    XCTAssertTrue(app.buttons["cloud.connection.done"].waitForExistence(timeout:3)); app.buttons["cloud.connection.done"].tap()
+                default:
+                    let speed = app.buttons["select.播放速度"]; reveal(speed,in:app,towardTop:true); speed.tap()
+                    XCTAssertTrue(app.buttons["choice.1.0"].waitForExistence(timeout:3)); app.buttons["取消"].tap()
+                }
+                XCTAssertTrue(stop.waitForExistence(timeout:3)); XCTAssertFalse(stop.isEnabled)
+                XCTAssertEqual(stop.value as? String,"未在试听")
+            }
+        }
+        attach(app,"playback-preview-stopped-after-exit")
+    }
+
+    @MainActor private func assertDeletion(_ names:[String:String],in app:XCUIApplication) {
+        let confirm = app.buttons["library.delete.confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout:3))
+        XCTAssertTrue(confirm.label.contains("删除 \(names.count) 项"))
+        XCTAssertTrue(app.staticTexts["library.delete.count"].label.contains("永久删除 \(names.count) 项"))
+        for (id,name) in names {
+            let item = app.staticTexts["library.delete.item."+id]
+            reveal(item,in:app); XCTAssertEqual(item.label,name)
+        }
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","library.delete.item.")).count,names.count)
+    }
+
+    @MainActor private func assertCloudBackground(night:Bool,in app:XCUIApplication) {
+        let scroll = app.scrollViews["cloud.connection.screen"]
+        XCTAssertTrue(scroll.waitForExistence(timeout:3))
+        let image = app.screenshot().image.cgImage!
+        let scale = CGFloat(image.width)/app.frame.width
+        let point = CGPoint(x:(scroll.frame.minX+8)*scale,y:scroll.frame.midY*scale)
+        let pixelImage = image.cropping(to:CGRect(x:point.x.rounded(),y:point.y.rounded(),width:1,height:1))!
+        var pixel:[UInt8] = [0,0,0,0]
+        let space = CGColorSpace(name:CGColorSpace.sRGB)!
+        pixel.withUnsafeMutableBytes { bytes in
+            let context = CGContext(data:bytes.baseAddress,width:1,height:1,bitsPerComponent:8,bytesPerRow:4,space:space,
+                bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)!
+            context.draw(pixelImage,in:CGRect(x:0,y:0,width:1,height:1))
+        }
+        let expected = night ? [17,19,43] : [247,248,244]
+        for channel in 0..<3 { XCTAssertEqual(Double(pixel[channel]),Double(expected[channel]),accuracy:12,"连接弹窗必须使用 App 主题背景") }
     }
 
     @MainActor func testOutsideTapInputSwitchScrollAndExitDismissKeyboardWithoutSwallowingActions() {

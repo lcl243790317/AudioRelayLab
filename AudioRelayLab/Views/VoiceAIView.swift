@@ -194,6 +194,6 @@ struct AIConnectionView: View {
                 PaperCaption("只有点击“生成 AI 声音”才发送所选录音到此电脑。音色参考和生成结果保留在你的设备。")
             }.keyboardDone { focusedInput = nil }.navigationTitle("电脑 AI").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("完成") { dismiss() } }
-        }
+        }.appSheetAppearance()
     }
 }

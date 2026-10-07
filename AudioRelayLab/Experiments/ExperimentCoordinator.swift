@@ -121,11 +121,23 @@ import UniformTypeIdentifiers
         if ProcessInfo.processInfo.arguments.contains("library-interaction-test"),
            let source = try? AudioFileManager.loadBundledAudio(),let sourceURL = try? AudioFileManager.url(for:source),
            let folder = try? AudioFileManager.audioDirectory() {
-            for (suffix,name,kind) in [(14,"批删测试原声",AudioSource.voiceLabRecording),(15,"批删测试音乐一",.imported),(16,"批删测试音乐二",.imported)] {
+            for (suffix,name,kind) in [(14,"批删测试原声",AudioSource.voiceLabRecording),(15,"批删测试音乐一",.imported),(16,"批删测试音乐二",.imported),
+                                       (17,"批删测试配音一",.aiConverted),(18,"批删测试配音二",.aiConverted),(19,"批删测试混音",.mixedRecording)] {
                 let id = UUID(uuidString:String(format:"16300000-0000-4000-8000-%012d",suffix)) ?? UUID()
                 let target = folder.appendingPathComponent(name+".wav")
                 if !FileManager.default.fileExists(atPath:target.path) { try? FileManager.default.copyItem(at:sourceURL,to:target) }
-                if let fixture = try? AudioFileManager.inspect(url:target,displayName:name,id:id,source:kind) { try? AudioFileManager.register(fixture) }
+                if var fixture = try? AudioFileManager.inspect(url:target,displayName:name,id:id,source:kind) {
+                    if kind == .aiConverted {
+                        fixture.revoice = RevoiceMetadata(provider:"ui-fixture",generationMode:"custom",voiceID:"custom",speakerID:"Serena",
+                            instruction:"自然表达",recognizedText:nil,synthesisText:"批删测试配音正文 \(suffix)",sourceAudioID:nil,
+                            modelVariant:"custom",modelRevision:"ui-fixture",sha256:String(repeating:"0",count:64),generationSeconds:1,totalSeconds:1)
+                    }
+                    if kind == .mixedRecording {
+                        fixture.mixSource = MixSourceMetadata(voiceAssetID:UUID(uuidString:"16300000-0000-4000-8000-000000000014") ?? UUID(),
+                            musicAssetID:source.id,revoice:nil,settings:.init(),volumes:.init(),timing:.init(voiceStartDelay:2,musicTailDuration:3))
+                    }
+                    try? AudioFileManager.register(fixture)
+                }
             }
         }
         #endif
@@ -266,13 +278,13 @@ import UniformTypeIdentifiers
         guard !controlsLocked, let audio else { return }
         do {
             applied = try editing.validated(duration: audio.duration)
-            volume = Double(applied.volume); requestedDuration = nil
-            logger.log("应用播放设置", "asset=\(audio.id)，起点=\(applied.startOffset)，终点=\(applied.endPosition(duration:audio.duration))，rate=\(applied.playbackRate)，volume=\(applied.volume)，剩余源时长=\(applied.remaining(duration: audio.duration))，预计时间=\(applied.estimatedDuration(duration: audio.duration))")
+            requestedDuration = nil
+            logger.log("应用播放设置", "asset=\(audio.id)，起点=\(applied.startOffset)，终点=\(applied.endPosition(duration:audio.duration))，rate=\(applied.playbackRate)，试听音量=\(applied.volume)，App音量=\(volume)，剩余源时长=\(applied.remaining(duration: audio.duration))，预计时间=\(applied.estimatedDuration(duration: audio.duration))")
         } catch { report(error, message: userFacingAudioError(error)) }
     }
-    func audition(fiveSeconds: Bool = false) {
+    func audition(fiveSeconds: Bool = false, owner: UUID? = nil) {
         guard !controlsLocked, let audio else { return }
-        preview.play(asset: audio, settings: editing, fiveSeconds: fiveSeconds)
+        preview.play(asset: audio, settings: editing, fiveSeconds: fiveSeconds, owner:owner)
     }
     func audition(_ asset: AudioAsset, owner: UUID? = nil) {
         guard !controlsLocked, !aiVoice.connecting else { return }

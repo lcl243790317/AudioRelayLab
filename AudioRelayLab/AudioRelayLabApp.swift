@@ -4,7 +4,6 @@ import SwiftUI
     @UIApplicationDelegateAdaptor(RevoiceBackgroundAppDelegate.self) private var appDelegate
     @StateObject private var coordinator = ExperimentCoordinator()
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("appearance.nightMode") private var nightMode = false
     @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") || ProcessInfo.processInfo.arguments.contains("mix-snapshot") ? 1 : 0
     init() {
         if ProcessInfo.processInfo.arguments.contains("night-snapshot") {
@@ -31,9 +30,7 @@ import SwiftUI
                 VoiceLabView(coordinator:coordinator).tabItem { Label("工坊",systemImage:"mic") }.tag(1)
                 LibraryHubView(coordinator:coordinator).tabItem { Label("音频库",systemImage:"folder") }.tag(2)
             }
-                .tint(PaperTheme.accent)
-                .fontDesign(.rounded)
-                .preferredColorScheme(nightMode ? .dark : .light)
+                .appAppearance()
                 .transformEnvironment(\.dynamicTypeSize) { size in
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("voice-large-type") { size = .accessibility3 }

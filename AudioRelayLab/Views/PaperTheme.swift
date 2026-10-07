@@ -138,9 +138,21 @@ struct PaperCaption: View {
 }
 
 extension View {
+    func appAppearance() -> some View { modifier(AppAppearance()) }
+    func appSheetAppearance() -> some View {
+        appAppearance().presentationBackground(PaperTheme.background)
+    }
     func paperList() -> some View {
         scrollContentBackground(.hidden).background(PaperTexture().ignoresSafeArea())
             .foregroundStyle(PaperTheme.ink).font(PaperTheme.body)
             .buttonStyle(PaperButtonStyle(compact:true))
+    }
+}
+
+private struct AppAppearance: ViewModifier {
+    @AppStorage("appearance.nightMode") private var nightMode = false
+    func body(content:Content) -> some View {
+        content.preferredColorScheme(nightMode ? .dark : .light)
+            .tint(PaperTheme.accent).fontDesign(.rounded)
     }
 }

@@ -19,8 +19,7 @@ struct LocalAudioLibraryView: View {
     @State private var scopeRecordings = false
     @State private var selecting = false
     @State private var selectedIDs:Set<UUID> = []
-    @State private var pendingDeletion:[AudioAsset] = []
-    @State private var confirmingDeletion = false
+    @State private var pendingDeletion:AudioDeletionRequest?
     @State private var deletionSummary:String?
     @State private var deletionDetails:[String] = []
     private var isRecordings:Bool { showsScope ? scopeRecordings : recordingsOnly }
@@ -64,6 +63,7 @@ struct LocalAudioLibraryView: View {
                                     .accessibilityIdentifier("library.select.\(asset.id.uuidString)")
                             }
                             Text(asset.libraryName).font(.headline).lineLimit(3)
+                                .accessibilityIdentifier("library.name.\(asset.id.uuidString)")
                         }
                         PaperCaption("\(AudioPlaybackSettings.time(asset.duration)) · \(asset.formatDescription)")
                         if !selecting { HStack {
@@ -79,24 +79,24 @@ struct LocalAudioLibraryView: View {
                         }
                         if let revoice = asset.revoice {
                             PaperCaption("AI 重新配音 · \(revoice.generationMode == "custom" ? "自定义" : "固定预设")")
-                            DisclosureGroup("配音详情") {
+                            if !selecting { DisclosureGroup("配音详情") {
                                 Text(revoice.synthesisText).font(.callout).textSelection(.enabled)
                                 PaperCaption("声线：\(revoice.voiceName ?? revoice.voiceID)\nSpeaker：\(revoice.speakerID ?? "固定参考")")
                                 if let reference = revoice.fixedReferenceID { PaperCaption("参考身份：\(reference)") }
                                 Text("Instruction：\((revoice.instruction ?? "").isEmpty ? "自然表达" : (revoice.instruction ?? ""))")
                                     .font(.callout).textSelection(.enabled)
-                            }
+                            }.accessibilityIdentifier("library.revoice.details.\(asset.id.uuidString)") }
                         }
-                        if let source = asset.mixSource {
+                        if !selecting, let source = asset.mixSource {
                             DisclosureGroup("混音来源") {
                                 PaperCaption("人声：\(source.voiceAssetID.uuidString)\n音乐：\(source.musicAssetID.uuidString)")
                                 PaperCaption("人声音量 \(source.volumes.voice) · 音乐音量 \(source.volumes.music) · 总音量 \(source.volumes.master)")
-                            }
+                            }.accessibilityIdentifier("library.mix.details.\(asset.id.uuidString)")
                         }
                     }.padding(.vertical,8)
                         .swipeActions(edge:.trailing,allowsFullSwipe:false) {
                             if asset.source != .bundled && !locked && !selecting {
-                                Button("删除",systemImage:"trash",role:.destructive) { pendingDeletion = [asset]; confirmingDeletion = true }
+                                Button("删除",systemImage:"trash",role:.destructive) { requestDeletion([asset]) }
                                     .buttonStyle(.automatic)
                             }
                         }
@@ -115,7 +115,7 @@ struct LocalAudioLibraryView: View {
                 ToolbarItem(placement:.topBarLeading) {
                     Button(selecting ? "取消选择" : "选择") {
                         coordinator.preview.stop(owner:previewOwner); selecting.toggle(); selectedIDs = []
-                    }.disabled(locked || eligibleIDs.isEmpty).accessibilityIdentifier("library.selection")
+                    }.disabled(locked || (!selecting && eligibleIDs.isEmpty)).accessibilityIdentifier("library.selection")
                 }
                 ToolbarItem(placement:.topBarTrailing) {
                     if selecting {
@@ -133,34 +133,51 @@ struct LocalAudioLibraryView: View {
             .safeAreaInset(edge:.bottom) {
                 if selecting {
                     Button("删除所选（\(selectedIDs.count)）",role:.destructive) {
-                        pendingDeletion = assets.filter { selectedIDs.contains($0.id) }; confirmingDeletion = true
+                        requestDeletion(assets.filter { selectedIDs.contains($0.id) })
                     }.buttonStyle(PaperButtonStyle()).disabled(locked || selectedIDs.isEmpty)
                         .accessibilityIdentifier("library.delete.selected")
                         .padding(16).background(PaperTheme.paper)
                 }
             }
-            .sheet(isPresented:$confirmingDeletion) {
+            .sheet(item:$pendingDeletion) { request in
                 NavigationStack {
                     List {
                         Section {
-                            Text("将永久删除 \(pendingDeletion.count) 项音频及其附属文件，无法撤销。实验历史会保留。")
+                            Text("将永久删除 \(request.items.count) 项音频及其附属文件，无法撤销。实验历史会保留。")
+                                .accessibilityIdentifier("library.delete.count")
+                                .listRowBackground(PaperTheme.paper)
                         }
-                        ForEach(pendingDeletion) { asset in Text(asset.libraryName).font(.body) }
+                        ForEach(request.items) { item in
+                            Text(item.name).font(.body).listRowBackground(PaperTheme.paper)
+                                .accessibilityIdentifier("library.delete.item.\(item.id.uuidString)")
+                        }
                     }.paperList().navigationTitle("确认删除")
                         .toolbar {
-                            ToolbarItem(placement:.cancellationAction) { Button("取消") { confirmingDeletion = false } }
+                            ToolbarItem(placement:.cancellationAction) { Button("取消") { pendingDeletion = nil } }
                             ToolbarItem(placement:.confirmationAction) {
-                                Button("删除 \(pendingDeletion.count) 项",role:.destructive) {
-                                    let result = coordinator.deleteAudio(ids:Set(pendingDeletion.map(\.id)))
+                                Button("删除 \(request.items.count) 项",role:.destructive) {
+                                    let result = coordinator.deleteAudio(ids:request.audioIDs)
                                     deletionSummary = result.summary; selectedIDs = Set(result.failures.keys).intersection(eligibleIDs)
-                                    deletionDetails = pendingDeletion.compactMap { asset in result.failures[asset.id].map { asset.libraryName+"："+$0 } } + result.cleanupWarnings
-                                    selecting = !selectedIDs.isEmpty; confirmingDeletion = false
+                                    deletionDetails = request.items.compactMap { item in result.failures[item.id].map { item.name+"："+$0 } } + result.cleanupWarnings
+                                    selecting = !selectedIDs.isEmpty; pendingDeletion = nil
                                 }.disabled(locked).accessibilityIdentifier("library.delete.confirm")
                             }
                         }
-                }
+                }.appSheetAppearance()
             }
             .sheet(item:$share) { ShareSheet(url:$0.url) }
+    }
+
+    private func requestDeletion(_ chosen:[AudioAsset]) {
+        guard !locked else { return }
+        coordinator.preview.stop(owner:previewOwner)
+        guard let request = AudioDeletionRequest(assets:chosen) else {
+            coordinator.refreshLibrary()
+            selectedIDs.formIntersection(eligibleIDs)
+            deletionSummary = "所选音频已变化，请重新选择。"
+            return
+        }
+        pendingDeletion = request
     }
 }
 

@@ -19,11 +19,13 @@ struct StablePicker<Value: Hashable>: View {
     @Binding var selection: Value
     let choices: [SelectionChoice<Value>]
     var onDismiss:(()->Void)? = nil
+    var beforeOpen:(()->Void)? = nil
     @State private var snapshot: SelectionSnapshot<Value>?
     @Environment(\.keyboardDismissAction) private var clearFocus
     @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         Button {
+            beforeOpen?()
             if let clearFocus { clearFocus() } else { KeyboardDismiss.perform() }
             snapshot = .init(choices: choices, selected: selection)
         } label: {

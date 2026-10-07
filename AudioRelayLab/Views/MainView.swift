@@ -12,6 +12,7 @@ struct MainView: View {
     @State private var showResult = false
     @State private var showTechnicalDetails = false
     @State private var customDelay = false
+    @State private var previewOwner = UUID()
 
     init(coordinator: ExperimentCoordinator) {
         self.coordinator = coordinator
@@ -24,7 +25,7 @@ struct MainView: View {
             PaperScreen {
                 PaperHeader(title:"音频接力",subtitle:"选一段声音，按你的节奏播放。")
                 audioSection
-                PaperCard("播放与试听") { AudioEditorView(coordinator:coordinator) }
+                PaperCard("播放与试听") { AudioEditorView(coordinator:coordinator,previewOwner:previewOwner) }
                 experimentSection
                 if coordinator.errorMessage != nil || coordinator.state == .failed {
                     failureSection
@@ -34,17 +35,18 @@ struct MainView: View {
                         Button("使用测试音频") { coordinator.useTestAudio() }.disabled(coordinator.controlsLocked)
                         Button("仅准备音频") { coordinator.prepare() }.disabled(coordinator.controlsLocked || coordinator.audio == nil)
                         settingsSection; sessionSection
-                        Button("填写并保存实验结果") { coordinator.checkpoint(); showResult = true }
+                        Button("填写并保存实验结果") { stopPreview(); coordinator.checkpoint(); showResult = true }
                             .disabled(coordinator.currentExperiment == nil || coordinator.controlsLocked)
                     }
                 }
             }
+            .onDisappear { stopPreview() }
             .keyboardDone { focusedInput = nil }
             .navigationTitle("播放")
             .buttonStyle(PaperButtonStyle())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement:.topBarTrailing) { AppToolsMenu(coordinator:coordinator) }
+                ToolbarItem(placement:.topBarTrailing) { AppToolsMenu(coordinator:coordinator,beforePresentation:stopPreview) }
                 ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() }
             }
             .sheet(isPresented:$choosingAudio) {
@@ -140,7 +142,7 @@ struct MainView: View {
                 Text("尚未选择音频")
             }
             HStack {
-                Button("导入音频") { focusedInput = nil; KeyboardDismiss.perform(); importing = true }.buttonStyle(PaperButtonStyle(primary:true))
+                Button("导入音频") { stopPreview(); focusedInput = nil; KeyboardDismiss.perform(); importing = true }.buttonStyle(PaperButtonStyle(primary:true))
 
             }.disabled(coordinator.controlsLocked)
             PaperCaption("支持 WAV、MP3、M4A、AAC、AIFF、AIFC、CAF、FLAC；其他类型在文件选择器中显示为灰色。")
@@ -149,7 +151,8 @@ struct MainView: View {
                 Button("取消导入") { coordinator.cancelImport() }
             }
             if !coordinator.library.isEmpty {
-                Button("从音频库选择") { focusedInput = nil; KeyboardDismiss.perform(); choosingAudio = true }
+                Button("从音频库选择") { stopPreview(); focusedInput = nil; KeyboardDismiss.perform(); choosingAudio = true }
+                    .accessibilityIdentifier("playback.chooseAudio")
             }
         }
     }
@@ -157,7 +160,7 @@ struct MainView: View {
     private var settingsSection: some View {
         VStack(alignment:.leading,spacing:14) {
             StablePicker(title:"音频配置",selection:$coordinator.profile,
-                choices:AudioSessionProfile.selectableCases.map { .init(id:$0,title:"\($0.rawValue) · \($0.title)") })
+                choices:AudioSessionProfile.selectableCases.map { .init(id:$0,title:"\($0.rawValue) · \($0.title)") },beforeOpen:stopPreview)
             Text(coordinator.profile.shortDescription).font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("A / C / D / E 配置说明") {
                 ForEach(AudioSessionProfile.selectableCases) { profile in
@@ -168,7 +171,7 @@ struct MainView: View {
                 }
             }
             StablePicker(title:"播放引擎",selection:$coordinator.engineKind,
-                choices:PlaybackEngineKind.selectableCases.map { .init(id:$0,title:$0.rawValue) })
+                choices:PlaybackEngineKind.selectableCases.map { .init(id:$0,title:$0.rawValue) },beforeOpen:stopPreview)
             Toggle("限制播放时长", isOn: Binding(
                 get: { coordinator.requestedDuration != nil },
                 set: { coordinator.requestedDuration = $0 ? min(10, maximumDuration) : nil }
@@ -205,6 +208,7 @@ struct MainView: View {
                 get: { coordinator.volume.isFinite ? min(1, max(0, coordinator.volume)) : 0 },
                 set: { coordinator.volume = $0 }
             ), in: 0...1, step: 0.01)
+                .accessibilityIdentifier("playback.volume")
                 .accessibilityLabel("App 播放音量")
                 .accessibilityValue(percentage(coordinator.volume))
             Text("\(percentage(coordinator.volume)) · 0%～100%")
@@ -223,7 +227,7 @@ struct MainView: View {
                     .keyboardType(.decimalPad)
             } else {
                 StablePicker(title:"延迟时间",selection:$coordinator.delay,
-                    choices:[1.0,2,3,4,5,7,10].map { .init(id:$0,title:"\(Int($0)) 秒") })
+                    choices:[1.0,2,3,4,5,7,10].map { .init(id:$0,title:"\(Int($0)) 秒") },beforeOpen:stopPreview)
             }
             LabeledContent("已应用开始位置", value: AudioPlaybackSettings.time(coordinator.applied.startOffset))
             LabeledContent("已应用结束位置", value: AudioPlaybackSettings.time(coordinator.applied.endPosition(duration:coordinator.audio?.duration ?? 0)))
@@ -260,7 +264,7 @@ struct MainView: View {
             Label(coordinator.errorMessage ?? "当前音频环境不允许开始实验。结束通话或其他高优先级音频后，可以重新准备。",
                   systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
-            Button("查看技术详情") { showTechnicalDetails = true }
+            Button("查看技术详情") { stopPreview(); showTechnicalDetails = true }
             if coordinator.state != .failed {
                 Button("收起提示") { coordinator.errorMessage = nil }
             }
@@ -302,6 +306,8 @@ struct MainView: View {
         guard value.isFinite else { return "不可用" }
         return "\(Int((min(1, max(0, value)) * 100).rounded()))%"
     }
+
+    private func stopPreview() { coordinator.preview.stop(owner:previewOwner) }
 
     private func ports(_ values: [AudioPortSnapshot]) -> String {
         values.isEmpty ? "无当前路由" : values.map { "\($0.portName)（\($0.portType)）" }.joined(separator: " / ")

@@ -1,10 +1,10 @@
 # AudioRelayLab 音频接力实验室
 
-当前测试版本：**1.6.5 / build 15**。底部入口为“播放／工坊／音频库”，工坊提供“配音／混音”。混音支持音乐先播、人声先播及尾声；配音统一手动生成，自动表达指令可编辑并保留手改稿。两个音频库支持批量删除，输入支持失焦收键盘，浅深主题和按钮反馈统一。
+当前测试版本：**1.6.6 / build 16**。底部入口为“播放／工坊／音频库”，工坊提供“配音／混音”。混音支持音乐先播、人声先播及尾声；配音统一手动生成，自动表达指令可编辑并保留手改稿。两个音频库支持批量删除，输入支持失焦收键盘，浅深主题和按钮反馈统一。
 
-本轮从 `feature/revoice-ios-1.6.0` 构建无签名 IPA，签名真机验收后再合并 main。功能与操作见 [1.6.5 使用说明](REVOICE-1.6.5-ZH.md)，构建结果见 [构建状态](BUILD-STATUS-ZH.txt)。录音只在手机识别文字，云端生成仅接收文字及声线参数；本轮不调整云端模型或部署。
+本轮从 `feature/revoice-ios-1.6.0` 构建无签名 IPA，签名真机验收后再合并 main。功能与操作见 [1.6.6 修复说明](REVOICE-1.6.6-ZH.md)及 [1.6.5 功能说明](REVOICE-1.6.5-ZH.md)，构建结果见 [构建状态](BUILD-STATUS-ZH.txt)。录音只在手机识别文字，云端生成仅接收文字及声线参数；本轮不调整云端模型或部署。
 
-实际交付：`dist/AudioRelayLab-1.6.5-unsigned.ipa`。Python 94 项、Simulator XCTest 241 项、UI XCTest 13 项及 iPhone SE 小屏截图测试 1 项全部通过；Simulator Debug / iPhoneOS Release 构建成功。 [实际 Actions 构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37542874118)；见 [1.6.5 验证报告](REVOICE-1.6.5-TEST-REPORT-ZH.md)。无签名 IPA 需自行重签名；听感、锁屏保存及通话环境继续由真机验收。
+本版完整 CI 尚待执行，目标交付 `dist/AudioRelayLab-1.6.6-unsigned.ipa`；实际测试数量、源码和 SHA256 将在通过后记录。1.6.5 验证报告属于历史证据。无签名 IPA 需自行重签名，听感、后台及通话环境继续由真机验收。
 
 
 预设切换恢复默认指令；手改自动指令先确认放弃，编辑和留空只影响下一次生成。两个固定参考声线保持认可的目标表达。自定义指令独立保存，配音成品最长 180 秒，混音成品最长 300 秒。Modal 双层认证、固定模型/资产哈希、单一 L4 池和 snapshot 保持，空闲窗口为 75 秒。部署说明见 [MODAL-DEPLOYMENT-ZH.md](MODAL-DEPLOYMENT-ZH.md)；先前 snapshot A/B 基准保留在 [SNAPSHOT-REPORT-ZH.md](SNAPSHOT-REPORT-ZH.md)。

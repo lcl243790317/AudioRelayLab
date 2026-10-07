@@ -1,0 +1,108 @@
+import XCTest
+@testable import AudioRelayLab
+
+final class PlaybackLibraryRepairTests: XCTestCase {
+    private func asset(_ index:Int,source:AudioSource = .voiceLabRecording) -> AudioAsset {
+        AudioAsset(id:UUID(),fileName:"删除测试\(index).wav",sandboxFileName:"fixture-\(index).wav",duration:3,
+            sampleRate:44100,channelCount:1,byteCount:264600,source:source)
+    }
+
+    func testDeletionRequestKeepsFiveNamesAndIDsAfterSelectionChanges() throws {
+        var selected = (1...5).map { asset($0) }
+        let ids = Set(selected.map(\.id)), names = selected.map(\.libraryName)
+        let request = try XCTUnwrap(AudioDeletionRequest(assets:selected))
+        selected.removeAll()
+        XCTAssertEqual(request.items.count,5)
+        XCTAssertEqual(request.audioIDs,ids)
+        XCTAssertEqual(request.items.map(\.name),names)
+        let reopened = try XCTUnwrap(AudioDeletionRequest(assets:(1...5).map { asset($0) }))
+        XCTAssertNotEqual(request.id,reopened.id)
+    }
+
+    func testEmptyAndProtectedSelectionsCannotPresentDeletion() {
+        XCTAssertNil(AudioDeletionRequest(assets:[]))
+        XCTAssertNil(AudioDeletionRequest(assets:[asset(1,source:.bundled)]))
+    }
+
+    func testDeletionRequestExcludesBuiltinAndKeepsVisibleOrder() throws {
+        let first = asset(1,source:.imported), second = asset(2,source:.aiConverted)
+        let request = try XCTUnwrap(AudioDeletionRequest(assets:[first,asset(3,source:.bundled),second]))
+        XCTAssertEqual(request.items.map(\.id),[first.id,second.id])
+        XCTAssertEqual(request.audioIDs,[first.id,second.id])
+    }
+
+    @MainActor func testApplyingPreviewSettingsPreservesFormalVolumeAndTaskParameters() throws {
+        let saved = UserDefaults.standard.data(forKey:"selectedAudio")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = ExperimentCoordinator(historyDirectoryURL:folder)
+        defer { model.stop(); model.preview.stop(); UserDefaults.standard.set(saved,forKey:"selectedAudio"); try? FileManager.default.removeItem(at:folder) }
+        model.useTestAudio()
+        for volume in [0.04,0.20] {
+            model.volume = volume
+            model.editing = .init(startOffset:1,playbackRate:1.5,volume:0.9,endOffset:4)
+            model.applyPlaybackSettings(); model.applyPlaybackSettings()
+            XCTAssertEqual(model.volume,volume)
+            XCTAssertEqual(model.applied.startOffset,1); XCTAssertEqual(model.applied.endOffset,4)
+            XCTAssertEqual(model.applied.playbackRate,1.5); XCTAssertEqual(model.editing.volume,0.9)
+            model.prepare()
+            let settings = try XCTUnwrap(model.currentExperiment?.settings)
+            XCTAssertEqual(settings.volume,Float(volume),accuracy:0.00001)
+            XCTAssertEqual(settings.startOffset,1); XCTAssertEqual(settings.endOffset,4); XCTAssertEqual(settings.playbackRate,1.5)
+            model.stop()
+        }
+    }
+
+    @MainActor func testInvalidApplyPreservesFormalVolumeAndPreviouslyAppliedSettings() {
+        let model = ExperimentCoordinator()
+        defer { model.stop(); model.preview.stop() }
+        model.volume = 0.04
+        let applied = model.applied
+        model.editing.volume = .nan
+        model.applyPlaybackSettings()
+        XCTAssertEqual(model.volume,0.04); XCTAssertEqual(model.applied,applied)
+        XCTAssertNotNil(model.errorMessage)
+    }
+
+    @MainActor func testPlaybackPageExitCancelsBothPreparingPreviewsWithoutResurrection() async throws {
+        let model = ExperimentCoordinator(), owner = UUID()
+        defer { model.preview.stop() }
+        model.editing.endOffset = min(1,try XCTUnwrap(model.audio).duration)
+        for fiveSeconds in [false,true] {
+            model.audition(fiveSeconds:fiveSeconds,owner:owner)
+            XCTAssertEqual(model.preview.state,.preparing)
+            XCTAssertTrue(model.preview.isOwned(by:owner))
+            model.preview.stop(owner:owner)
+            try await Task.sleep(for:.milliseconds(50))
+            XCTAssertEqual(model.preview.state,.idle); XCTAssertFalse(model.preview.isActive)
+            XCTAssertNil(model.preview.preparedDuration)
+        }
+    }
+
+    @MainActor func testPlaybackPageExitStopsBothPlayingPreviews() async throws {
+        let model = ExperimentCoordinator(), owner = UUID()
+        defer { model.preview.stop() }
+        model.editing.volume = 0
+        for fiveSeconds in [false,true] {
+            model.audition(fiveSeconds:fiveSeconds,owner:owner)
+            for _ in 0..<200 where model.preview.state == .preparing { try await Task.sleep(for:.milliseconds(10)) }
+            XCTAssertEqual(model.preview.state,.playing,model.preview.errorMessage ?? "")
+            model.preview.stop(owner:owner)
+            XCTAssertEqual(model.preview.state,.idle); XCTAssertNil(model.preview.preparedDuration)
+        }
+    }
+
+    @MainActor func testLatePlaybackPageExitKeepsNewLibraryPreviewAndFormalExperiment() throws {
+        let model = ExperimentCoordinator(), playbackOwner = UUID(), libraryOwner = UUID()
+        defer { model.stop(); model.preview.stop() }
+        model.audition(owner:playbackOwner)
+        model.audition(try XCTUnwrap(model.audio),owner:libraryOwner)
+        model.preview.stop(owner:playbackOwner)
+        XCTAssertTrue(model.preview.isOwned(by:libraryOwner)); XCTAssertEqual(model.preview.state,.preparing)
+        model.preview.stop(owner:libraryOwner)
+        model.prepare()
+        let id = model.currentExperiment?.id
+        model.preview.stop(owner:playbackOwner)
+        XCTAssertEqual(model.state,.preparing); XCTAssertEqual(model.currentExperiment?.id,id)
+        XCTAssertTrue(model.isRunning)
+    }
+}

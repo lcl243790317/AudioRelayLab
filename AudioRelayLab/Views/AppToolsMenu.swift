@@ -2,16 +2,17 @@ import SwiftUI
 
 struct AppToolsMenu:View {
     @ObservedObject var coordinator:ExperimentCoordinator
+    var beforePresentation:(()->Void)? = nil
     @State private var cloud = false
     @State private var computer = false
     var body:some View {
         Menu {
-            Button("云端连接设置") { KeyboardDismiss.perform(); cloud = true }
+            Button("云端连接设置") { beforePresentation?(); KeyboardDismiss.perform(); cloud = true }
                 .disabled(coordinator.revoice.busy || coordinator.revoice.hasPendingJob || coordinator.rawRecorder.isActive)
             Button("重新连接云端") { coordinator.revoice.connect() }
                 .disabled(!coordinator.revoice.configured || coordinator.revoice.connecting || coordinator.rawRecorder.isActive)
             NavigationLink("电脑变声") {
-                PaperScreen { VoiceAIView(coordinator:coordinator) { computer = true } }
+                PaperScreen { VoiceAIView(coordinator:coordinator) { beforePresentation?(); computer = true } }
                     .navigationTitle("电脑变声").navigationBarTitleDisplayMode(.inline)
             }
             NavigationLink("实验历史") { HistoryView(coordinator:coordinator) }

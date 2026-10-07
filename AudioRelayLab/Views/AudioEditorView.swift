@@ -3,17 +3,24 @@ import SwiftUI
 struct AudioEditorView: View {
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var preview: PreviewPlaybackController
+    let previewOwner: UUID?
     @State private var adjustingEnd = false
-    init(coordinator: ExperimentCoordinator) { self.coordinator = coordinator; preview = coordinator.preview }
+    init(coordinator: ExperimentCoordinator, previewOwner:UUID? = nil) {
+        self.coordinator = coordinator; preview = coordinator.preview; self.previewOwner = previewOwner
+    }
+    private var isPreviewActive:Bool { previewOwner.map { preview.isOwned(by:$0) } ?? preview.isActive }
+    private func stopPreview() {
+        if let previewOwner { preview.stop(owner:previewOwner) } else { preview.stop() }
+    }
     private var duration: Double { max(0.001, coordinator.audio?.duration ?? 0.001) }
     private var offset: Binding<Double> {
         Binding(get: { AudioPlaybackSettings.clamp(coordinator.editing.startOffset, duration: duration) },
-                set: { preview.stop(); coordinator.editing.startOffset = AudioRangeSelection.start($0,end:end.wrappedValue,duration:duration) })
+                set: { stopPreview(); coordinator.editing.startOffset = AudioRangeSelection.start($0,end:end.wrappedValue,duration:duration) })
     }
     private var end: Binding<Double> {
         Binding(get: { AudioPlaybackSettings.clamp(coordinator.editing.endPosition(duration:duration),duration:duration) },
                 set: {
-                    preview.stop()
+                    stopPreview()
                     let value = AudioRangeSelection.end($0,start:offset.wrappedValue,duration:duration)
                     coordinator.editing.endOffset = value >= duration ? nil : value
                 })
@@ -35,24 +42,31 @@ struct AudioEditorView: View {
                         .buttonStyle(PaperButtonStyle()).font(.caption)
                 }
             }
-            Button("恢复完整音频区间") { preview.stop(); coordinator.editing.startOffset=0; coordinator.editing.endOffset=nil }
+            Button("恢复完整音频区间") { stopPreview(); coordinator.editing.startOffset=0; coordinator.editing.endOffset=nil }
             }
             StablePicker(title:"播放速度",selection:$coordinator.editing.playbackRate,
-                choices:AudioPlaybackSettings.rates.map { .init(id:$0,title:String(format:"%gx",$0)) }).onChange(of: coordinator.editing.playbackRate) { _, _ in preview.stop() }
+                choices:AudioPlaybackSettings.rates.map { .init(id:$0,title:String(format:"%gx",$0)) },beforeOpen:stopPreview)
+                .onChange(of: coordinator.editing.playbackRate) { _, _ in stopPreview() }
             DisclosureGroup("试听音量与时长") {
             Slider(value: Binding(get: { coordinator.editing.volume.isFinite ? Double(min(1,max(0,coordinator.editing.volume))) : 0 }, set: { coordinator.editing.volume = Float($0) }), in: 0...1)
-            LabeledContent("试听/待应用音量", value: coordinator.editing.volume.isFinite ? "\(Int(min(1,max(0,coordinator.editing.volume)) * 100))%" : "不可用")
+                .accessibilityIdentifier("playback.preview.volume")
+            LabeledContent("试听音量", value: coordinator.editing.volume.isFinite ? "\(Int(min(1,max(0,coordinator.editing.volume)) * 100))%" : "不可用")
             LabeledContent("所选片段时长", value: AudioPlaybackSettings.time(coordinator.editing.remaining(duration: duration)))
             LabeledContent("预计播放时间", value: AudioPlaybackSettings.time(coordinator.editing.estimatedDuration(duration: duration)))
             }
             HStack {
-                Button("从这里试听") { coordinator.audition() }.buttonStyle(PaperButtonStyle())
-                Button("▶ 试听 5 秒") { coordinator.audition(fiveSeconds: true) }.buttonStyle(PaperButtonStyle())
+                Button("从这里试听") { coordinator.audition(owner:previewOwner) }.buttonStyle(PaperButtonStyle())
+                    .accessibilityIdentifier("playback.preview.full")
+                Button("▶ 试听 5 秒") { coordinator.audition(fiveSeconds: true,owner:previewOwner) }.buttonStyle(PaperButtonStyle())
+                    .accessibilityIdentifier("playback.preview.fiveSeconds")
             }
-            Button("■ 停止试听") { preview.stop() }.disabled(!preview.isActive)
+            Button("■ 停止试听") { stopPreview() }.disabled(!isPreviewActive)
+                .accessibilityIdentifier("playback.preview.stop")
+                .accessibilityValue(isPreviewActive ? (preview.state == .playing ? "正在试听" : "正在准备") : "未在试听")
             LabeledContent("试听进度", value: AudioPlaybackSettings.time(preview.currentTime))
             if let error = preview.errorMessage { Text(error).foregroundStyle(.orange) }
             Button("应用这个播放设置") { coordinator.applyPlaybackSettings() }.buttonStyle(PaperButtonStyle(primary:true))
+                .accessibilityIdentifier("playback.apply")
             Text(coordinator.editing == coordinator.applied ? "当前设置已应用。" : "有未应用的调整，试听满意后点击应用。")
                 .font(.caption).foregroundStyle(.secondary)
         }.disabled(coordinator.controlsLocked || coordinator.audio == nil)
