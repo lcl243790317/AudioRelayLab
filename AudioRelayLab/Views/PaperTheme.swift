@@ -154,5 +154,10 @@ private struct AppAppearance: ViewModifier {
     func body(content:Content) -> some View {
         content.preferredColorScheme(nightMode ? .dark : .light)
             .tint(PaperTheme.accent).fontDesign(.rounded)
+            .transformEnvironment(\.dynamicTypeSize) { size in
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("voice-large-type") { size = .accessibility3 }
+                #endif
+            }
     }
 }

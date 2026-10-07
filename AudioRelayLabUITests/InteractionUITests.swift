@@ -320,6 +320,7 @@ final class InteractionUITests: XCTestCase {
 
     @MainActor func testCloudConnectionBothEntriesFollowThemeAndLargeType() {
         let app = XCUIApplication()
+        var normalCaptionHeights:[String:CGFloat] = [:]
         for night in [false,true] {
             for large in [false,true] {
                 app.launchArguments = ["voice-snapshot",night ? "night-snapshot" : "day-snapshot"]
@@ -334,6 +335,11 @@ final class InteractionUITests: XCTestCase {
                     }
                     let field = app.secureTextFields["cloud.connection.configuration"]
                     XCTAssertTrue(field.waitForExistence(timeout:5)); reveal(field,in:app)
+                    let captionHeight = app.staticTexts["一次设置，随时重新配音。"].frame.height
+                    let captionKey = entry+(night ? "-dark" : "-light")
+                    if large {
+                        XCTAssertGreaterThan(captionHeight,(normalCaptionHeights[captionKey] ?? captionHeight)*1.3)
+                    } else { normalCaptionHeights[captionKey] = captionHeight }
                     assertCloudBackground(night:night,in:app)
                     attach(app,"cloud-"+entry+(night ? "-dark" : "-light")+(large ? "-large" : "-normal"))
                     app.buttons["cloud.connection.done"].tap()
