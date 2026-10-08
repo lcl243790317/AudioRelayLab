@@ -5,6 +5,8 @@ import SwiftUI
     @Published var tab:Tab = ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") || ProcessInfo.processInfo.arguments.contains("mix-snapshot") ? .workshop : .playback
     @Published private(set) var playbackNotice:String?
     @Published private(set) var playbackRevealRequest:UUID?
+    struct PlaybackSelectionFailure { let message:String }
+    @Published private(set) var playbackSelectionFailure:PlaybackSelectionFailure?
     private var previewPage:(owner:UUID,tab:Tab)?
     func previewPageAppeared(owner:UUID,tab:Tab) {
         if self.tab == tab { previewPage = (owner,tab) }
@@ -21,8 +23,14 @@ import SwiftUI
     func completedPlaybackReveal(_ request:UUID) {
         if playbackRevealRequest == request { playbackRevealRequest = nil }
     }
+    func dismissPlaybackSelectionFailure() { playbackSelectionFailure = nil }
     @discardableResult func useForPlayback(_ asset:AudioAsset,coordinator:ExperimentCoordinator) -> Bool {
-        guard coordinator.selectLocal(asset) else { return false }
+        guard coordinator.selectLocal(asset) else {
+            stopActivePagePreview(coordinator.preview)
+            playbackSelectionFailure = .init(message:coordinator.errorMessage ?? "请检查音频文件，结束当前操作后重试。")
+            return false
+        }
+        playbackSelectionFailure = nil
         playbackNotice = "已选择“\(asset.libraryName)”；设置延迟后手动开始播放。"
         tab = .playback
         playbackRevealRequest = UUID()
@@ -38,6 +46,14 @@ struct ApplicationTabs:View {
             MainView(coordinator:coordinator).tabItem { Label("播放",systemImage:"music.note") }.tag(AppNavigation.Tab.playback)
             VoiceLabView(coordinator:coordinator).tabItem { Label("工坊",systemImage:"mic") }.tag(AppNavigation.Tab.workshop)
             LibraryHubView(coordinator:coordinator).tabItem { Label("音频库",systemImage:"folder") }.tag(AppNavigation.Tab.library)
+        }
+        .alert("无法用于播放",isPresented:Binding(
+            get:{ navigation.playbackSelectionFailure != nil },
+            set:{ if !$0 { navigation.dismissPlaybackSelectionFailure() } }
+        )) {
+            Button("知道了",role:.cancel) { navigation.dismissPlaybackSelectionFailure() }
+        } message: {
+            Text(navigation.playbackSelectionFailure?.message ?? "请重新选择音频。")
         }
     }
 }

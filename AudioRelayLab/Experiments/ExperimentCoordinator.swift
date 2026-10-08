@@ -149,6 +149,8 @@ import UniformTypeIdentifiers
             revoice.preparePreview(custom:true)
             if let result = library.first(where:{$0.id == UUID(uuidString:"16300000-0000-4000-8000-000000000017")}) { revoice.preparePreviewResult(result) }
             if let result = library.first(where:{$0.id == UUID(uuidString:"16300000-0000-4000-8000-000000000019")}) { voiceMix.preparePreviewResult(result) }
+            if ProcessInfo.processInfo.arguments.contains("workshop-missing-result-test"),let result = revoice.result,
+               let url = try? AudioFileManager.url(for:result) { try? FileManager.default.removeItem(at:url) }
         }
         if ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") {
             voiceMix.voiceID = UUID(uuidString:"16300000-0000-4000-8000-000000000013")

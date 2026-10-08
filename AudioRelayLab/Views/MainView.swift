@@ -141,6 +141,7 @@ struct MainView: View {
                     Image(systemName:"music.note").font(.title).frame(width:58,height:58).background(PaperTheme.background)
                     VStack(alignment:.leading,spacing:6) {
                         Text(audio.libraryName).font(.headline).lineLimit(2)
+                            .accessibilityIdentifier("playback.selection.name")
                         PaperCaption(AudioPlaybackSettings.time(audio.duration)+" · "+audio.formatDescription)
                     }
                 }

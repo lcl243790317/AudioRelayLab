@@ -39,11 +39,15 @@ final class WorkshopNavigationTests:XCTestCase {
             sampleRate:24000,channelCount:1,byteCount:48044,source:.aiConverted)
         XCTAssertFalse(model.navigation.useForPlayback(missing,coordinator:model))
         XCTAssertEqual(model.navigation.tab,.library); XCTAssertEqual(model.audio?.id,original.id); XCTAssertNotNil(model.errorMessage)
+        XCTAssertNotNil(model.navigation.playbackSelectionFailure)
+        XCTAssertTrue(model.navigation.playbackSelectionFailure?.message.contains("原选择已保留") == true)
+        model.navigation.dismissPlaybackSelectionFailure(); XCTAssertNil(model.navigation.playbackSelectionFailure)
         model.prepare(); defer { model.stop() }
         let state = model.state
         XCTAssertFalse(model.navigation.useForPlayback(original,coordinator:model))
         XCTAssertEqual(model.navigation.tab,.library); XCTAssertEqual(model.state,state); XCTAssertTrue(model.isRunning)
         XCTAssertTrue(model.errorMessage?.contains("结束") == true)
+        XCTAssertTrue(model.navigation.playbackSelectionFailure?.message.contains("结束") == true)
         model.preview.stop(owner:UUID())
         let owner = UUID()
         model.navigation.previewPageAppeared(owner:owner,tab:.library)

@@ -31,6 +31,21 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["playback.selection.notice"].isHittable)
         let state = app.staticTexts["playback.state"]; reveal(state,in:app); XCTAssertTrue(state.label.contains("未准备"))
         attach(app,"工坊与音频库成品衔接播放页")
+        app.terminate()
+        app.launchArguments.append("workshop-missing-result-test"); app.launch()
+        let selectedName = app.staticTexts["playback.selection.name"]
+        XCTAssertTrue(selectedName.waitForExistence(timeout:5)); let previousName = selectedName.label
+        app.tabBars.buttons["工坊"].tap()
+        let missingUse = app.buttons["revoice.result.use"]; reveal(missingUse,in:app); missingUse.tap()
+        let failure = app.alerts["无法用于播放"]
+        XCTAssertTrue(failure.waitForExistence(timeout:3))
+        XCTAssertTrue(failure.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","原选择已保留")).firstMatch.exists)
+        attach(app,"成品文件缺失时的明确提示")
+        failure.buttons["知道了"].tap(); XCTAssertTrue(app.tabBars.buttons["工坊"].isSelected)
+        app.tabBars.buttons["播放"].tap()
+        XCTAssertTrue(selectedName.waitForExistence(timeout:3)); XCTAssertEqual(selectedName.label,previousName)
+        let retainedState = app.staticTexts["playback.state"]; reveal(retainedState,in:app)
+        XCTAssertTrue(retainedState.label.contains("未准备"))
     }
 
     @MainActor func testWorkshopPreviewsStopOnModesTabsSelectorsSettingsAndShare() {
