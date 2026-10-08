@@ -9,6 +9,7 @@ struct AudioEditorView: View {
         self.coordinator = coordinator; preview = coordinator.preview; self.previewOwner = previewOwner
     }
     private var isPreviewActive:Bool { previewOwner.map { preview.isOwned(by:$0) } ?? preview.isActive }
+    private var previewTime:Double { previewOwner.map { preview.hasContext(owner:$0) ? preview.currentTime : 0 } ?? preview.currentTime }
     private func stopPreview() {
         if let previewOwner { preview.stop(owner:previewOwner) } else { preview.stop() }
     }
@@ -63,7 +64,10 @@ struct AudioEditorView: View {
             Button("■ 停止试听") { stopPreview() }.disabled(!isPreviewActive)
                 .accessibilityIdentifier("playback.preview.stop")
                 .accessibilityValue(isPreviewActive ? (preview.state == .playing ? "正在试听" : "正在准备") : "未在试听")
-            LabeledContent("试听进度", value: AudioPlaybackSettings.time(previewOwner.map { preview.hasContext(owner:$0) ? preview.currentTime : 0 } ?? preview.currentTime))
+            LabeledContent("试听进度", value: AudioPlaybackSettings.time(previewTime))
+                .accessibilityElement(children:.combine)
+                .accessibilityIdentifier("playback.preview.progress")
+                .accessibilityValue(String(format:"%.3f",previewTime))
             if previewOwner.map({preview.hasContext(owner:$0)}) ?? true,let error = preview.errorMessage { Text(error).foregroundStyle(.orange) }
             Button("应用这个播放设置") { coordinator.applyPlaybackSettings() }.buttonStyle(PaperButtonStyle(primary:true))
                 .accessibilityIdentifier("playback.apply")

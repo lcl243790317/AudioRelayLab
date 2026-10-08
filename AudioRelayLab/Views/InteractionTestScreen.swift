@@ -1,5 +1,24 @@
 import SwiftUI
+import AVFoundation
 #if DEBUG
+/// A real, longer local file keeps full-preview exit checks independent of AX snapshot latency.
+@MainActor enum PreviewInteractionFixture {
+    static func make() throws -> AudioAsset {
+        let source = try AudioFileManager.loadBundledAudio()
+        let input = try AVAudioFile(forReading:AudioFileManager.url(for:source))
+        guard let buffer = AVAudioPCMBuffer(pcmFormat:input.processingFormat,frameCapacity:AVAudioFrameCount(input.length)) else {
+            throw LabError.invalidFormat
+        }
+        try input.read(into:buffer)
+        let url = try AudioFileManager.audioDirectory().appendingPathComponent("试听退出测试.wav")
+        do {
+            let output = try AVAudioFile(forWriting:url,settings:input.processingFormat.settings)
+            for _ in 0..<8 { try output.write(from:buffer) }
+        }
+        return try AudioFileManager.inspect(url:url,displayName:"试听退出测试",id:UUID(uuidString:"16300000-0000-4000-8000-000000000020") ?? UUID(),source:.voiceLabRecording)
+    }
+}
+
 /// Debug-only harness uses the same production selection and keyboard controls.
 struct InteractionTestScreen: View {
     @State private var text = ""

@@ -1,6 +1,6 @@
 # AudioRelayLab 音频接力实验室
 
-最近交付版本：**1.6.6 / build 16**。当前工作区在此基础上增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出。版本号暂未递增；最新本轮 Simulator Debug 和 274 项 XCTest 已通过，UI 20 项中 19 通过、1 项混音来源定位失败。该显示／定位问题已修正，继续完整验证，尚未生成本轮 IPA。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，首次检查见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)，远端进展见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
+最近交付版本：**1.6.6 / build 16**。当前工作区在此基础上增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出。版本号暂未递增；第 30 次本轮 Simulator Debug 和 274 项 XCTest 已通过，UI 完成 15 项（13 通过、2 失败）后触及任务时限。已修订等待与音频夹具并增加五秒试听完成／取消回归，继续 275 XCTest／20 UI 的完整验证，尚未生成本轮 IPA。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，首次检查见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)，远端进展见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
 
 工作分支为 `feature/revoice-ios-1.6.0`。首次本地验证后，用户在当前会话明确授权提交／推送及标准完整 macOS CI，实际结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。不合并 main、不创建 Release、不部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
 

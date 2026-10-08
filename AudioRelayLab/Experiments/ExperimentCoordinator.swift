@@ -111,6 +111,9 @@ import UniformTypeIdentifiers
         }
         if audio == nil { useTestAudio() }
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("preview-lifecycle-test"),let fixture = try? PreviewInteractionFixture.make() {
+            _ = selectLocal(fixture)
+        }
         if ProcessInfo.processInfo.arguments.contains("mix-interaction-test") || ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") || ProcessInfo.processInfo.arguments.contains("library-interaction-test"),let source = try? AudioFileManager.loadBundledAudio(),
            let sourceURL = try? AudioFileManager.url(for:source),let folder = try? AudioFileManager.audioDirectory() {
             let id = UUID(uuidString:"16300000-0000-4000-8000-000000000013") ?? UUID()

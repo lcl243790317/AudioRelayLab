@@ -224,8 +224,9 @@ final class InteractionUITests: XCTestCase {
         XCTAssertFalse(app.keyboards.firstMatch.exists); XCTAssertEqual(editor.value as? String,"first\nsecond")
         editor.tap(); XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3))
         app.buttons["select.背景音乐"].tap()
+        XCTAssertTrue(app.navigationBars["背景音乐"].waitForExistence(timeout:10))
         let hidden = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.keyboards.firstMatch)
-        XCTAssertEqual(XCTWaiter.wait(for:[hidden],timeout:3),.completed)
+        XCTAssertEqual(XCTWaiter.wait(for:[hidden],timeout:10),.completed)
         app.buttons["取消"].tap()
         XCTAssertEqual(editor.value as? String,"first\nsecond")
     }
@@ -461,14 +462,25 @@ final class InteractionUITests: XCTestCase {
     }
 
     @MainActor func testPlaybackPreviewsStopOnTabsPickerNavigationAndConnection() {
-        let app = XCUIApplication(); app.launchArguments = ["mix-interaction-test","day-snapshot"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["mix-interaction-test","preview-lifecycle-test","day-snapshot"]; app.launch()
         let stop = app.buttons["playback.preview.stop"]
+        let progress = app.descendants(matching:.any)["playback.preview.progress"]
         for mode in ["playback.preview.full","playback.preview.fiveSeconds"] {
             for destination in ["工坊","音频库","picker","history","cloud","speed"] {
                 let start = app.buttons[mode]
                 reveal(start,in:app,towardTop:true); start.tap()
-                let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在试听"),object:stop)
-                XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:5),.completed)
+                if mode == "playback.preview.fiveSeconds" {
+                    // Five seconds can finish before a hosted runner returns its AX snapshot.
+                    // Require real audio progress; completion preserves it until this page exits.
+                    let advanced = XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in
+                        guard let value = progress.value as? String,let seconds = Double(value) else { return false }
+                        return seconds > 0 && seconds < 6
+                    },object:nil)
+                    XCTAssertEqual(XCTWaiter.wait(for:[advanced],timeout:10),.completed)
+                } else {
+                    let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在试听"),object:stop)
+                    XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:10),.completed)
+                }
                 switch destination {
                 case "工坊","音频库":
                     app.tabBars.buttons[destination].tap(); app.tabBars.buttons["播放"].tap()
@@ -487,6 +499,7 @@ final class InteractionUITests: XCTestCase {
                 }
                 XCTAssertTrue(stop.waitForExistence(timeout:3)); XCTAssertFalse(stop.isEnabled)
                 XCTAssertEqual(stop.value as? String,"未在试听")
+                XCTAssertEqual(progress.value as? String,"0.000")
             }
         }
         attach(app,"playback-preview-stopped-after-exit")

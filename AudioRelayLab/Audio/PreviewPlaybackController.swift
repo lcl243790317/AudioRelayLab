@@ -65,7 +65,11 @@ import Combine
                 Task { @MainActor [weak self] in
                     guard let self, self.token == currentToken else { return }
                     if let player = self.player { self.currentTime = self.sourceTimeOffset+player.currentTime }
-                    if let deadline = self.deadline, ProcessInfo.processInfo.systemUptime >= deadline { self.stop() }
+                    if let deadline = self.deadline, ProcessInfo.processInfo.systemUptime >= deadline {
+                        let finished = self.currentTime
+                        self.stop()
+                        self.currentTime = finished
+                    }
                 }
             }
           } catch {

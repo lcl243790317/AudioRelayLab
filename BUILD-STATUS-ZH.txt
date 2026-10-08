@@ -1,36 +1,30 @@
-AudioRelayLab 1.6.6 / build 16 — 无签名测试版验证状态
+AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-08）
 
-首次批删清单、多选详情、连接页主题、正式音量保留、播放页退出停止试听五项修复。
-分支 feature/revoice-ios-1.6.0；修复见 REVOICE-1.6.6-ZH.md。
-本地 94 项 Python 回归通过，App/测试静态检查通过。静态检查不是 Swift 编译证据。
+独立配音草稿、识别片段、冻结任务与明确取回、成品导航、统一回听退出。
+版本仍为 1.6.6 / build 16，候选按源码与 IPA 哈希区分；说明见 WORKSHOP-DRAFT-TASKS-ZH.md。
+分支 feature/revoice-ios-1.6.0；当前会话已授权标准公开 CI，不合并 main、不发布、不部署。
+首次 Windows 94 项 Python 回归、静态与语法检查通过；首次检查点见 WORKSHOP-LOCAL-VALIDATION-ZH.md。
 
-本轮真实 CI 证据：
-- 源码提交：e6da54ddd7ee8680d7ef8acc93a9cb0479517fe7
-- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763
-- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
-- 实际 iPhone Simulator XCTest：249 项，0 失败，TEST SUCCEEDED。
-- UI 测试：18 项通过；真实录屏见 build/ui-interaction.mp4。
-- 小屏布局：iPhone SE（第三代）UI 截图测试 1 项通过；常规屏及小屏附件展示已选音乐后的浅色、深色和大字体时间控件。
-- 隔离 HTTPS 下载：8 次成功，202 续取回已验证；未发送长期密钥。
-- Python 自检：94 项通过。
-- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
-- 本地交付 IPA：dist/AudioRelayLab-1.6.6-unsigned.ipa（CI Artifact 内原名为 dist/AudioRelayLab-unsigned.ipa）；1539991 字节。
-- SHA-256：dbef75afc81150f26104e57786a611332b4e1e490f9fdcff4b0ca676e3980a87
-- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
-- 环境：macOS 26.6.2 / 25G83；Xcode 26.6 / 17F113；iPhoneOS SDK 26.5；Swift 6.3.3；XcodeGen 2.46.0。
-- Swift 编译警告：2；全部构建警告：'defer' statement at end of scope always executes immediately; replace with 'do' statement to silence this warning；Metadata extraction skipped. No AppIntents.framework dependency found.
-- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
-- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
+待本轮真实 CI 更新：
+- 源码提交：5d92321905e7096a8f63cfb2158a4a0090173d4b
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37817892773
+- 第 30 次标准 macos-26-intel 构建：Simulator Debug 与 274 XCTest 通过；UI 完成 15 项（13 通过、2 失败）后任务超过 75 分钟时限取消。
+- 本地修订等待与实际音频夹具，新增原生五秒试听完成／取消回归；当前应执行 275 XCTest、20 UI、小屏 1 项。完整流程时限为 150 分钟。
+- 尚未完成整条流水线，没有当前候选 IPA；修订后最终数量与哈希须从新 run 原始日志及产物核对。
+- 第 29 次未取得 arm64 托管 runner，第 27 次 19/20 UI 通过等阶段结果见 WORKSHOP-CI-VALIDATION-ZH.md。
+- 历史 1.6.6 包及 249 XCTest / 18 UI 结果另存于 REVOICE-1.6.6-TEST-REPORT-ZH.md，不作为当前候选证据。
 
 真机已有观察（历史版本）：
 重签名设备曾出现 NSCocoaErrorDomain:513 / NSPOSIXErrorDomain:1；1.6.3 已改前台取回路径。
 模拟器无法证明所有重签名权限、锁屏和后台调度行为；新版本仍需用户真机验收。
 
-本版真机检查：
-- 两个库首次各勾选五个文件，核对确认数量与名称；取消重开、改单和单删，以及部分失败重试。
-- 展开配音详情与混音来源后进入多选，确认详情隐藏；退出后入口恢复并收起。
-- 从工具菜单和配音页打开云端连接，检查浅深主题与大字体；电脑连接和删除确认同样跟随主题。
-- App 正式音量设为 4% 或 20%，试听音量设为不同值，多次应用设置仍保留正式音量。
-- 普通及五秒试听在准备中、播放中离开播放页或打开选择器/设置均停止；返回不恢复，正式延迟播放保持原行为。
-- 继续回归混音时序、手动生成与手改指令、键盘失焦、两库离页停止回听和按钮回弹。
-- IPA 自行重签名；实际听感、通话和后台行为由真机验收。
+本轮真机检查：
+- 本轮候选自行重签名；实际设备端识别、听感、通话、路由、锁屏与后台行为尚无本轮证据。
+- 文字、两种基础指令、手改自动指令、输入与识别片段：后台／重启恢复，拒绝权限、取消、识别失败保留原稿。
+- 长录音后半段语句：确认实际识别来自所选 0.3～60 秒，替换／追加／撤销正确，播放和音乐参数不影响识别区间。
+- 旧任务与新稿并存：断网／锁屏／重启仍取回原 ID，停止后的迟到结果不入库，手动恢复只保存一次。
+- 连接配置修复、错误类别和任务过期提示；普通回归使用本地夹具和模拟服务。
+- 配音、混音和音频库用于播放：正确素材与标签，失败保留页面与选择，跳转不倒计时。
+- 各页面回听在准备和播放阶段退出即停，旧页面不误停新回听，正式延迟播放与音量独立。
+- 小屏／大字体／浅深主题／键盘；继续多选、混音时序、历史兼容与音频安全回归。
+- 完整逐步操作见 WORKSHOP-LOCAL-VALIDATION-ZH.md 的真机操作清单。

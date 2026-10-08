@@ -91,4 +91,29 @@ final class WorkshopNavigationTests:XCTestCase {
         XCTAssertFalse(model.preview.hasContext(owner:first)); XCTAssertNil(model.preview.errorMessage); XCTAssertEqual(model.preview.currentTime,0)
         model.preview.stop(owner:first); XCTAssertTrue(model.preview.isOwned(by:second)); model.preview.stop(owner:second)
     }
+    @MainActor func testFiveSecondPreviewCompletionRetainsProgressUntilItsOwnerExits() async throws {
+        let model = ExperimentCoordinator(draftStore:nil),asset = try AudioFileManager.loadBundledAudio(),owner = UUID(),other = UUID()
+        defer { model.preview.stop() }
+        model.preview.play(asset:asset,settings:.init(volume:0),fiveSeconds:true,owner:owner)
+        for _ in 0..<100 where model.preview.state == .preparing { try await Task.sleep(for:.milliseconds(10)) }
+        XCTAssertEqual(model.preview.state,.playing,model.preview.errorMessage ?? "")
+        for _ in 0..<120 where model.preview.isActive { try await Task.sleep(for:.milliseconds(50)) }
+        XCTAssertEqual(model.preview.state,.idle); XCTAssertNil(model.preview.errorMessage)
+        XCTAssertGreaterThan(model.preview.currentTime,4.5); XCTAssertLessThan(model.preview.currentTime,6)
+        XCTAssertTrue(model.preview.hasContext(owner:owner)); XCTAssertFalse(model.preview.isOwned(by:owner))
+        let completed = model.preview.currentTime
+        model.preview.stop(owner:other); XCTAssertEqual(model.preview.currentTime,completed)
+        model.preview.stop(owner:owner); XCTAssertEqual(model.preview.currentTime,0)
+        model.preview.play(asset:asset,settings:.init(volume:0),fiveSeconds:true,owner:owner)
+        model.preview.stop(owner:owner)
+        try await Task.sleep(for:.milliseconds(100))
+        XCTAssertFalse(model.preview.isActive); XCTAssertEqual(model.preview.currentTime,0)
+        model.preview.play(asset:asset,settings:.init(volume:0),fiveSeconds:true,owner:owner)
+        for _ in 0..<100 where model.preview.state == .preparing { try await Task.sleep(for:.milliseconds(10)) }
+        XCTAssertEqual(model.preview.state,.playing,model.preview.errorMessage ?? "")
+        model.preview.stop(owner:owner)
+        try await Task.sleep(for:.milliseconds(100))
+        XCTAssertFalse(model.preview.isActive); XCTAssertEqual(model.preview.currentTime,0)
+        XCTAssertEqual(model.state,.idle)
+    }
 }
