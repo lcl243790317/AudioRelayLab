@@ -343,8 +343,10 @@ final class InteractionUITests: XCTestCase {
         reveal(revoice,in:app); revoice.tap()
         XCTAssertTrue(app.staticTexts["批删测试配音正文 17"].exists)
         reveal(mix,in:app,towardTop:true); mix.tap()
-        let origin = app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","人声：批删测试原声")).firstMatch
-        XCTAssertTrue(origin.exists); XCTAssertFalse(origin.label.contains("16300000"))
+        let origin = app.staticTexts["library.mix.sources."+mixID]
+        XCTAssertTrue(origin.waitForExistence(timeout:3))
+        XCTAssertTrue(origin.label.contains("人声：批删测试原声")); XCTAssertTrue(origin.label.contains("音乐：内置测试音"))
+        XCTAssertFalse(origin.label.contains("16300000"))
         app.buttons["library.selection"].tap()
         XCTAssertFalse(revoice.exists); XCTAssertFalse(mix.exists)
         XCTAssertFalse(app.staticTexts["批删测试配音正文 17"].exists); XCTAssertFalse(origin.exists)
@@ -356,7 +358,9 @@ final class InteractionUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["批删测试配音正文 17"].exists)
         revoice.tap(); XCTAssertTrue(app.staticTexts["批删测试配音正文 17"].exists)
         reveal(mix,in:app,towardTop:true); XCTAssertFalse(origin.exists)
-        mix.tap(); XCTAssertTrue(origin.exists)
+        mix.tap(); XCTAssertTrue(origin.waitForExistence(timeout:3))
+        XCTAssertTrue(origin.label.contains("人声：批删测试原声")); XCTAssertTrue(origin.label.contains("音乐：内置测试音"))
+        XCTAssertFalse(origin.label.contains("16300000"))
         attach(app,"selection-details-restored")
     }
 

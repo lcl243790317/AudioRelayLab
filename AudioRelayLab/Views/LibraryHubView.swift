@@ -92,6 +92,7 @@ struct LocalAudioLibraryView: View {
                         if !selecting, let source = asset.mixSource {
                             DisclosureGroup("混音来源") {
                                 PaperCaption("人声：\(sourceName(source.voiceAssetID))\n音乐：\(sourceName(source.musicAssetID))")
+                                    .accessibilityIdentifier("library.mix.sources.\(asset.id.uuidString)")
                                 PaperCaption("人声音量 \(source.volumes.voice) · 音乐音量 \(source.volumes.music) · 总音量 \(source.volumes.master)")
                             }.accessibilityIdentifier("library.mix.details.\(asset.id.uuidString)")
                         }
@@ -185,7 +186,7 @@ struct LocalAudioLibraryView: View {
         }
         pendingDeletion = request
     }
-    private func sourceName(_ id:UUID) -> String { coordinator.library.first(where:{$0.id == id})?.libraryName ?? "原素材已删除" }
+    private func sourceName(_ id:UUID) -> String { coordinator.library.first(where:{$0.id == id})?.fileName ?? "原素材已删除" }
 }
 
 private struct LibraryPreviewStopButton: View {

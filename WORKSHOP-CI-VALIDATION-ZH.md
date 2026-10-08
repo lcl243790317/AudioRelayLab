@@ -10,6 +10,7 @@
 | [24 / 37715213394](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37715213394) | `39ad349e62195d4da76e142ea559a4d8de98435a` | Python 94 项通过（44.113 秒）；Simulator Debug 编译通过；274 项 XCTest 0 失败（108.681 秒）。UI 执行 20 项、18 通过、2 失败（1806.950 秒）；小屏、iPhoneOS Release 和 IPA 因 UI 失败未执行。 |
 | [25 / 37733320493](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37733320493) | `1376df95974855ba329dae50a1eda84450a134a4` | 两处 UI 定位已修复。继续核对 D 时发现播放页保留滚动位置可能隐藏新素材，追加定位修复后主动取消这次过时运行；未完成全量测试，不计通过证据。 |
 | [26 / 37733946738](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37733946738) | `75be5eb8211f9410594d1b66718a2a56f3ed33ac` | Python 94 项通过（44.078 秒）、静态检查、工程生成及 Simulator Debug 编译通过。XCTest 前 loopback HTTPS 夹具在约 13 秒等待内未就绪，curl 退出 7；尚未开始 XCTest／UI，没有 IPA。 |
+| [27 / 37735342213](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37735342213) | `727a3469afa19f669d233b09f86098238b6b57f4` | Python 94 项通过（43.731 秒）；Simulator Debug 编译通过；274 项 XCTest 0 失败（107.583 秒）。20 项 UI 中 19 通过、1 失败（1806.800 秒）：退出多选后混音来源名称定位。小屏、iPhoneOS Release、IPA 因 UI 失败未执行。 |
 
 第 24 次运行的两项 UI 失败均已定位到测试断言：
 
@@ -23,6 +24,12 @@
 第 26 次失败产物 `11530793341`（137,590 字节）已核对官方 SHA-256：`2fb48c814eb6b47413ef4f013a23f0fc82c047d224ef2b07613a649dc79ae487`。夹具进程被清理时仍存在，`build-revoice-network.log` 为 0 字节，没有 Python 异常或应用测试失败记录；不据此推断具体宿主机性能原因。就绪检查改为最多 60 秒，检测进程提前退出并保留启动耗时及失败日志；只重试连接拒绝／连接超时，证书和 HTTP 错误立即失败，不放松生产 TLS 或跳过下载测试。
 
 实际 runner 环境（第 23 次运行）：macOS 26.6.2 / 25G83，Xcode 26.6 / 17F113，iPhoneOS SDK 26.5，Apple Swift 6.3.3。该环境不能代替 iOS 18.1.1 签名真机。
+
+就绪检查修订后，Windows 本地 YAML 解析、项目静态检查与 `git diff --check` 通过；现有 `test_record_ci_result.py` 的 12 项证据判定回归通过（0.004 秒）。这些检查不计为 Swift 编译或 Simulator 测试结果。
+
+2026-10-08 关机后恢复检查：源码和测试已保存在 `727a346`，仅两份验证文档尚未提交，均保留。远端 CI 不依赖本机持续开机，第 27 次运行已完成。新增的成品导航（86.260 秒）与工坊回听退出（160.642 秒）UI 均通过；可信 HTTPS 夹具实际在 40 秒后就绪，9 次成功下载、2 次 202、0 次拒绝，未收到长期凭据。
+
+第 27 次 Artifact `11533690648`（744,099,195 字节）已核对官方 SHA-256：`d30b83322c9daa0e088f94cae85c435bb531c6e054d06ea7f00a4b9d9f600e4b`。失败测试录像显示混音来源已展开，旧素材显示名包含来源类型和短 ID，导致旧固定前缀查询未命中。来源栏改用原素材名称，加上稳定的 accessibility 标识；回归继续检查多选时隐藏、退出后折叠、再展开后两种原素材名称可见且不追加内部短 ID。保留这次真实失败记录，继续全量标准 CI。
 
 ## 验证边界
 
