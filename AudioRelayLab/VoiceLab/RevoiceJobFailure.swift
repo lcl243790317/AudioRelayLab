@@ -27,8 +27,8 @@ enum RevoiceJobFailureKind:String,Codable,Sendable {
             }
         }
         if let error = error as? RevoiceTransferError {
-            if error.failure.domain == NSURLErrorDomain,let code = URLError.Code(rawValue:error.failure.code) {
-                return classify(URLError(code))
+            if error.failure.domain == NSURLErrorDomain {
+                return classify(URLError(URLError.Code(rawValue:error.failure.code)))
             }
             return .localSave
         }
