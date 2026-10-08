@@ -12,6 +12,7 @@
 | [26 / 37733946738](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37733946738) | `75be5eb8211f9410594d1b66718a2a56f3ed33ac` | Python 94 项通过（44.078 秒）、静态检查、工程生成及 Simulator Debug 编译通过。XCTest 前 loopback HTTPS 夹具在约 13 秒等待内未就绪，curl 退出 7；尚未开始 XCTest／UI，没有 IPA。 |
 | [27 / 37735342213](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37735342213) | `727a3469afa19f669d233b09f86098238b6b57f4` | Python 94 项通过（43.731 秒）；Simulator Debug 编译通过；274 项 XCTest 0 失败（107.583 秒）。20 项 UI 中 19 通过、1 失败（1806.800 秒）：退出多选后混音来源名称定位。小屏、iPhoneOS Release、IPA 因 UI 失败未执行。 |
 | [28 / 37813461196](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37813461196) | `af65c32fe910a50bfe2685840da395ce1328ed1d` | 关机恢复后修正混音来源显示及定位；尚在排队时发现失败反馈会被长列表遮住，补充修复后取消这次过时运行。不计为测试通过证据。 |
+| [29 / 37815191810](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37815191810) | `7a6dcc7d0386b0a953644e81058f73edac67dcaa` | 2026-10-08 17:15 UTC 触发标准完整构建；正在等待结果，尚不能计为当前源码通过。 |
 
 第 24 次运行的两项 UI 失败均已定位到测试断言：
 

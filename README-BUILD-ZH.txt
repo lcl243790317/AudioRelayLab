@@ -1,4 +1,4 @@
-当前 1.6.5 / build 15：双向起播混音、统一手动配音、可编辑自动指令、批量删除、键盘收起及主题改版。详细功能见 REVOICE-1.6.5-ZH.md；实际编译与交付证据见 BUILD-STATUS-ZH.txt。
+当前源码基于 1.6.6 / build 16：独立配音草稿、识别片段、最近任务取回、成品到播放页的衔接及统一试听退出。版本号暂未递增，本轮候选必须按源码 SHA 和 IPA 哈希区分，历史 1.6.6 包不包含这些改动。功能见 WORKSHOP-DRAFT-TASKS-ZH.md；实际编译与交付证据见 WORKSHOP-CI-VALIDATION-ZH.md 和 BUILD-STATUS-ZH.txt。
 
 AudioRelayLab — 构建与验证说明
 
@@ -47,7 +47,7 @@ gh run download <运行编号> --name AudioRelayLab-iOS-Build --dir dist
 4. 必须完成的真实流水线
 macos-latest 打印 macOS、Xcode、iPhoneOS SDK、Swift、XcodeGen 和源码 SHA。
 静态检查 / Python 测试 → xcodegen generate / xcodebuild -list。
-xcodebuild Simulator Debug → 实际 iPhone Simulator 上执行 XCTest → generic iOS Release。
+xcodebuild Simulator Debug → 实际 iPhone Simulator 全部 XCTest → 完整 UI 回归 → iPhone SE 小屏检查 → generic iOS Release。
 两次编译禁用代码签名，用 set -euo pipefail 与 tee 同时保留输出和真实退出码。
 真机 Release 成功后再打包 IPA，执行 verify_ipa.py，检查日志错误与 warning。
 具体执行次序和 XCTest destination 以 workflow 的完整命令为准。
@@ -92,26 +92,28 @@ https://developer.apple.com/documentation/swift/handling-cocoa-errors-in-swift
 https://developer.apple.com/documentation/avfaudio/avaudioplayernode/play(at:)
 https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md
 
-8. 本轮音频与 DSP 复现
+8. 当前音频与工坊复现
 CI 在 XcodeGen 前用 Python 自有正弦信号生成 Bundle 测试 WAV，并通过 ffmpeg 真正编码
 MP3/M4A/AAC/WAV/AIFF/AIFC/CAF/FLAC。夹具不含用户人声，不把扩展名改名冒充格式。
 请先运行 generate-audio-fixtures.py，否则 codec XCTest 缺少资源应真实失败。
 ffmpeg 仅用于 CI 夹具生成，不进入 iOS App。App 解码使用 AVFoundation。
-Voice DSP 是 vendored 固定版本 MIT C++ 源码，通过 bridging header 供 Swift 使用；
-CLANG_CXX_LANGUAGE_STANDARD=c++17，DSP -O3，不需要在线取包或额外模型。
-project.yml 为 Vendor 与 DSP 分别配置，防止编入其他平台代码。
-Artifact 添加研究、Voice 真机协议、依赖版本及完整第三方许可证。
+手机实时 Voice DSP 已在 1.6.1 移除，不再编译 vendored C++ 或实时麦克风处理链。
+当前设备端识别使用 Speech；混音和音频处理使用 AVFoundation，云端生成只接收文字与目标参数。
+XCTest 使用本地 PCM、录音／识别注入和 URLProtocol 模拟提交；异步结果下载使用隔离的可信 loopback HTTPS 服务。
+夹具就绪等待最多 60 秒，证书或 HTTP 错误直接失败；不放松生产 TLS，不调用真实付费 GPU。
 
-自动测试包括真实编码读取/复制/AVAudioPlayer 参数、frame seek、CAF 裁剪、
-预设 Codable/兼容、真实 PCM DSP 数值、dry/wet、切换、ring→CAF 写入/清理、
-原生输出动态处理器配置与取消状态；原生 AVAudioEngine 离线渲染实际处理后
-Voice + Music + TimePitch + Master + DynamicsProcessor，验证音量独立、起点和 rate。合成 PCM 不代表真人声音质量或实际麦克风。
+自动测试包括真实编码读取／复制、AVAudioPlayer 参数、frame seek、CAF 裁剪、历史兼容、
+原生 AVAudioEngine 离线混音、音量独立、起点与 rate，以及草稿原子保存／恢复、独立识别区间内容、
+冻结任务重试／停止／取回／单次入库、导航失败保护和页面回听取消。
+长音频夹具包含三个不同 PCM 区域，检查选中后半段的实际样本，不只检查时长。
+UI 回归检查真实标签、系统分享页、选择器、失败提示和布局；合成 PCM 不证明真人语音质量或实际麦克风。
 具体最终测试数/工具链/IPA SHA 以 BUILD-STATUS 和 dist/build-evidence.json 为准。
 
-9. 1.2.1 真机问题回归
+9. 保留的音频与真机问题回归
 DeviceBugRegressionTests 检查原生 picker delegate→真实 MP3 导入、取消、默认测试音
 ID/文件/修改时间复用及旧副本合并；0.5/1/2x 真实离线 PCM 时长与非零能量；
-两套真实播放器 2x 内容在 0.8 秒 deadline 前/后的时间线；实际生产 Voice/Mixer
-启动与 CAF 保存（可运行的 Simulator IO），另注入同类通知检查未变路由不误停。
+两套真实播放器 2x 内容在 0.8 秒 deadline 前／后的时间线；当前录音器与离线 Mixer 的
+CAF 保存及通知处理，另注入同类通知检查未变路由不误停。
 CI 仅给临时 iPhone Simulator 的本 App 授予麦克风权限；不改变用户设备权限。
 Simulator 录音可能为零输入，不能证明真人音色、声学延迟或 18.1.1 Files 点击。
+本轮真机逐步清单见 WORKSHOP-LOCAL-VALIDATION-ZH.md；VOICE-LAB-TEST-PROTOCOL-ZH.md 中旧实时流程仅为历史资料。
