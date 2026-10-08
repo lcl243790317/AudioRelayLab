@@ -30,7 +30,7 @@ final class WorkshopNavigationTests:XCTestCase {
             XCTAssertEqual(model.voiceMix.settings,settings); XCTAssertEqual(model.voiceMix.timing,timing)
         }
     }
-    @MainActor func testMissingAudioAndActiveOperationKeepPageValidSelectionAndFormalPlayback() throws {
+    @MainActor func testMissingAudioAndActiveOperationKeepPageValidSelectionAndFormalPlayback() async throws {
         let selected = UserDefaults.standard.data(forKey:"selectedAudio")
         defer { UserDefaults.standard.set(selected,forKey:"selectedAudio") }
         let model = ExperimentCoordinator(draftStore:nil),original = try XCTUnwrap(model.audio)
@@ -42,7 +42,10 @@ final class WorkshopNavigationTests:XCTestCase {
         XCTAssertNotNil(model.navigation.playbackSelectionFailure)
         XCTAssertTrue(model.navigation.playbackSelectionFailure?.message.contains("原选择已保留") == true)
         model.navigation.dismissPlaybackSelectionFailure(); XCTAssertNil(model.navigation.playbackSelectionFailure)
-        model.prepare(); defer { model.stop() }
+        model.engineKind = .audioPlayer; model.profile = .mixingPlayback; model.delay = 30
+        model.start(); defer { model.stop() }
+        for _ in 0..<100 where model.state == .preparing { try await Task.sleep(for:.milliseconds(50)) }
+        XCTAssertEqual(model.state,.waiting,model.errorMessage ?? "")
         let state = model.state
         XCTAssertFalse(model.navigation.useForPlayback(original,coordinator:model))
         XCTAssertEqual(model.navigation.tab,.library); XCTAssertEqual(model.state,state); XCTAssertTrue(model.isRunning)
