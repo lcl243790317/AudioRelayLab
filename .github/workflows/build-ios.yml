@@ -141,8 +141,38 @@ jobs:
             wait "$DOWNLOAD_FIXTURE_PID" || true
           }
           trap cleanup_download_fixture EXIT
-          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
-            --cacert build/revoice-fixture.crt https://127.0.0.1:8765/ready
+          # Cold hosted runners can still be starting Python after the simulator boots.
+          # Bound startup separately from tests; never retry certificate/HTTP failures.
+          DOWNLOAD_FIXTURE_STARTED=$SECONDS
+          DOWNLOAD_FIXTURE_READY=false
+          while (( SECONDS - DOWNLOAD_FIXTURE_STARTED < 60 )); do
+            if ! kill -0 "$DOWNLOAD_FIXTURE_PID" 2>/dev/null; then
+              echo 'Loopback HTTPS fixture exited before readiness.'
+              cat build-revoice-network.log
+              exit 1
+            fi
+            if curl --fail --silent --show-error --connect-timeout 1 --max-time 3 \
+              --cacert build/revoice-fixture.crt https://127.0.0.1:8765/ready \
+              2> build/revoice-fixture-readiness.log; then
+              DOWNLOAD_FIXTURE_READY=true
+              break
+            else
+              DOWNLOAD_FIXTURE_CURL_STATUS=$?
+            fi
+            if [ "$DOWNLOAD_FIXTURE_CURL_STATUS" -ne 7 ] && [ "$DOWNLOAD_FIXTURE_CURL_STATUS" -ne 28 ]; then
+              cat build/revoice-fixture-readiness.log build-revoice-network.log
+              exit "$DOWNLOAD_FIXTURE_CURL_STATUS"
+            fi
+            sleep 1
+          done
+          if [ "$DOWNLOAD_FIXTURE_READY" != true ]; then
+            echo 'Loopback HTTPS fixture did not become ready within 60 seconds.'
+            cat build/revoice-fixture-readiness.log build-revoice-network.log
+            ps -p "$DOWNLOAD_FIXTURE_PID" -o pid=,stat=,etime=,comm= || true
+            exit 1
+          fi
+          printf 'Loopback HTTPS fixture ready after %s seconds.\n' \
+            "$(( SECONDS - DOWNLOAD_FIXTURE_STARTED ))" | tee -a build/revoice-fixture-readiness.log
           # Capture real, rendered SwiftUI pages from the installed app, before tests change its library.
           xcrun simctl ui "$SIMULATOR_UDID" appearance light
           xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab
@@ -312,6 +342,7 @@ jobs:
             REVOICE-1.6.5-ZH.md
             REVOICE-1.6.6-ZH.md
             build/revoice-download-fixture-report.json
+            build/revoice-fixture-readiness.log
             build/ui-*.mp4
             build/ui-attachments/
             build/ui-small-attachments/

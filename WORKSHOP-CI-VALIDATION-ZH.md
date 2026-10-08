@@ -8,6 +8,8 @@
 |---|---|---|
 | [23 / 37714884939](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37714884939) | `638f77b56b827152208dfaf9c9e4900ec3fbeee3` | Python 94 项通过（45.002 秒）；静态检查与工程生成通过。Simulator Debug 编译失败：`URLError.Code(rawValue:)` 非可选结果被用于可选绑定。未运行 XCTest／UI，未生成 IPA。 |
 | [24 / 37715213394](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37715213394) | `39ad349e62195d4da76e142ea559a4d8de98435a` | Python 94 项通过（44.113 秒）；Simulator Debug 编译通过；274 项 XCTest 0 失败（108.681 秒）。UI 执行 20 项、18 通过、2 失败（1806.950 秒）；小屏、iPhoneOS Release 和 IPA 因 UI 失败未执行。 |
+| [25 / 37733320493](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37733320493) | `1376df95974855ba329dae50a1eda84450a134a4` | 两处 UI 定位已修复。继续核对 D 时发现播放页保留滚动位置可能隐藏新素材，追加定位修复后主动取消这次过时运行；未完成全量测试，不计通过证据。 |
+| [26 / 37733946738](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37733946738) | `75be5eb8211f9410594d1b66718a2a56f3ed33ac` | Python 94 项通过（44.078 秒）、静态检查、工程生成及 Simulator Debug 编译通过。XCTest 前 loopback HTTPS 夹具在约 13 秒等待内未就绪，curl 退出 7；尚未开始 XCTest／UI，没有 IPA。 |
 
 第 24 次运行的两项 UI 失败均已定位到测试断言：
 
@@ -15,6 +17,10 @@
 - 真实系统分享页已经出现，失败附件的 accessibility hierarchy 记录关闭按钮标识为 `header.closeButton`，label 为小写 `close`；旧测试只查找“关闭”或大写 `Close`。改为检查分享页出现、点击实际按钮、等待分享页消失，再核对回听已停止。没有改变产品分享流程或跳过分享回归。
 
 第 24 次 Artifact `11524004560`（735,847,571 字节）已下载并核对官方 SHA-256：`4ca1b65ed9f1bb956bb27778bbe8a175399ba96b5f472add25a019931081179d`。原始失败记录保持，不把这次 UI 结果改记为通过。两处断言修复后继续标准完整流程；后续结果另行追加。
+
+播放页定位使用独立的一次性导航请求和 `ScrollViewReader`，只在明确“用于播放”成功后显示素材卡片；普通返回、选择失败和过时回调不会消费新的请求。没有通过重设整个页面 identity 来清空编辑状态，也不开始播放或倒计时。
+
+第 26 次失败产物 `11530793341`（137,590 字节）已核对官方 SHA-256：`2fb48c814eb6b47413ef4f013a23f0fc82c047d224ef2b07613a649dc79ae487`。夹具进程被清理时仍存在，`build-revoice-network.log` 为 0 字节，没有 Python 异常或应用测试失败记录；不据此推断具体宿主机性能原因。就绪检查改为最多 60 秒，检测进程提前退出并保留启动耗时及失败日志；只重试连接拒绝／连接超时，证书和 HTTP 错误立即失败，不放松生产 TLS 或跳过下载测试。
 
 实际 runner 环境（第 23 次运行）：macOS 26.6.2 / 25G83，Xcode 26.6 / 17F113，iPhoneOS SDK 26.5，Apple Swift 6.3.3。该环境不能代替 iOS 18.1.1 签名真机。
 
