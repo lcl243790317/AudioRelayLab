@@ -14,6 +14,8 @@
 | [28 / 37813461196](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37813461196) | `af65c32fe910a50bfe2685840da395ce1328ed1d` | 关机恢复后修正混音来源显示及定位；尚在排队时发现失败反馈会被长列表遮住，补充修复后取消这次过时运行。不计为测试通过证据。 |
 | [29 / 37815191810](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37815191810) | `7a6dcc7d0386b0a953644e81058f73edac67dcaa` | 17:15 UTC 触发，17:30 UTC 平台结束：未取得托管 runner，主任务取消、workflow failure。步骤为空，无测试、无 Artifact、无 IPA；官方注释提示 macOS arm64 容量不足。 |
 | [30 / 37817892773](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37817892773) | `5d92321905e7096a8f63cfb2158a4a0090173d4b` | Python 94 项通过（43.448 秒）；Simulator Debug 通过；274 项 XCTest 0 失败（131.142 秒）。UI 完成 15 项：13 通过、2 失败；第 16 项执行中超过 75 分钟任务时限，官方结论 cancelled，没有完整 UI 汇总。小屏、iPhoneOS Release、IPA 未执行。 |
+| [31 / 37830588378](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37830588378) | `a89d6b303f13512915b99e5eab45121275d9e601` | 补充真实正式倒计时回归后主动取消过时验证，Simulator 编译中止；XCTest／UI／小屏／Release／IPA 未执行，不计全量通过。 |
+| [32 / 37831419860](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37831419860) | `8c5a7ea4ad469c2046a39ccf9a7d8cf76139a413` | Simulator Debug、XCTest 步骤成功；UI 阶段触及 150 分钟任务时限，21:57 UTC 官方结论 cancelled。原始日志与 Artifact 不可用，不能核对实际用例数量／UI 失败位置。小屏／Release／IPA 未执行，无新 IPA。 |
 
 第 24 次运行的两项 UI 失败均已定位到测试断言：
 
@@ -41,6 +43,12 @@
 第 30 次 Artifact `11571264458`（320,712,162 字节）已下载并核对官方 SHA-256：`c7a5d71e4ca0478226e48c363474a2c692bcb959410255e23384807a25834fb3`。官方任务注释明确为 `The job has exceeded the maximum execution time of 1h15m0s`；18:56 UTC 发出的停止请求用于取得诊断，不能把这次取消记为通过。失败录像显示选择器已出现且键盘已收起，3 秒 AX 等待未及时结束；另一失败时 11.7 秒音频已接近结束。修订键盘检查，先等待选择页出现，再验证键盘消失；普通试听退出使用 DEBUG 专属实际长 PCM 文件。五秒试听自然结束后保留本页实际进度，退出／取消仍清零，UI 核对真实进度和退出状态，并新增原生播放器完成／准备取消／播放取消回归（当前应执行 275 XCTest／20 UI）。正式五秒时限保持不变。任务总时限改为 150 分钟，保持全量测试与小屏、Release、IPA 检查。
 
 第 31 次（run `37830588378`，源码 `a89d6b3`）启动后，继续核对发现正式播放保护回归仅覆盖准备阶段。现扩展同一回归：实际调用开始并等待原生播放器进入未来倒计时，再验证选择失败和页面试听清理保持正式状态与有效选择。测试总数不变；取消这次过时运行，修订后继续标准完整流程，不把部分步骤记为全量通过。
+
+第 32 次官方注释为 `The job has exceeded the maximum execution time of 2h30m0s`。Simulator Debug 步骤 19:26:18～19:30:27、XCTest 步骤 19:30:27～20:00:33 成功；完整 UI 步骤 20:00:33～21:53:06 被取消。最终上传 21:53:09 开始，主任务 21:57:18 结束，API 没有任何 Artifact；job 日志接口 404，下载的整 run 日志 ZIP 为 22 字节空归档。不能从步骤成功推断实际 275 项全部执行，也不能断定卡在 UI 用例或录屏清理。
+
+根据这次证据缺失，小范围修订 CI：XCTest／UI 结束分别先上传轻量日志，最终大产物使用压缩级别 1；录屏进程清理改为有时限的自有进程组操作，保留真实测试退出码并解码验证视频。UI 默认单用例 600 秒，多上下文试听回归显式 1800 秒，最大 1800 秒；依据 [Apple XCTest 时限说明](https://developer.apple.com/documentation/xctest/xctestcase/executiontimeallowance) 和 [Xcode 11.4 参数说明](https://developer.apple.com/documentation/xcode-release-notes/xcode-11_4-release-notes)，超时必须记为失败。任务总时限 240 分钟，完整 275 XCTest／20 UI／小屏／Release／IPA 均保留；没有改 App 行为、跳过断言、自动重试失败用例或更改 GPU。
+
+2026-10-08 本地新增验证：4 项实际子进程清理回归通过（1.753 秒）；全部 Python CPU 回归 98 项通过、0 失败／错误／跳过（测试 14.332 秒，含发现用例共 15.500 秒），实际本地模拟服务运行，不调用真实 GPU。受限沙箱内的第一次 loopback 测试被网络边界阻断，保留未完成日志，仅精确终止本轮自有 launcher 与子进程；授权后的完整执行另存日志。实际 H.264 MP4 解码出画面，损坏 MP4 被拒绝。静态检查仍为 72 App／21 XCTest 文件通过；新 workflow YAML 与修改的 UI Swift 语法解析、`git diff --check` 通过。这些 Windows 结果不计为 Swift 编译或 Simulator 运行。
 
 ## 验证边界
 

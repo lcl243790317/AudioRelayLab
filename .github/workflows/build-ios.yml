@@ -24,9 +24,9 @@ jobs:
   build:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.diagnosticOnly != 'true'
     runs-on: macos-26-intel
-    # Run 30 reached 75 minutes after 15 UI cases on this standard Intel pool.
-    # Keep the full UI/SE/Release pipeline and a finite execution bound.
-    timeout-minutes: 150
+    # Run 32 reached 150 minutes; retain small phase logs before large diagnostics.
+    # Per-case XCTest limits and bounded recorder cleanup also constrain the run.
+    timeout-minutes: 240
     env:
       AUDIOLAB_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     defaults:
@@ -220,6 +220,21 @@ jobs:
             test -only-testing:AudioRelayLabTests 2>&1 | tee build-xctest.log
           cleanup_download_fixture
           trap - EXIT
+      - name: 保留 XCTest 阶段日志
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: AudioRelayLab-XCTest-Checkpoint
+          retention-days: 14
+          compression-level: 1
+          path: |
+            build-environment.log
+            build-tests.log
+            build-static.log
+            build-simulator.log
+            build-xctest.log
+            build/revoice-download-fixture-report.json
+            build/revoice-fixture-readiness.log
       - name: 在 iPhone Simulator 运行完整界面回归并导出截图
         run: |
           set -euo pipefail
@@ -230,21 +245,28 @@ jobs:
           PY
           )"
           SIMULATOR_ARCH="$(uname -m)"
-          # Record actual selection scrolling while the same parent updates four times per second.
-          xcrun simctl io "$SIMULATOR_UDID" recordVideo --codec=h264 build/ui-interaction.mp4 > build-ui-recording.log 2>&1 &
-          RECORD_PID=$!
-          trap 'kill -INT "$RECORD_PID" 2>/dev/null || true' EXIT
-          xcodebuild \
+          python3 scripts/run-recorded-ui-tests.py --simulator "$SIMULATOR_UDID" \
+            --video build/ui-interaction.mp4 --recording-log build-ui-recording.log -- xcodebuild \
             -project AudioRelayLab.xcodeproj -scheme AudioRelayLab \
             -configuration Debug -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=$SIMULATOR_ARCH" \
             -destination-timeout 180 -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
+            -maximum-test-execution-time-allowance 1800 \
             -derivedDataPath build/simulator-tests -resultBundlePath build/ui-tests.xcresult \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             test -only-testing:AudioRelayLabUITests 2>&1 | tee build-uitest.log
-          kill -INT "$RECORD_PID" 2>/dev/null || true
-          wait "$RECORD_PID" || true
-          trap - EXIT
+      - name: 保留完整 UI 阶段日志
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: AudioRelayLab-UI-Logs
+          retention-days: 14
+          compression-level: 1
+          path: |
+            build-environment.log
+            build-uitest.log
+            build-ui-recording.log
       - name: 在小屏 iPhone SE 验证已选音乐的主题与大字体布局
         run: |
           set -euo pipefail
@@ -275,6 +297,8 @@ jobs:
             -configuration Debug -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$SMALL_UDID,arch=$(uname -m)" \
             -destination-timeout 180 -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
+            -maximum-test-execution-time-allowance 1800 \
             -derivedDataPath build/simulator-tests -resultBundlePath build/small-ui-tests.xcresult \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             test-without-building -only-testing:AudioRelayLabUITests/InteractionUITests/testSelectedMusicTimingScreenshotsAcrossThemesAndLargeType \
@@ -318,6 +342,7 @@ jobs:
           name: AudioRelayLab-iOS-Build
           if-no-files-found: warn
           retention-days: 14
+          compression-level: 1
           path: |
             dist/AudioRelayLab-unsigned.ipa
             dist/ipa-manifest.json

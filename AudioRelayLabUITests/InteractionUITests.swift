@@ -462,6 +462,7 @@ final class InteractionUITests: XCTestCase {
     }
 
     @MainActor func testPlaybackPreviewsStopOnTabsPickerNavigationAndConnection() {
+        executionTimeAllowance = 1800
         let app = XCUIApplication(); app.launchArguments = ["mix-interaction-test","preview-lifecycle-test","day-snapshot"]; app.launch()
         let stop = app.buttons["playback.preview.stop"]
         let progress = app.descendants(matching:.any)["playback.preview.progress"]
