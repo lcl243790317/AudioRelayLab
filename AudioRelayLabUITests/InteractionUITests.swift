@@ -315,6 +315,7 @@ final class InteractionUITests: XCTestCase {
     }
 
     @MainActor func testBatchDeleteBothViewsProtectsBuiltinAndCancellationKeepsFiles() {
+        executionTimeAllowance = 1800
         let app = XCUIApplication()
         for scope in ["本地音频","录音与 AI"] {
             app.launchArguments = ["library-interaction-test","day-snapshot"]; app.launch()
