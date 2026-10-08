@@ -66,6 +66,7 @@ private final class RevoiceHTTPState: @unchecked Sendable {
             }
             let values = try XCTUnwrap(try JSONSerialization.jsonObject(with:body) as? [String:String])
             submissions.append(values)
+            if path == "/v1/jobs",responseStatus != 200 { return (Data(),responseStatus,[:]) }
             if failAfterSubmission { failAfterSubmission=false; throw URLError(.networkConnectionLost) }
             if let redirect { return (Data(),303,["Location":redirect]) }
         }
@@ -127,6 +128,41 @@ private final class RevoiceHTTPProtocol:URLProtocol,@unchecked Sendable {
 }
 
 final class RevoiceTests:XCTestCase {
+    @MainActor func testBusyRejectionIsNotAcceptedAndManualRetryKeepsFrozenID() async throws {
+        try await exerciseAsync { ai,_,_,store in
+            ai.kind = .custom; ai.text = "请求中的固定文字"; ai.instruction = "固定表达"
+            RevoiceHTTPProtocol.state.responseStatus = 429; ai.generate(); try await self.settle(ai)
+            let first = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.first)
+            let id = try XCTUnwrap(first["requestID"].flatMap(UUID.init(uuidString:)))
+            let rejected = try XCTUnwrap(store.job(id))
+            XCTAssertEqual(rejected.phase,.failed); XCTAssertEqual(rejected.failureKind,.busy)
+            XCTAssertEqual(rejected.submissionRejected,true); XCTAssertNil(rejected.reply); XCTAssertNil(ai.pendingJobID)
+            XCTAssertTrue(ai.errorMessage?.contains("未被接受") == true); XCTAssertTrue(ai.canGenerateDraft)
+            ai.text = "以后编辑的新文字"; ai.selectedSpeaker = "Vivian"; ai.instruction = "新表达"
+            RevoiceHTTPProtocol.state.responseStatus = 200; RevoiceHTTPProtocol.state.failAfterSubmission = true
+            ai.retrieve(id); try await self.settle(ai)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last,first); XCTAssertEqual(ai.pendingJobID,id)
+            XCTAssertEqual(ai.text,"以后编辑的新文字"); XCTAssertEqual(ai.selectedSpeaker,"Vivian")
+        }
+    }
+    @MainActor func testConfigurationCanBeRepairedWhileFrozenTaskIsRetained() async throws {
+        try await exerciseAsync { ai,_,_,store in
+            ai.kind = .custom; ai.text = "旧服务中的固定文字"; RevoiceHTTPProtocol.state.failAfterSubmission = true
+            ai.generate(); try await self.settle(ai)
+            let id = try XCTUnwrap(ai.pendingJobID),body = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.first)
+            ai.text = "新的编辑草稿"
+            let changed = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"z",count:48))
+            ai.configure(try JSONEncoder().encode(changed)); try await self.settle(ai)
+            ai.retrieve(id); try await self.settle(ai)
+            XCTAssertEqual(store.job(id)?.failureKind,.configuration); XCTAssertEqual(ai.text,"新的编辑草稿")
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1)
+            let original = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
+            ai.configure(try JSONEncoder().encode(original)); try await self.settle(ai)
+            RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.retrieve(id); try await self.settle(ai)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last,body); XCTAssertEqual(ai.pendingJobID,id)
+            XCTAssertEqual(ai.text,"新的编辑草稿")
+        }
+    }
     @MainActor func testForgettingDeletedSourcePreservesFrozenJobAndCurrentTextDraft() async throws {
         try await exerciseAsync { ai,_,_,store in
             let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
@@ -223,7 +259,7 @@ final class RevoiceTests:XCTestCase {
             let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",
                 proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
             let restarted = RevoiceController(client:CloudRevoiceClient(session:session),recognizer:RevoiceTestRecognizer(),
-                connection:connection,saveConnection:{_ in},backgroundTransfers:manager)
+                connection:connection,saveConnection:{_ in},backgroundTransfers:manager,draftStore:nil)
             defer { restarted.cancel() }
             XCTAssertEqual(restarted.automaticInstructionDraft,draft)
             restarted.text = "后来修改的正文。"; restarted.editAutomaticInstruction("新的表达")
@@ -297,7 +333,7 @@ final class RevoiceTests:XCTestCase {
             let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",
                 proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
             let restarted = RevoiceController(client:CloudRevoiceClient(session:session),recognizer:RevoiceTestRecognizer(),
-                connection:connection,saveConnection:{_ in},backgroundTransfers:manager)
+                connection:connection,saveConnection:{_ in},backgroundTransfers:manager,draftStore:nil)
             defer { restarted.cancel() }
             XCTAssertTrue(restarted.usesAutomaticInstruction); XCTAssertEqual(restarted.instruction,"温润的角色风格")
             XCTAssertEqual(restarted.automaticInstructionPreview,expected)
@@ -363,7 +399,7 @@ final class RevoiceTests:XCTestCase {
         }
     }
     @MainActor func testPresetPendingTaskKeepsFrozenOverrideWhileNewDraftChanges() async throws {
-        try await exerciseAsync { ai,_,_,store in
+        try await exerciseAsync { ai,_,manager,store in
             RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
             ai.text = "旧配音文字。"; ai.presetInstruction = "旧表达"
             RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
@@ -371,10 +407,13 @@ final class RevoiceTests:XCTestCase {
             ai.text = "最新文字。"; ai.presetInstruction = "  新表达。  "
             ai.connect(); try await self.settle(ai)
             XCTAssertEqual(ai.presetInstruction,"  新表达。  "); XCTAssertEqual(store.job(old)?.context.instruction,"旧表达")
+            ai.generate(); XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1)
+            XCTAssertEqual(ai.pendingJobID,old); XCTAssertEqual(ai.text,"最新文字。")
+            try self.finishPending(manager,store,id:old)
             RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
             XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["instruction"],"  新表达。  ")
             XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.last?["text"],"最新文字。")
-            XCTAssertEqual(store.job(old)?.phase,.abandoned)
+            XCTAssertEqual(store.job(old)?.phase,.failed)
         }
     }
     func testAsyncSubmissionResponseLossRecoversSameIDAndFrozenTextOnlyParameters() async throws {
@@ -454,7 +493,7 @@ final class RevoiceTests:XCTestCase {
         let config = URLSessionConfiguration.ephemeral;config.protocolClasses = [RevoiceHTTPProtocol.self]
         let recognizer = RevoiceTestRecognizer()
         let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
-        let ai = RevoiceController(client:CloudRevoiceClient(session:URLSession(configuration:config)),recognizer:recognizer,connection:connection,saveConnection:{_ in})
+        let ai = RevoiceController(client:CloudRevoiceClient(session:URLSession(configuration:config)),recognizer:recognizer,connection:connection,saveConnection:{_ in},draftStore:nil)
         let fixture = try XCTUnwrap(Bundle(for:Self.self).url(forResource:"fixture",withExtension:"wav"))
         let input = try AudioFileManager.importFile(from:fixture)
         var results:[AudioAsset] = [];ai.onResult = { results.append($0) }
@@ -477,7 +516,7 @@ final class RevoiceTests:XCTestCase {
         let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",
             proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
         let ai = RevoiceController(client:CloudRevoiceClient(session:session),recognizer:recognizer,
-            connection:connection,saveConnection:{_ in},backgroundTransfers:manager)
+            connection:connection,saveConnection:{_ in},backgroundTransfers:manager,draftStore:nil)
         defer {
             ai.cancel(); manager.invalidateForTesting(); session.invalidateAndCancel()
             try? FileManager.default.removeItem(at:store.directory); RevoiceHTTPProtocol.state.reset()
@@ -489,12 +528,18 @@ final class RevoiceTests:XCTestCase {
         for _ in 0..<400 where RevoiceHTTPProtocol.state.submissions.count < count { try await Task.sleep(for:.milliseconds(10)) }
         XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,count)
     }
+    @MainActor private func finishPending(_ manager:BackgroundRevoiceTransfers,_ store:PendingRevoiceStore,id:UUID) throws {
+        var job = try XCTUnwrap(store.job(id))
+        job.phase = .failed; job.failureKind = .generation
+        try store.save(job); manager.onChange?(job,RevoiceJobFailureKind.generation.message,nil)
+    }
     @MainActor func testAsyncNewGenerationUsesLatestSpeakerInstructionTextAndNewIDForAllSpeakers() async throws {
-        try await exerciseAsync { ai,recognizer,_,store in
+        try await exerciseAsync { ai,recognizer,manager,store in
             ai.kind = .custom
             var ids:Set<String> = []
             for (index,speaker) in RevoiceSpeaker.all.enumerated() {
                 let previous = ai.pendingJobID
+                if let previous { try self.finishPending(manager,store,id:previous) }
                 ai.selectedSpeaker = speaker.id; ai.instruction = "  第 \(index) 次，自然明亮。  "; ai.text = "最新文字 \(index)，嗯，我，我知道。"
                 RevoiceHTTPProtocol.state.failAfterSubmission = true
                 ai.generate(); try await self.settle(ai)
@@ -503,23 +548,25 @@ final class RevoiceTests:XCTestCase {
                 XCTAssertEqual(body["text"],ai.text); XCTAssertEqual(body["mode"],"custom")
                 XCTAssertEqual(Set(body.keys),["mode","requestID","speaker","instruction","text"])
                 XCTAssertTrue(ids.insert(try XCTUnwrap(body["requestID"])).inserted)
-                if let previous { XCTAssertEqual(store.job(previous)?.phase,.abandoned) }
+                if let previous { XCTAssertEqual(store.job(previous)?.phase,.failed) }
                 XCTAssertEqual(ai.pendingContext?.choice,.custom(speaker:speaker.id,instruction:ai.instruction))
             }
             XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,9); XCTAssertEqual(recognizer.calls,0)
         }
     }
     @MainActor func testAsyncNewPresetGenerationDoesNotCarryCustomParametersOrPreviousID() async throws {
-        try await exerciseAsync { ai,_,_,store in
+        try await exerciseAsync { ai,_,manager,store in
             ai.kind = .custom; ai.text = "上一段。"; ai.instruction = "旧指令"
             RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
             let previous = try XCTUnwrap(ai.pendingJobID)
             ai.kind = .preset; ai.selectedPreset = "scholar-design"; ai.text = "现在用固定书生声线。"; ai.instruction = "不得污染固定预设"
+            ai.generate(); XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1); XCTAssertEqual(ai.pendingJobID,previous)
+            try self.finishPending(manager,store,id:previous)
             RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
             let body = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
             XCTAssertEqual(body["voice"],"scholar-design"); XCTAssertEqual(body["text"],ai.text)
             XCTAssertEqual(Set(body.keys),["mode","requestID","voice","text"])
-            XCTAssertNotEqual(body["requestID"],previous.uuidString); XCTAssertEqual(store.job(previous)?.phase,.abandoned)
+            XCTAssertNotEqual(body["requestID"],previous.uuidString); XCTAssertEqual(store.job(previous)?.phase,.failed)
             XCTAssertEqual(ai.pendingContext?.choice,.preset(id:"scholar-design",variant:"base"))
         }
     }
@@ -539,8 +586,8 @@ final class RevoiceTests:XCTestCase {
             XCTAssertEqual(ai.text,"我现在正在编辑的话。"); XCTAssertEqual(ai.selectedSpeaker,"Vivian"); XCTAssertEqual(ai.instruction,"新指令")
             RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
             let fresh = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
-            XCTAssertNotEqual(fresh["requestID"],frozen["requestID"]); XCTAssertEqual(fresh["text"],ai.text)
-            XCTAssertEqual(fresh["speaker"],"Vivian"); XCTAssertEqual(fresh["instruction"],"新指令")
+            XCTAssertEqual(fresh,frozen); XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,3)
+            XCTAssertFalse(ai.canGenerateDraft); XCTAssertEqual(ai.text,"我现在正在编辑的话。")
         }
     }
     @MainActor func testInvalidNewDraftDoesNotAbandonRecoverablePreviousGeneration() async throws {
@@ -555,18 +602,18 @@ final class RevoiceTests:XCTestCase {
             XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1)
         }
     }
-    @MainActor func testReplacingInFlightSubmissionCannotRestoreItsDraftOrSubmitItAgain() async throws {
+    @MainActor func testNewDraftCannotReplaceInFlightSubmissionOrLoseItsRetrieval() async throws {
         try await exerciseAsync { ai,_,_,store in
             ai.kind = .custom; ai.selectedSpeaker = "Serena"; ai.text = "正在提交的旧任务。"; ai.instruction = "旧指令"
             RevoiceHTTPProtocol.state.responseDelay = 0.4; ai.generate(); try await self.waitForSubmissions(1)
             let previous = try XCTUnwrap(ai.pendingJobID)
             ai.selectedSpeaker = "Vivian"; ai.text = "替换后新的内容。"; ai.instruction = "自然明亮"
-            RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
+            ai.generate(); try await self.settle(ai)
             try await Task.sleep(for:.milliseconds(500))
             let fresh = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
-            XCTAssertEqual(fresh["speaker"],"Vivian"); XCTAssertEqual(fresh["text"],"替换后新的内容。"); XCTAssertEqual(fresh["instruction"],"自然明亮")
-            XCTAssertNotEqual(fresh["requestID"],previous.uuidString); XCTAssertEqual(store.job(previous)?.phase,.abandoned)
-            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,2); XCTAssertEqual(ai.pendingJobID?.uuidString,fresh["requestID"])
+            XCTAssertEqual(fresh["speaker"],"Serena"); XCTAssertEqual(fresh["text"],"正在提交的旧任务。"); XCTAssertEqual(fresh["instruction"],"旧指令")
+            XCTAssertEqual(fresh["requestID"],previous.uuidString); XCTAssertEqual(store.job(previous)?.phase,.suspended)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1); XCTAssertEqual(ai.pendingJobID,previous)
             XCTAssertEqual(ai.text,"替换后新的内容。"); XCTAssertEqual(ai.selectedSpeaker,"Vivian"); XCTAssertFalse(ai.busy)
         }
     }
@@ -580,7 +627,7 @@ final class RevoiceTests:XCTestCase {
             let client = CloudRevoiceClient(session:session)
             let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
             let restarted = RevoiceController(client:client,recognizer:RevoiceTestRecognizer(),connection:connection,
-                saveConnection:{_ in},backgroundTransfers:manager)
+                saveConnection:{_ in},backgroundTransfers:manager,draftStore:nil)
             defer { restarted.cancel() }
             XCTAssertEqual(restarted.text,"重开前保存的任务。")
             RevoiceHTTPProtocol.state.responseDelay = 0.4; restarted.resumePending()
@@ -594,8 +641,9 @@ final class RevoiceTests:XCTestCase {
             RevoiceHTTPProtocol.state.responseDelay = 0; restarted.connect(); try await self.settle(restarted)
             RevoiceHTTPProtocol.state.failAfterSubmission = true; restarted.generate(); try await self.settle(restarted)
             let body = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
-            XCTAssertEqual(body["text"],"返回后全新的内容。"); XCTAssertEqual(body["speaker"],"Vivian"); XCTAssertEqual(body["instruction"],"新指令")
-            XCTAssertNotEqual(body["requestID"],previous.uuidString); XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,2)
+            XCTAssertEqual(body["text"],"重开前保存的任务。"); XCTAssertEqual(body["requestID"],previous.uuidString)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1); XCTAssertFalse(restarted.canGenerateDraft)
+            XCTAssertEqual(restarted.text,"返回后全新的内容。"); XCTAssertEqual(store.job(previous)?.phase,.abandoned)
         }
     }
     @MainActor func testRestartedPendingDownloadLoadsCatalogWithoutChangingItsStateOrNewDraft() async throws {
@@ -614,7 +662,7 @@ final class RevoiceTests:XCTestCase {
             let session = URLSession(configuration:config); defer { session.invalidateAndCancel() }
             let connection = CloudConnection(endpoint:"https://unit-tests.modal.run",proxyTokenID:"unit-test-id",proxyTokenSecret:"unit-test-secret",apiKey:String(repeating:"x",count:48))
             let restarted = RevoiceController(client:CloudRevoiceClient(session:session),recognizer:RevoiceTestRecognizer(),
-                connection:connection,saveConnection:{_ in},backgroundTransfers:manager)
+                connection:connection,saveConnection:{_ in},backgroundTransfers:manager,draftStore:nil)
             defer { restarted.cancel() }
             XCTAssertTrue(restarted.voices.isEmpty); XCTAssertTrue(restarted.speakers.isEmpty)
             restarted.text = "重开后最新的文字。"; restarted.selectedSpeaker = "Vivian"; restarted.instruction = "自然明亮"
@@ -625,12 +673,12 @@ final class RevoiceTests:XCTestCase {
             XCTAssertEqual(restarted.stage,.generating); XCTAssertEqual(restarted.status,"配音中 · 可切换 App 或锁屏")
             XCTAssertEqual(restarted.pendingJobID,previous); XCTAssertEqual(store.job(previous)?.phase,.downloading)
             XCTAssertEqual(restarted.text,"重开后最新的文字。"); XCTAssertEqual(restarted.selectedSpeaker,"Vivian"); XCTAssertEqual(restarted.instruction,"自然明亮")
-            XCTAssertTrue(restarted.canGenerateDraft); RevoiceHTTPProtocol.state.failAfterSubmission = true
-            restarted.generate(); try await self.settle(restarted)
+            XCTAssertFalse(restarted.canGenerateDraft)
+            restarted.generate()
             let body = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
-            XCTAssertEqual(body["text"],"重开后最新的文字。"); XCTAssertEqual(body["speaker"],"Vivian"); XCTAssertEqual(body["instruction"],"自然明亮")
-            XCTAssertNotEqual(body["requestID"],previous.uuidString); XCTAssertEqual(store.job(previous)?.phase,.abandoned)
-            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,2)
+            XCTAssertEqual(body["text"],"之前已提交的任务。"); XCTAssertEqual(body["requestID"],previous.uuidString)
+            XCTAssertEqual(store.job(previous)?.phase,.downloading); XCTAssertEqual(restarted.pendingJobID,previous)
+            XCTAssertEqual(RevoiceHTTPProtocol.state.submissions.count,1); XCTAssertEqual(restarted.text,"重开后最新的文字。")
         }
     }
     @MainActor func testOldTransferCallbacksCannotClearReplacementIDOrChangeItsStatus() async throws {
@@ -638,6 +686,7 @@ final class RevoiceTests:XCTestCase {
             ai.kind = .custom; ai.text = "旧任务。"; RevoiceHTTPProtocol.state.failAfterSubmission = true
             ai.generate(); try await self.settle(ai); let previous = try XCTUnwrap(ai.pendingJobID)
             ai.selectedSpeaker = "Vivian"; ai.text = "新任务。"; ai.instruction = "新指令"
+            try self.finishPending(manager,store,id:previous)
             RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
             let current = try XCTUnwrap(ai.pendingJobID), status = ai.status, error = ai.errorMessage
             var old = try XCTUnwrap(store.job(previous)); old.phase = .failed; old.lastError = "旧任务失败"
@@ -691,7 +740,8 @@ final class RevoiceTests:XCTestCase {
             XCTAssertNil(ai.result);XCTAssertEqual(recognizer.calls,1)
             XCTAssertTrue(RevoiceHTTPProtocol.state.submissions.isEmpty)
             ai.generate();try await self.settle(ai);XCTAssertNotNil(ai.result)
-            ai.selectInput(nil);XCTAssertTrue(ai.text.isEmpty);XCTAssertNil(ai.recognizedText);XCTAssertNil(ai.result)
+            let draft = ai.text,result = ai.result
+            ai.selectInput(nil);XCTAssertEqual(ai.text,draft);XCTAssertNil(ai.recognizedText);XCTAssertEqual(ai.result?.id,result?.id)
         }
     }
     @MainActor func testCancelledRecognitionCannotPopulateNewInput() async throws {

@@ -19,6 +19,9 @@ struct VoiceMixRequest {
     @Published private(set) var status = "选择人声和音乐，保存一份新的混音。"
     @Published private(set) var errorMessage:String?
     private var task:Task<Void,Never>?
+#if DEBUG
+    func preparePreviewResult(_ asset:AudioAsset) { result = asset }
+#endif
     static func voices(in library:[AudioAsset]) -> [AudioAsset] {
         library.filter { [.voiceLabRecording,.aiConverted].contains($0.source) }
     }

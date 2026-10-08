@@ -77,20 +77,36 @@ enum AIConnectionError {
 }
 
 enum AIRequestAudio {
+    static func make(url:URL,range:RevoiceRecognitionRange) throws -> URL {
+        try make(url:url,start:range.start,limit:range.duration,recognitionRange:range)
+    }
     /// Decode the chosen range and use AVAudioConverter to produce speech-rate mono PCM.
-    static func make(url:URL, start:Double = 0, limit:Double? = nil) throws -> URL {
+    static func make(url:URL, start:Double = 0, limit:Double? = nil, recognitionRange:RevoiceRecognitionRange? = nil) throws -> URL {
         let file = try AVAudioFile(forReading:url)
         let format = file.processingFormat
+        try AudioRuntimeValidation.validate(format)
+        if let recognitionRange { try recognitionRange.validate(duration:Double(file.length)/format.sampleRate) }
         let available = Double(file.length)/format.sampleRate-start
         let seconds = limit.map { min($0,available) } ?? available
-        if let limit { guard limit.isFinite, limit >= AIAudioLimits.minimumSeconds else { throw LabError.invalidFormat } }
-        guard start.isFinite, start >= 0, seconds.isFinite, (AIAudioLimits.minimumSeconds...AIAudioLimits.maximumSeconds).contains(seconds),
+        if let limit {
+            let minimum = AIAudioLimits.minimumSeconds-(recognitionRange == nil ? 0 : 1e-9)
+            guard limit.isFinite,limit >= minimum else { throw LabError.invalidFormat }
+        }
+        let allowedDuration = recognitionRange == nil
+            ? (AIAudioLimits.minimumSeconds...AIAudioLimits.maximumSeconds).contains(seconds)
+            : seconds >= AIAudioLimits.minimumSeconds-1e-9 && seconds <= AIAudioLimits.maximumSeconds+1e-9
+        guard start.isFinite, start >= 0, seconds.isFinite, allowedDuration,
             format.commonFormat == .pcmFormatFloat32, !format.isInterleaved else {
-            throw LabError.message("请选择 0.3–60 秒的纯人声；长文件可在音频页设置起止区间")
+            throw LabError.message("请选择 0.3～60 秒的纯人声；重新配音请在配音页设置识别片段，电脑变声使用播放页已应用的区间")
         }
         file.framePosition = try AudioPlaybackSettings.frame(start,sampleRate:format.sampleRate,length:file.length)
         let first = file.framePosition
-        let sourceFrames = min(file.length-first,AVAudioFramePosition((seconds*format.sampleRate).rounded(.down)))
+        let sourceFrames:AVAudioFramePosition
+        if let recognitionRange {
+            let end = AVAudioFramePosition((recognitionRange.end*format.sampleRate).rounded(.down))
+            sourceFrames = min(end-first,AVAudioFramePosition((AIAudioLimits.maximumSeconds*format.sampleRate).rounded(.down)))
+        } else { sourceFrames = min(file.length-first,AVAudioFramePosition((seconds*format.sampleRate).rounded(.down))) }
+        guard sourceFrames > 0,first+sourceFrames <= file.length else { throw LabError.invalidFormat }
         let last = first+sourceFrames
         let expected = AVAudioFramePosition((Double(sourceFrames)*22050/format.sampleRate).rounded(.down))
         guard expected > 0,

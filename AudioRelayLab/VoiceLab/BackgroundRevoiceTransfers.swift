@@ -40,19 +40,54 @@ import UIKit
         return URLSession(configuration:config,delegate:self,delegateQueue:queue)
     }
     func begin(_ job:PendingRevoiceJob) throws {
-        guard pending == nil else { throw LabError.message("先取回或停止等待上一段配音") }
+        guard !store.all().contains(where:{$0.blocksNewSubmission}) else {
+            throw LabError.message("旧任务可能仍在云端执行；请先在最近任务中继续取回，当前草稿已保留")
+        }
         try store.save(job); onChange?(job,"正在提交配音…",nil)
     }
     func attach(_ reply:CloudJobReply,origin:URL,id:UUID) throws {
         guard var job = store.job(id), job.isPending,!abandoned.contains(id) else { return }
         _ = try reply.validated(requestID:id,origin:origin)
         job.reply = reply; job.downloadOrigin = origin; job.phase = .downloading; job.lastError = nil
-        job.lastTransferFailure = nil
+        job.lastTransferFailure = nil; job.failureKind = nil; job.submissionRejected = false
         try store.save(job)
-        if reply.state == "failed" { suspend(id,message:"云端生成失败，文字已保留",terminal:true); return }
+        if job.expiresAt <= Date() { expire(job); return }
+        if reply.state == "failed" { suspend(id,message:RevoiceJobFailureKind.generation.message,terminal:true,kind:.generation); return }
         schedule(job)
     }
     func submissionFailed(_ id:UUID,message:String) { suspend(id,message:message,terminal:false) }
+    func submissionFailed(_ id:UUID,error:Error) {
+        let kind = RevoiceJobFailureKind.classify(error)
+        let rejected = (error as? RevoiceServiceError)?.notAccepted == true
+        if rejected,var job = store.job(id),job.isPending {
+            job.submissionRejected = true
+            do { try store.save(job) }
+            catch { suspend(id,message:RevoiceJobFailureKind.localSave.message,terminal:false,kind:.localSave); return }
+        }
+        suspend(id,message:(rejected ? "本次提交未被接受。" : "")+kind.message,terminal:rejected || !kind.canRetry,kind:kind)
+    }
+    /// Explicitly undo a stop tombstone before any transport can be resumed.
+    func resume(_ id:UUID) throws {
+        guard var job = store.job(id),job.expiresAt > Date() else { throw RevoiceServiceError(kind:.expired) }
+        guard job.canRetrieve else { throw RevoiceServiceError(kind:job.failureKind ?? .generation) }
+        guard !store.all().contains(where:{$0.id != id && $0.blocksNewSubmission}) else {
+            throw LabError.message("请先完成当前云端任务，再取回这份任务")
+        }
+        guard !processing.contains(id) else { throw LabError.message("正在结束上次结果校验，请稍后继续取回") }
+        let oldTransfer = job.transferID
+        job.phase = job.reply == nil ? .submitting : .downloading
+        job.transferID = UUID(); job.attempts = 0; job.lastError = nil; job.failureKind = nil
+        job.submissionRejected = nil
+        try store.save(job)
+        abandoned.remove(id); scheduled.remove(id)
+        foregroundTokens.removeValue(forKey:id)
+        foregroundRecoveries.removeValue(forKey:id)?.cancel()
+        // The new transfer token makes old native cancellation callbacks harmless.
+        session.getAllTasks { tasks in
+            for task in tasks where Self.identity(task.taskDescription)?.id == id && Self.identity(task.taskDescription)?.transferID == oldTransfer { task.cancel() }
+        }
+        if job.reply == nil { onNeedsSubmission?(job) } else { schedule(job) }
+    }
     @discardableResult func cancel() -> Bool {
         for var job in store.all() where job.isPending {
             let previous = job
@@ -64,8 +99,9 @@ import UIKit
             foregroundRecoveries.removeValue(forKey:job.id)?.cancel()
             foregroundTokens.removeValue(forKey:job.id)
             let id = job.id
+            let oldTransfer = previous.transferID
             session.getAllTasks { tasks in
-                for task in tasks where Self.identity(task.taskDescription)?.id == id { task.cancel() }
+                for task in tasks where Self.identity(task.taskDescription)?.id == id && Self.identity(task.taskDescription)?.transferID == oldTransfer { task.cancel() }
             }
             onChange?(job,"已停止等待 · 云端可能继续完成，迟到结果不会保存",nil)
         }
@@ -112,13 +148,14 @@ import UIKit
         }
         scheduled = nativeIDs.union(foregroundRecoveries.keys)
         for job in store.all() where job.isPending && !abandoned.contains(job.id) && !processing.contains(job.id) {
+            if let kind = job.failureKind,[RevoiceJobFailureKind.authentication,.configuration,.validation,.localSave].contains(kind) { continue }
             if job.reply == nil { onNeedsSubmission?(job) }
             else if !scheduled.contains(job.id) {
                 if !isForeground && job.phase == .waitingForForeground { continue }
                 if !retrySuspended && (job.phase == .suspended || job.attempts >= 8) { continue }
                 var resumed = job; resumed.attempts = 0; resumed.phase = .downloading
                 do { try store.save(resumed) }
-                catch { suspend(job.id,message:"任务记录暂时无法写入，请保持 App 打开后重试",terminal:false); continue }
+                catch { suspend(job.id,message:RevoiceJobFailureKind.localSave.message,terminal:false,kind:.localSave); continue }
                 schedule(resumed)
             } else { onChange?(job,"配音中 · 可切换 App 或锁屏",nil) }
         }
@@ -139,7 +176,10 @@ import UIKit
             job.attempts += 1; job.phase = .downloading; try store.save(job)
             scheduled.insert(job.id); onChange?(job,"配音中 · 可切换 App 或锁屏",nil)
             transfer.resume()
-        } catch { suspend(job.id,message:"无法恢复结果下载，文字和任务已保留",terminal:false) }
+        } catch {
+            let kind = RevoiceJobFailureKind.classify(error)
+            suspend(job.id,message:kind.message,terminal:!kind.canRetry,kind:kind)
+        }
     }
     static func request(reply:CloudJobReply,id:UUID,origin:URL) throws -> URLRequest {
         _ = try reply.validated(requestID:id,origin:origin)
@@ -167,13 +207,17 @@ import UIKit
             _ = try reply.validated(requestID:job.id,origin:origin)
             job.attempts += 1; job.phase = .downloading; job.lastError = nil
             job.transferID = UUID(); try store.save(job)
-        } catch { suspend(job.id,message:"无法恢复结果下载，文字和任务已保留",terminal:false); return }
+        } catch {
+            let kind = RevoiceJobFailureKind.classify(error)
+            suspend(job.id,message:kind.message,terminal:!kind.canRetry,kind:kind); return
+        }
         guard let token = job.transferID else { return }
         foregroundTokens[job.id] = token
         scheduled.insert(job.id); onChange?(job,"配音中 · 可切换 App 或锁屏",nil)
         foregroundRecoveries[job.id] = Task { [weak self, job] in
             guard let self else { return }
             let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = self.configuration?.protocolClasses
             configuration.httpCookieStorage = nil; configuration.urlCache = nil
             configuration.timeoutIntervalForRequest = 180; configuration.timeoutIntervalForResource = 180
             let resultSession = URLSession(configuration:configuration)
@@ -205,7 +249,8 @@ import UIKit
                 guard self.store.job(job.id)?.transferID == token, !Task.isCancelled else { return }
                 if self.isForeground {
                     let failure = (error as? RevoiceTransferError)?.failure ?? RevoiceTransferFailure(operation:"foreground-retrieve",error:error)
-                    self.suspend(job.id,message:"暂时无法取回配音，任务已保留（\(failure.summary)）",terminal:false,failure:failure)
+                    let kind = RevoiceJobFailureKind.classify(error)
+                    self.suspend(job.id,message:kind.message,terminal:!kind.canRetry,failure:failure,kind:kind)
                 } else { self.waitForForeground(job.id,failure:nil) }
             }
         }
@@ -228,20 +273,34 @@ import UIKit
         for task in foregroundRecoveries.values { task.cancel() }
         session.invalidateAndCancel()
     }
-    private func suspend(_ id:UUID,message:String,terminal:Bool,failure:RevoiceTransferFailure? = nil) {
+    private func suspend(_ id:UUID,message:String,terminal:Bool,failure:RevoiceTransferFailure? = nil,kind:RevoiceJobFailureKind? = nil) {
         guard var job = store.job(id),job.isUnfinished else { return }
         if job.expiresAt <= Date() { expire(job); return }
         job.phase = terminal ? .failed : .suspended; job.lastError = message
+        job.failureKind = kind ?? .network
         if let failure { job.lastTransferFailure = failure }
-        try? store.save(job); scheduled.remove(id); onChange?(job,message,nil)
+        do { try store.save(job) }
+        catch {
+            job.failureKind = .localSave
+            job.lastError = "本次任务状态保存失败，尚未持久化；请保持 App 打开。"+RevoiceJobFailureKind.localSave.message
+            onChange?(job,job.lastError ?? RevoiceJobFailureKind.localSave.message,nil); return
+        }
+        scheduled.remove(id); onChange?(job,message,nil)
     }
     private func waitForForeground(_ id:UUID,failure:RevoiceTransferFailure?) {
         guard var job = store.job(id),job.isPending,!abandoned.contains(id) else { return }
         job.phase = .waitingForForeground; job.lastError = nil
         if let failure { job.lastTransferFailure = failure }
-        try? store.save(job); scheduled.remove(id)
+        do { try store.save(job) }
+        catch { suspend(id,message:RevoiceJobFailureKind.localSave.message,terminal:false,kind:.localSave); return }
+        scheduled.remove(id)
         onChange?(job,"配音任务已保留，返回 App 后自动保存",nil)
-        if isForeground { job.attempts = 0; try? store.save(job); schedule(job) }
+        if isForeground {
+            job.attempts = 0
+            do { try store.save(job) }
+            catch { suspend(id,message:RevoiceJobFailureKind.localSave.message,terminal:false,kind:.localSave); return }
+            schedule(job)
+        }
     }
     func process(_ envelope:RevoiceDownloadEnvelope) {
         guard let current = store.job(envelope.id),current.isPending,current.transferID == envelope.transferID,
@@ -260,7 +319,7 @@ import UIKit
             if job.expiresAt <= Date() { self.expire(job); return }
             guard let origin = job.downloadOrigin,CloudJobEndpoint.sameOrigin(envelope.url,origin),
                   envelope.url.path == job.reply?.downloadURL.path,let response = envelope.response else {
-                self.suspend(job.id,message:"下载来源不匹配，已拒绝保存",terminal:true); return
+                self.suspend(job.id,message:RevoiceJobFailureKind.validation.message,terminal:false,kind:.validation); return
             }
             do {
                 let url = self.store.directory.appendingPathComponent(envelope.fileName)
@@ -269,15 +328,28 @@ import UIKit
                 let data = try Data(contentsOf:url)
                 if envelope.status == 202 {
                     guard bytes <= 4096 else { throw LabError.invalidFormat }
-                    let object = try JSONSerialization.jsonObject(with:data) as? [String:String]
+                    let object = (try? JSONSerialization.jsonObject(with:data)) as? [String:String]
                     guard object?["id"] == job.networkID,
                           ["queued","running"].contains(object?["state"] ?? "") else { throw LabError.invalidFormat }
-                    self.schedule(job,after:5); return
+                    var updated = job
+                    if let reply = job.reply,let state = object?["state"] {
+                        updated.reply = .init(id:reply.id,state:state,createdAt:reply.createdAt,expiresAt:reply.expiresAt,
+                            downloadURL:reply.downloadURL,downloadToken:reply.downloadToken,error:nil)
+                    }
+                    try self.store.save(updated); self.schedule(updated,after:5); return
                 }
                 guard [200,206].contains(envelope.status) else {
                     let serverError = (try? JSONSerialization.jsonObject(with:data)) as? [String:String]
-                    let terminal = [400,401,403,404,410,422].contains(envelope.status) || serverError?["error"] == "Generation failed"
-                    self.suspend(job.id,message:terminal ? "任务已失效或认证失败，文字已保留" : "云端结果暂不可用，返回后可继续取回",terminal:terminal)
+                    let kind:RevoiceJobFailureKind
+                    switch envelope.status {
+                    case 300...399: kind = .validation
+                    case 401,403: kind = .authentication
+                    case 404,410: kind = .expired
+                    case 429: kind = .busy
+                    case 400,422: kind = .parameters
+                    default: kind = serverError?["error"] == "Generation failed" ? .generation : .network
+                    }
+                    self.suspend(job.id,message:kind.message,terminal:!kind.canRetry,kind:kind)
                     return
                 }
                 guard response.value(forHTTPHeaderField:"X-Request-ID") == job.networkID else { throw LabError.invalidFormat }
@@ -290,14 +362,28 @@ import UIKit
                 // is one MainActor transaction; cancellation cannot race it.
                 guard var current = self.store.job(job.id),current.isPending,
                       current.transferID == envelope.transferID,!self.abandoned.contains(job.id) else { return }
+                current.phase = .saving
+                do { try self.store.save(current) }
+                catch { self.suspend(job.id,message:RevoiceJobFailureKind.localSave.message,terminal:false,kind:.localSave); return }
                 self.onChange?(current,"保存中",nil)
-                let asset = try RevoiceSaving.save(audio,context:current.context,jobID:current.networkID)
+                let asset:AudioAsset
+                do { asset = try RevoiceSaving.save(audio,context:current.context,jobID:current.networkID) }
+                catch {
+                    if let value = error as? LabError,case .invalidFormat = value {
+                        self.suspend(job.id,message:"成品文件校验失败，请在音频库检查已有成品，再取回同一任务",terminal:false,kind:.validation)
+                    } else { self.suspend(job.id,message:RevoiceJobFailureKind.localSave.message,terminal:false,kind:.localSave) }
+                    return
+                }
                 current.phase = .completed; current.reply = nil; current.lastError = nil
-                current.lastTransferFailure = nil
-                try self.store.save(current)
+                current.lastTransferFailure = nil; current.failureKind = nil
+                do { try self.store.save(current) }
+                catch { self.suspend(job.id,message:RevoiceJobFailureKind.localSave.message,terminal:false,kind:.localSave); return }
                 self.onChange?(current,"已保存 · 成品 \(AudioPlaybackSettings.time(asset.duration))",asset)
             } catch {
-                self.suspend(job.id,message:"音频或保存校验未通过，未保存半成品；任务可重新取回",terminal:false)
+                guard self.store.job(job.id)?.transferID == envelope.transferID else { return }
+                let domain = (error as NSError).domain
+                let kind:RevoiceJobFailureKind = [NSCocoaErrorDomain,NSPOSIXErrorDomain].contains(domain) ? .localSave : .validation
+                self.suspend(job.id,message:kind.message,terminal:false,kind:kind)
             }
         }
     }
@@ -307,7 +393,7 @@ import UIKit
     }
     private func expire(_ value:PendingRevoiceJob) {
         var job = value; job.phase = .failed; job.reply = nil
-        job.lastError = "任务已超过 24 小时取回窗口，文字已保留，可以重新生成"
+        job.failureKind = .expired; job.lastError = RevoiceJobFailureKind.expired.message
         try? store.save(job); scheduled.remove(job.id)
         onChange?(job,job.lastError ?? "任务已过期",nil)
     }
@@ -324,6 +410,11 @@ import UIKit
                 self.waitForForeground(identity.id,failure:failure)
             }
         }
+    }
+    nonisolated func urlSession(_ session:URLSession,task:URLSessionTask,willPerformHTTPRedirection response:HTTPURLResponse,
+                                newRequest request:URLRequest,completionHandler:@escaping (URLRequest?)->Void) {
+        // A task credential is only valid at its verified, direct result endpoint.
+        completionHandler(nil)
     }
     nonisolated func urlSession(_ session:URLSession,downloadTask:URLSessionDownloadTask,
                                 didWriteData bytesWritten:Int64,totalBytesWritten:Int64,totalBytesExpectedToWrite:Int64) {

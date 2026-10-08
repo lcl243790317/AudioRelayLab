@@ -13,16 +13,19 @@ struct VoiceAIView: View {
     @State private var mixTiming = AudioMixTiming()
     @State private var mixing = false
     @State private var mixStatus = ""
+    @State private var previewOwner = UUID()
+    @State private var originTab:AppNavigation.Tab
     init(coordinator: ExperimentCoordinator, showConnection: @escaping () -> Void) {
         self.coordinator = coordinator; ai = coordinator.aiVoice; voice = coordinator.rawRecorder; volumes = coordinator.mixVolumes
         self.showConnection = showConnection
+        _originTab = State(initialValue:coordinator.navigation.tab)
     }
     var body: some View {
         VStack(alignment:.leading,spacing:16) {
             PaperCard("目标音色") {
                 if ai.voices.isEmpty {
                     PaperCaption("先连接同一网络的电脑，再选择真实参考音色。")
-                    Button("连接我的电脑") { showConnection() }.buttonStyle(PaperButtonStyle(primary:true))
+                    Button("连接我的电脑") { stopPreview(); showConnection() }.buttonStyle(PaperButtonStyle(primary:true))
                 } else {
                     StablePicker(title:"音色",selection:$ai.selectedVoice,choices:ai.voices.map { .init(id:$0.id,title:$0.name) }).disabled(ai.busy || voice.isActive)
                     DisclosureGroup("高级转换设置") {
@@ -50,7 +53,7 @@ struct VoiceAIView: View {
                         if let selected = ai.voices.first(where:{$0.id == ai.selectedVoice}) {
                             PaperCaption(selected.referenceOrigin)
                         }
-                        Button("查看连接设置") { showConnection() }.disabled(ai.busy)
+                        Button("查看连接设置") { stopPreview(); showConnection() }.disabled(ai.busy)
                     }
                 }
                 PaperCaption("建议先测试自然说话；要精确保留口气可选严格保留语调。自然度取决于原声与参考音色。")
@@ -68,7 +71,7 @@ struct VoiceAIView: View {
                             useAppliedRange = false
                             KeyboardDismiss.perform(); voice.start(.computerConversion)
                         }.disabled(coordinator.controlsLocked || ai.connecting)
-                        Button("从音频库选择") { KeyboardDismiss.perform(); showLibrary = true }
+                        Button("从音频库选择") { stopPreview(); KeyboardDismiss.perform(); showLibrary = true }
                             .disabled(coordinator.controlsLocked || ai.connecting || coordinator.library.isEmpty)
                     }
                 }
@@ -99,13 +102,15 @@ struct VoiceAIView: View {
                     Divider()
                     Text(result.libraryName).font(.headline)
                     HStack {
-                        Button("回听") { coordinator.audition(result) }
-                        Button("用于延迟播放") { coordinator.selectLocal(result) }
-                    }.disabled(coordinator.controlsLocked)
+                        Button("回听") { coordinator.audition(result,owner:previewOwner) }.disabled(coordinator.controlsLocked)
+                        Button("用于延迟播放") { coordinator.navigation.useForPlayback(result,coordinator:coordinator) }
+                    }
                     Button("分享成品") {
+                        stopPreview()
                         if let url = try? AudioFileManager.url(for:result) { share = ShareItem(url:url) }
                     }.disabled(coordinator.controlsLocked)
-                    Button("停止回听") { coordinator.preview.stop() }
+                    PagePreviewStatus(preview:coordinator.preview,owner:previewOwner)
+                    PagePreviewStopButton(preview:coordinator.preview,owner:previewOwner)
                     DisclosureGroup("加入背景音乐并保存") {
                         StablePicker(title:"背景音乐",selection:$backgroundID,
                             choices:[.init(id:nil,title:"请选择音乐")] + coordinator.library.filter { $0.id != result.id }.map { .init(id:Optional($0.id),title:$0.fileName) }).disabled(mixing || coordinator.controlsLocked)
@@ -126,6 +131,7 @@ struct VoiceAIView: View {
             }
         }
         .keyboardDone()
+        .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:originTab)
         .sheet(isPresented:$showLibrary) {
             NavigationStack {
                 AudioLibraryPickerView(coordinator:coordinator) { asset in
@@ -135,6 +141,7 @@ struct VoiceAIView: View {
         }
         .sheet(item:$share) { ShareSheet(url:$0.url) }
     }
+    private func stopPreview() { coordinator.preview.stop(owner:previewOwner) }
     private func volume(_ title:String,value:Binding<Float>) -> some View {
         VStack(alignment:.leading) {
             Text("\(title) \(percent(value.wrappedValue))").font(.subheadline)

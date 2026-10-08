@@ -22,6 +22,7 @@ import Combine
     deinit { timer?.invalidate(); preparation?.cancel(); if let processedURL { try? FileManager.default.removeItem(at:processedURL) } }
     var isActive: Bool { state == .preparing || state == .playing }
     func isOwned(by owner: UUID) -> Bool { self.owner == owner && isActive }
+    func hasContext(owner:UUID) -> Bool { self.owner == owner }
     var preparedDuration: Double? { player.map { $0.duration-startInPlayer } }
     func play(asset: AudioAsset, settings: AudioPlaybackSettings, fiveSeconds: Bool, owner: UUID? = nil) {
         stop()
@@ -83,13 +84,13 @@ import Combine
         stop()
     }
     func stop() {
-        owner = nil
         token = UUID(); timer?.invalidate(); timer = nil
         preparation?.cancel(); preparation = nil
         player?.delegate = nil; player?.stop(); player = nil; deadline = nil
         if let processedURL { try? FileManager.default.removeItem(at:processedURL) }; processedURL = nil
         if ownsSession { ownsSession = false; session.deactivate(); logger.log("试听停止", "已释放试听播放器和会话。") }
         state = .idle
+        currentTime = 0; errorMessage = nil
     }
     func reset() { stop(); currentTime = 0; errorMessage = nil }
     func handle(_ event: AudioSessionEvent) {
@@ -103,7 +104,8 @@ import Combine
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self, weak player] in
             guard let self, let player, self.player === player else { return }
-            self.currentTime = self.sourceTimeOffset+player.duration; self.stop()
+            let finished = self.sourceTimeOffset+player.duration
+            self.stop(); self.currentTime = finished
             if !flag { self.errorMessage = "试听没有正常完成，请查看诊断。" }
         }
     }

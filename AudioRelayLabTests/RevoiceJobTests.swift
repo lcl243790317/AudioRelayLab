@@ -33,6 +33,86 @@ private final class RevoiceDownloadProbe:NSObject,URLSessionDownloadDelegate,@un
 }
 
 final class RevoiceJobTests:XCTestCase {
+    @MainActor func testNewerEditingDraftSurvivesOldTaskRestoreCompletionAndFurtherEditing() async throws {
+        let store = try store(),job = try pending(context()); try store.save(job)
+        let draftStore = RevoiceDraftStore(directory:store.directory.appendingPathComponent("editing"))
+        var draft = RevoiceDraft(); draft.kind = "custom"; draft.speaker = "Vivian"
+        draft.text = "比旧任务更新的草稿"; draft.customInstruction = "新的表达"; try draftStore.save(draft)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        let ai = RevoiceController(connection:nil,backgroundTransfers:manager,draftStore:draftStore)
+        XCTAssertEqual(ai.text,draft.text); XCTAssertEqual(ai.selectedSpeaker,"Vivian"); XCTAssertEqual(ai.pendingJobID,job.id)
+        ai.text = "取回期间又更新的草稿"; ai.usesAutomaticInstruction = true; ai.editAutomaticInstruction("新的手改指令"); ai.flushDraft()
+        let automatic = ai.automaticInstructionDraft
+        manager.process(try envelope(store,job))
+        for _ in 0..<100 where ai.result == nil { try await Task.sleep(for:.milliseconds(20)) }
+        let result = try XCTUnwrap(ai.result); defer { try? AudioFileManager.removeAudio(result) }
+        XCTAssertEqual(result.revoice?.synthesisText,job.context.text); XCTAssertEqual(result.revoice?.speakerID,"Serena")
+        XCTAssertEqual(ai.text,"取回期间又更新的草稿"); XCTAssertEqual(ai.selectedSpeaker,"Vivian")
+        XCTAssertEqual(ai.automaticInstructionDraft,automatic); XCTAssertEqual(ai.instruction,"新的表达")
+        ai.text = "成功生成以后继续编辑的文字"; ai.flushDraft()
+        let restarted = RevoiceController(connection:nil,backgroundTransfers:manager,draftStore:draftStore)
+        XCTAssertEqual(restarted.text,ai.text); XCTAssertEqual(restarted.automaticInstructionDraft,automatic)
+        XCTAssertFalse(restarted.busy); XCTAssertNil(restarted.pendingJobID)
+    }
+    @MainActor func testExplicitRetrievalAfterStopReusesAcceptedJobWithoutSubmissionAndRejectsOldReceipt() async throws {
+        let store = try store(),job = try fixtureJob(); try store.save(job)
+        let oldReceipt = try envelope(store,job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        var submissions = 0,saves = 0
+        manager.onNeedsSubmission = { _ in submissions += 1 }
+        manager.onChange = { _,_,asset in if asset != nil { saves += 1 } }
+        XCTAssertTrue(manager.cancel()); XCTAssertEqual(store.job(job.id)?.phase,.abandoned)
+        XCTAssertTrue(store.job(job.id)?.canRetrieve == true)
+        try manager.resume(job.id); manager.process(oldReceipt)
+        for _ in 0..<500 where store.job(job.id)?.phase != .completed { try await Task.sleep(for:.milliseconds(20)) }
+        XCTAssertEqual(store.job(job.id)?.phase,.completed); XCTAssertEqual(submissions,0); XCTAssertEqual(saves,1)
+        XCTAssertEqual(store.job(job.id)?.context.id,job.id)
+        let asset = try XCTUnwrap(try AudioFileManager.listLocalAudio().first { $0.id == job.id })
+        defer { try? AudioFileManager.removeAudio(asset) }
+        XCTAssertEqual(try AudioFileManager.listLocalAudio().filter { $0.id == job.id }.count,1)
+    }
+    @MainActor func testDifferentFailureCategoriesRetainActionableRecoveryAndExpiry() throws {
+        let store = try store(),job = try pending(context()); try store.save(job)
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        for kind in [RevoiceJobFailureKind.busy,.network,.authentication,.configuration,.expired,.generation,.validation,.localSave] {
+            try store.save(job)
+            manager.submissionFailed(job.id,error:RevoiceServiceError(kind:kind))
+            let failed = try XCTUnwrap(store.job(job.id))
+            XCTAssertEqual(failed.failureKind,kind); XCTAssertEqual(failed.lastError,kind.message)
+            XCTAssertEqual(failed.canRetrieve,kind.canRetry)
+        }
+        XCTAssertEqual(RevoiceJobFailureKind.classify(URLError(.badServerResponse)),.validation)
+        XCTAssertEqual(RevoiceJobFailureKind.classify(URLError(.dataLengthExceedsMaximum)),.validation)
+        XCTAssertEqual(RevoiceJobFailureKind.classify(URLError(.networkConnectionLost)),.network)
+    }
+    @MainActor func testDownloadHTTPAndMalformedResultFailuresExposeActionsWithoutSavingAudio() async throws {
+        let store = try store(),job = try pending(context())
+        let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+        defer { manager.invalidateForTesting() }
+        for (status,body,kind) in [(303,"{}",RevoiceJobFailureKind.validation),(401,"{}",.authentication),(404,"{}",.expired),
+                                  (429,"{}",.busy),(503,"{\"error\":\"Generation failed\"}",.generation),
+                                  (503,"{}",.network),(202,"not JSON",.validation),(200,"bad WAV",.validation)] {
+            try store.save(job)
+            let response = try XCTUnwrap(HTTPURLResponse(url:try XCTUnwrap(job.reply?.downloadURL),statusCode:status,
+                httpVersion:nil,headerFields:["X-Request-ID":job.networkID]))
+            manager.process(try store.stage(Data(body.utf8),id:job.id,response:response))
+            for _ in 0..<100 where store.job(job.id)?.phase == .downloading { try await Task.sleep(for:.milliseconds(10)) }
+            let failure = try XCTUnwrap(store.job(job.id))
+            XCTAssertEqual(failure.failureKind,kind); XCTAssertEqual(failure.lastError,kind.message)
+            XCTAssertEqual(failure.canRetrieve,kind.canRetry)
+            XCTAssertFalse(try AudioFileManager.listLocalAudio().contains { $0.id == job.id })
+        }
+        try store.save(job)
+        let missing = try envelope(store,job)
+        try FileManager.default.removeItem(at:store.directory.appendingPathComponent(missing.fileName))
+        manager.process(missing)
+        for _ in 0..<100 where store.job(job.id)?.phase == .downloading { try await Task.sleep(for:.milliseconds(10)) }
+        XCTAssertEqual(store.job(job.id)?.failureKind,.localSave)
+        XCTAssertEqual(store.job(job.id)?.lastError,RevoiceJobFailureKind.localSave.message)
+    }
     @MainActor func testForegroundRetrievalSucceedsWithoutNativeTemporaryFileOrTransientError() async throws {
         let store = try store(), job = try fixtureJob(); try store.save(job)
         let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
@@ -374,7 +454,8 @@ final class RevoiceJobTests:XCTestCase {
             let file = try envelope(store,job,origin:wrongOrigin ? "https://evil.example/v1/jobs/"+job.networkID+"/audio" : nil,broken:!wrongOrigin)
             manager.process(file)
             for _ in 0..<50 where store.job(job.id)?.phase == .downloading { try await Task.sleep(for:.milliseconds(20)) }
-            XCTAssertEqual(store.job(job.id)?.phase,wrongOrigin ? .failed : .suspended)
+            XCTAssertEqual(store.job(job.id)?.phase,.suspended)
+            XCTAssertEqual(store.job(job.id)?.failureKind,.validation)
             XCTAssertFalse(try AudioFileManager.listLocalAudio().contains { $0.id == job.id })
         }
     }
@@ -419,11 +500,11 @@ final class RevoiceJobTests:XCTestCase {
         var job = try pending(expired); job.reply = try reply(expired); try store.save(job)
         let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
         defer { manager.invalidateForTesting() }
-        let controller = RevoiceController(connection:nil,backgroundTransfers:manager)
+        let controller = RevoiceController(connection:nil,backgroundTransfers:manager,draftStore:nil)
         XCTAssertEqual(controller.text,expired.text)
         await manager.restore()
         XCTAssertNil(manager.pending); XCTAssertFalse(controller.hasPendingJob); XCTAssertFalse(controller.busy)
         XCTAssertEqual(controller.text,expired.text); XCTAssertEqual(store.job(job.id)?.phase,.failed)
-        XCTAssertTrue(controller.status.contains("24 小时"))
+        XCTAssertTrue(controller.status.contains("24 小时")); XCTAssertEqual(store.job(job.id)?.failureKind,.expired)
     }
 }

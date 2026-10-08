@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 private enum RevoiceInputField:Hashable { case text, instruction, automaticInstruction }
 private enum RevoiceSheet:String,Identifiable {
-    case connection, library
+    case connection, library, range
     var id:String { rawValue }
 }
 
@@ -13,6 +13,7 @@ struct VoiceRevoiceView: View {
     @ObservedObject var voice:RawVoiceRecorder
     let onMix:(AudioAsset)->Void
     @State private var sheet:RevoiceSheet?
+    let previewOwner:UUID
     @FocusState private var focusedInput:RevoiceInputField?
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -23,12 +24,13 @@ struct VoiceRevoiceView: View {
     private var emptyDraft:Bool { ai.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }
     private var generateTitle:String {
         if emptyDraft && ai.input != nil { return "识别文字" }
-        return ai.hasPendingJob ? "按当前内容生成新的配音" : "生成配音"
+        return ai.blockingJob != nil ? "旧任务尚未结束" : "生成配音"
     }
 
-    init(coordinator:ExperimentCoordinator,onMix:@escaping (AudioAsset)->Void) {
+    init(coordinator:ExperimentCoordinator,previewOwner:UUID = UUID(),onMix:@escaping (AudioAsset)->Void) {
         self.coordinator = coordinator; ai = coordinator.revoice; voice = coordinator.rawRecorder
         self.onMix = onMix
+        self.previewOwner = previewOwner
     }
 
     var body:some View {
@@ -39,6 +41,39 @@ struct VoiceRevoiceView: View {
                     canRecognizeAgain:!emptyDraft,
                     disabled:coordinator.controlsLocked,libraryEmpty:coordinator.library.isEmpty,
                     record:record,chooseAudio:chooseAudio,recognize:recognize)
+                draftNotice
+                if let error = ai.errorMessage { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("revoice.editor.error") }
+                if ai.recognizing {
+                    ProgressView("设备端识别中 · 只处理所选片段")
+                    Button("取消本次识别") { ai.cancelRecognition() }.accessibilityIdentifier("revoice.recognition.cancel")
+                }
+                if !emptyDraft {
+                    Picker("识别结果写入方式",selection:$ai.insertionMode) {
+                        Text("替换文字").tag(SpeechInsertionMode.replace)
+                        Text("追加文字").tag(SpeechInsertionMode.append)
+                    }.pickerStyle(.segmented).disabled(draftLocked).accessibilityIdentifier("revoice.speech.mode")
+                    PaperCaption("识别成功后才修改文字；失败或取消保留原稿。")
+                }
+                if ai.canUndoRecognition {
+                    Button("撤销最近一次识别修改") { ai.undoRecognition() }.disabled(draftLocked)
+                        .accessibilityIdentifier("revoice.speech.undo")
+                }
+                if ai.hasRecognitionProposal,let recognized = ai.recognizedText {
+                    DisclosureGroup("待确认的识别文字") {
+                        Text(recognized).font(.callout)
+                        Button("用识别文字替换") { ai.applyRecognizedText(mode:.replace) }
+                        Button("追加识别文字") { ai.applyRecognizedText(mode:.append) }
+                    }
+                }
+                if let input = ai.input {
+                    Divider()
+                    LabeledContent("完整音频",value:AudioPlaybackSettings.time(input.duration))
+                    if let range = ai.recognitionRange {
+                        PaperCaption("识别：\(AudioPlaybackSettings.time(range.start)) ～ \(AudioPlaybackSettings.time(range.end)) · \(String(format:"%.3f",range.duration)) 秒")
+                    } else { PaperCaption("需选择 0.3～60 秒片段后才能识别；不会自动截取长文件。") }
+                    Button("设置识别片段") { dismissKeyboard(); stopPreview(); sheet = .range }
+                        .disabled(voice.isActive).accessibilityIdentifier("revoice.range.open")
+                }
             }
             PaperCard("声线与表达") {
                 RevoiceModeControl(kind:Binding(get:{ai.kind},set:{ai.requestVoiceSelection(.mode($0),deferConfirmation:typeSize.isAccessibilitySize)}),
@@ -54,21 +89,28 @@ struct VoiceRevoiceView: View {
                 RevoiceAutomaticInstructionControl(ai:ai,disabled:draftLocked,focus:$focusedInput)
             }
             if let context = ai.pendingContext {
-                RevoicePendingCard(context:context,status:ai.status,error:ai.errorMessage,busy:ai.busy,
-                    resume:resume,stop:stop)
+                RevoicePendingCard(context:context,status:ai.recentJobs.first(where:{$0.id == context.id})?.readableStatus ?? ai.status,
+                    error:ai.recentJobs.first(where:{$0.id == context.id})?.lastError,busy:ai.cloudStage != .idle,
+                    resume:resume,stop:stopWaiting)
             } else if ai.configured || ai.busy || ai.errorMessage != nil {
                 RevoiceStatusNotice(status:ai.status,error:ai.errorMessage,busy:ai.busy,stop:stop)
+            }
+            RevoiceRecentTasks(ai:ai)
+            if ai.blockingJob != nil {
+                PaperCaption("旧任务可能仍在云端执行。可继续编辑新草稿；在当前任务或最近任务中取回旧任务后，再手动生成新配音。")
+                    .accessibilityIdentifier("revoice.generation.blocked")
             }
             if !ai.configured {
                 PaperCard {
                     RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
-                        importDisabled:ai.busy || ai.hasPendingJob || voice.isActive,
+                        importDisabled:ai.connecting || ai.recognizing || ai.cloudStage == .saving || voice.isActive,
                         reconnectDisabled:ai.connecting || voice.isActive || (ai.busy && !ai.hasPendingJob),
                         open:openConnection,reconnect:ai.connect)
                     PaperCaption("录音在手机识别，生成配音需要连接云端。")
                 }
             }
-            if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result,onMix:onMix) }
+            if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result,previewOwner:previewOwner,onMix:onMix) }
+            if let error = coordinator.errorMessage { Text(error).font(.callout).foregroundStyle(.orange) }
         }
         .safeAreaInset(edge:.bottom,spacing:0) {
             if !voice.isActive {
@@ -80,6 +122,8 @@ struct VoiceRevoiceView: View {
             }
         }
         .keyboardDone { focusedInput = nil }
+        .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.workshop)
+        .onDisappear { ai.flushDraft() }
         .alert("放弃手动调整的指令？",isPresented:Binding(get:{ai.pendingVoiceSelection != nil},set:{if !$0 { ai.cancelVoiceSelection() }}),presenting:ai.pendingVoiceSelection) { selection in
             Button("取消",role:.cancel) { ai.cancelVoiceSelection() }
             Button("放弃并切换",role:.destructive) { ai.confirmVoiceSelection(selection) }
@@ -88,6 +132,7 @@ struct VoiceRevoiceView: View {
             switch destination {
             case .connection: CloudConnectionView(ai:ai)
             case .library: NavigationStack { AudioLibraryPickerView(coordinator:coordinator,onSelect:selectAudio) }
+            case .range: if let input = ai.input { RevoiceRecognitionRangeView(ai:ai,asset:input) }
             }
         }
         .task { connectIfNeeded() }
@@ -96,17 +141,34 @@ struct VoiceRevoiceView: View {
     private func dismissKeyboard() { focusedInput = nil; KeyboardDismiss.perform() }
     private func record() {
         dismissKeyboard()
-        guard ai.selectInput(nil) else { return }
+        stopPreview(); ai.cancelRecognition()
         voice.start(.revoice)
     }
-    private func chooseAudio() { dismissKeyboard(); sheet = .library }
+    private func chooseAudio() { dismissKeyboard(); stopPreview(); sheet = .library }
     private func selectAudio(_ asset:AudioAsset) { ai.selectInput(asset); sheet = nil }
-    private func recognize() { dismissKeyboard(); ai.recognize() }
+    private func recognize() { dismissKeyboard(); stopPreview(); ai.recognize() }
     private func generate() { dismissKeyboard(); ai.generate() }
-    private func resume() { dismissKeyboard(); ai.resumePending() }
-    private func stop() { dismissKeyboard(); ai.cancel() }
-    private func openConnection() { dismissKeyboard(); sheet = .connection }
+    private func resume() { dismissKeyboard(); if let id = ai.pendingJobID { ai.retrieve(id) } }
+    private func stopWaiting() { dismissKeyboard(); ai.stopWaiting() }
+    private func stop() { dismissKeyboard(); if ai.recognizing { ai.cancelRecognition() } else { ai.cancel() } }
+    private func openConnection() { dismissKeyboard(); stopPreview(); sheet = .connection }
     private func connectIfNeeded() { if ai.configured && ai.voices.isEmpty && !ai.connecting { ai.connect() } }
+    private func stopPreview() { coordinator.preview.stop(owner:previewOwner) }
+    @ViewBuilder private var draftNotice:some View {
+        switch ai.draftSaveState {
+        case .unchanged: EmptyView()
+        case .pending: PaperCaption("草稿待保存…")
+        case .saved: PaperCaption("草稿已保存到本机")
+        case .failed(let message):
+            Text(message).font(.caption).foregroundStyle(.red).accessibilityIdentifier("revoice.draft.error")
+            Button("重试保存草稿") { ai.flushDraft() }
+        }
+        if let warning = ai.draftWarning { Text(warning).font(.caption).foregroundStyle(.orange) }
+        if ai.text.unicodeScalars.count > 1000 || ai.baseInstruction.unicodeScalars.count > 500 || (ai.automaticInstructionDraft?.text.unicodeScalars.count ?? 0) > 500 {
+            Text("文字最多 1,000 字符，指令最多 500 字符；超限内容已保留，请缩短后生成。")
+                .font(.caption).foregroundStyle(.red)
+        }
+    }
 }
 
 private struct RevoiceModeControl:View {
@@ -294,6 +356,7 @@ private struct RevoiceInputControls:View {
             if voice.isActive {
                 ProgressView(voice.status,value:Double(min(1,max(0,voice.inputLevel))))
                 Button("停止录音") { voice.stop() }.disabled(voice.state == .saving).buttonStyle(PaperButtonStyle(primary:true))
+                Button("取消录音，保留原稿") { voice.stop(saveRecording:false) }.disabled(voice.state == .saving)
             } else {
                 ViewThatFits(in:.horizontal) {
                     HStack(spacing:12) {
@@ -340,7 +403,7 @@ private struct RevoicePendingCard:View {
                     .accessibilityIdentifier("revoice.pending.resume")
             }
             Button("停止等待这份配音",action:stop).accessibilityIdentifier("revoice.pending.stop")
-            PaperCaption("切到其他 App 后可继续取回。停止等待后，迟到成品不会自动保存。")
+            PaperCaption("停止等待只停止当前取回，云端可能继续执行。任务保留在最近任务中；再次取回须手动点击，迟到成品不会自动保存。")
         }
     }
 }
@@ -413,20 +476,21 @@ struct CloudConnectionView:View {
     @FocusState private var editingConfiguration: Bool
     @State private var importFile = false
     @State private var fileError:String?
+    private var configurationLocked:Bool { ai.connecting || ai.recognizing || ai.cloudStage == .saving }
     var body:some View {
         NavigationStack {
             PaperScreen {
                 PaperHeader(title:"连接云端",subtitle:"一次设置，随时重新配音。",symbol:"cloud")
                 PaperCard("导入连接配置") {
                     PaperCaption("导入电脑上的 modal-client.json，或复制其中的完整 JSON。配置包含你的私有密钥，请只保存在自己的设备上。")
-                    Button("从文件导入") { editingConfiguration = false; KeyboardDismiss.perform(); importFile = true }.disabled(ai.busy)
+                    Button("从文件导入") { editingConfiguration = false; KeyboardDismiss.perform(); importFile = true }.disabled(configurationLocked)
                     SecureField("粘贴完整连接 JSON",text:$configuration).focused($editingConfiguration)
                         .accessibilityIdentifier("cloud.connection.configuration")
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder).disabled(ai.busy)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder).disabled(configurationLocked)
                         .submitLabel(.done).onSubmit { editingConfiguration = false; KeyboardDismiss.perform() }
                     Button("保存并连接") {
                         editingConfiguration = false; KeyboardDismiss.perform(); ai.configure(Data(configuration.utf8)); configuration = ""; fileError = nil
-                    }.buttonStyle(PaperButtonStyle(primary:true)).disabled(ai.busy || configuration.isEmpty)
+                    }.buttonStyle(PaperButtonStyle(primary:true)).disabled(configurationLocked || configuration.isEmpty)
                     if ai.connecting { ProgressView("正在连接云端…") }
                     PaperCaption(ai.status)
                     if let warning = ai.connectionWarning { Text(warning).font(.caption).foregroundStyle(.orange) }
@@ -451,24 +515,39 @@ struct CloudConnectionView:View {
 
 struct RevoiceResultTools:View {
     @ObservedObject var coordinator:ExperimentCoordinator
+    @ObservedObject var preview:PreviewPlaybackController
     let result:AudioAsset
-    var title = "配音成品"
-    var onMix:((AudioAsset)->Void)? = nil
+    let previewOwner:UUID
+    let title:String
+    let onMix:((AudioAsset)->Void)?
     @State private var share:ShareItem?
+    init(coordinator:ExperimentCoordinator,result:AudioAsset,title:String = "配音成品",previewOwner:UUID,onMix:((AudioAsset)->Void)? = nil) {
+        self.coordinator = coordinator; self.result = result; self.title = title
+        self.previewOwner = previewOwner; self.onMix = onMix; preview = coordinator.preview
+    }
     var body:some View {
         PaperCard(title) {
             Text(result.libraryName).font(.headline)
             if let metadata = result.revoice { PaperCaption("配音计算 \(String(format:"%.1f",metadata.generationSeconds)) 秒 · 成品 \(AudioPlaybackSettings.time(result.duration))") }
-            HStack {
-                Button("回听") { coordinator.audition(result) }
-                Button("用于延迟播放") { coordinator.selectLocal(result) }
-            }.disabled(coordinator.controlsLocked)
-            HStack {
-                Button("分享成品") { if let url = try? AudioFileManager.url(for:result) { share = ShareItem(url:url) } }
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:130))],alignment:.leading) {
+                Button("回听") { coordinator.audition(result,owner:previewOwner) }.disabled(coordinator.controlsLocked)
+                    .accessibilityIdentifier(title == "混音成品" ? "mix.result.preview" : "revoice.result.preview")
+                Button("用于延迟播放") { KeyboardDismiss.perform(); coordinator.navigation.useForPlayback(result,coordinator:coordinator) }
+                    .accessibilityIdentifier(title == "混音成品" ? "mix.result.use" : "revoice.result.use")
+                Button("分享成品") {
+                    preview.stop(owner:previewOwner)
+                    do { share = ShareItem(url:try AudioFileManager.url(for:result)) }
+                    catch { coordinator.errorMessage = "成品文件无法读取，请在音频库检查。" }
+                }
                     .disabled(coordinator.controlsLocked)
-                Button("停止回听") { coordinator.preview.stop() }
+                Button("停止回听") { preview.stop(owner:previewOwner) }.disabled(!preview.isOwned(by:previewOwner))
+                    .accessibilityIdentifier(title == "混音成品" ? "mix.result.stop" : "revoice.result.stop")
+                    .accessibilityValue(preview.isOwned(by:previewOwner) ? (preview.state == .playing ? "正在回听" : "正在准备") : "未在回听")
             }
-            if let onMix { Button("去混音") { KeyboardDismiss.perform(); onMix(result) } }
+            PagePreviewStatus(preview:preview,owner:previewOwner)
+            if let onMix { Button("去混音") { preview.stop(owner:previewOwner); KeyboardDismiss.perform(); onMix(result) } }
         }.sheet(item:$share) { ShareSheet(url:$0.url) }
+            .onDisappear { preview.stop(owner:previewOwner) }
+            .onChange(of:result.id) { _,_ in preview.stop(owner:previewOwner) }
     }
 }

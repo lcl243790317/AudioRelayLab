@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
     let voiceMix = VoiceMixController()
     let aiVoice: AIConversionController
     let revoice: RevoiceController
+    let navigation = AppNavigation()
     private var aiObserver: AnyCancellable?
     private var revoiceObserver: AnyCancellable?
     @Published private(set) var audio: AudioFileMetadata?
@@ -45,11 +46,12 @@ import UniformTypeIdentifiers
     private var logBoundary = 0
     private var scenePhase: ScenePhase = .active
 
-    init(historyDirectoryURL:URL? = nil) {
+    init(historyDirectoryURL:URL? = nil,draftStore:RevoiceDraftStore? = .init()) {
         let logger = DiagnosticsLogger()
         self.logger = logger
         aiVoice = AIConversionController(logger: logger)
-        revoice = RevoiceController(logger:logger,backgroundTransfers:.shared)
+        let previewing = ProcessInfo.processInfo.arguments.contains { $0.hasSuffix("snapshot") }
+        revoice = RevoiceController(logger:logger,backgroundTransfers:.shared,draftStore:previewing ? nil : draftStore)
         if ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") {
             revoice.preparePreview(custom:ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot"))
         }
@@ -143,6 +145,11 @@ import UniformTypeIdentifiers
         #endif
         refreshLibrary()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("workshop-result-test") {
+            revoice.preparePreview(custom:true)
+            if let result = library.first(where:{$0.id == UUID(uuidString:"16300000-0000-4000-8000-000000000017")}) { revoice.preparePreviewResult(result) }
+            if let result = library.first(where:{$0.id == UUID(uuidString:"16300000-0000-4000-8000-000000000019")}) { voiceMix.preparePreviewResult(result) }
+        }
         if ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") {
             voiceMix.voiceID = UUID(uuidString:"16300000-0000-4000-8000-000000000013")
             voiceMix.musicID = UUID(uuidString:"00000000-0000-4000-8000-000000000001")
@@ -161,7 +168,7 @@ import UniformTypeIdentifiers
     }
     var isRunning: Bool { machine.isActive }
     var busy: Bool { isImporting || state == .preparing }
-    var controlsLocked: Bool { isImporting || isMixing || machine.isActive || rawRecorder.isActive || aiVoice.busy || revoice.busy }
+    var controlsLocked: Bool { isImporting || isMixing || machine.isActive || rawRecorder.isActive || aiVoice.busy || revoice.usesAudioResources }
     func beginMixing() throws {
         guard !controlsLocked else { throw LabError.audioUnavailable }
         isMixing = true
@@ -169,7 +176,7 @@ import UniformTypeIdentifiers
     func endMixing() { isMixing = false }
 
     func importAudio(_ url: URL) {
-        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { report(LabError.audioUnavailable, message: "请先结束当前实验、变声或混音再选择音频。"); return }
+        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.usesAudioResources, !isMixing else { report(LabError.audioUnavailable, message: "请先结束当前实验、录音、识别或混音再选择音频。"); return }
         cancelImport()
         preview.reset()
         let lease = AudioAccessLease(url)
@@ -193,7 +200,7 @@ import UniformTypeIdentifiers
         }
     }
     func useTestAudio() {
-        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { return }
+        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.usesAudioResources, !isMixing else { errorMessage = "请先结束当前实验、录音、识别或混音再选择测试音频"; return }
         cancelImport()
         do {
             let metadata = try AudioFileManager.loadBundledAudio()
@@ -252,7 +259,7 @@ import UniformTypeIdentifiers
         return result
     }
     func selectAudio(_ asset: AudioAsset) throws {
-        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { throw LabError.message("请先结束正式实验、变声或混音") }
+        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.usesAudioResources, !isMixing else { throw LabError.message("请先结束正式播放、录音、识别或混音，再切换素材") }
         var checked = try AudioFileManager.inspect(url: AudioFileManager.url(for: asset), displayName: asset.fileName,
             id: asset.id, source: asset.source, presetName: asset.presetName)
         checked.aiConversion = asset.aiConversion
@@ -264,15 +271,15 @@ import UniformTypeIdentifiers
         checkpoint()
         machine = ExperimentStateMachine(); state = .idle; currentExperiment = nil; remaining = 0
         audio = checked; requestedDuration = nil; editing = AudioPlaybackSettings(); applied = editing; volume = Double(applied.volume)
+        navigation.clearPlaybackNotice()
         errorMessage = nil; technicalDetails = nil
         logger.log("音频选择", "asset=\(checked.id)，文件=\(checked.fileName)，来源=\(checked.source.rawValue)，格式=\(checked.formatDescription)，时长=\(checked.duration)，采样率=\(checked.sampleRate)，声道=\(checked.channelCount)，字节=\(checked.byteCount)")
         refreshLibrary()
     }
-    func selectLocal(_ asset: AudioAsset) {
-        guard !machine.isActive, !rawRecorder.isActive, !aiVoice.busy, !revoice.busy, !isMixing else { return }
-        cancelImport()
-        do { try selectAudio(asset) }
-        catch { report(error, message: "本地音频无法读取，请重新导入。") }
+    @discardableResult func selectLocal(_ asset: AudioAsset) -> Bool {
+        guard !controlsLocked else { errorMessage = "请先结束正式播放、导入、录音、识别或混音，再切换素材"; return false }
+        do { try selectAudio(asset); return true }
+        catch { report(error, message: "本地音频无法读取，原选择已保留，请重新选择音频。"); return false }
     }
     func applyPlaybackSettings() {
         guard !controlsLocked, let audio else { return }

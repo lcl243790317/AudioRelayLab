@@ -28,9 +28,19 @@ import UIKit
     private var ownsSession = false
     private var initialRoute: VoiceHardwareRoute?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private let requestPermission:() async -> Bool
+    private let recorderFactory:(URL,[String:Any]) throws -> AVAudioRecorder
 
-    init(session: AudioSessionManager, logger: DiagnosticsLogger) {
+    init(session: AudioSessionManager, logger: DiagnosticsLogger,
+         requestPermission:(() async -> Bool)? = nil,
+         recorderFactory:((URL,[String:Any]) throws -> AVAudioRecorder)? = nil) {
         self.session = session; self.logger = logger
+        self.requestPermission = requestPermission ?? {
+            await withCheckedContinuation { continuation in
+                AVAudioApplication.requestRecordPermission { continuation.resume(returning:$0) }
+            }
+        }
+        self.recorderFactory = recorderFactory ?? { try AVAudioRecorder(url:$0,settings:$1) }
         super.init()
         if let url = try? Self.recordsURL(), let data = try? Data(contentsOf: url),
            let objects = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
@@ -54,9 +64,7 @@ import UIKit
             guard let self else { return }
             do {
                 try self.session.beginManualAttempt()
-                let granted = await withCheckedContinuation { continuation in
-                    AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
-                }
+                let granted = await self.requestPermission()
                 try Task.checkCancellation()
                 guard self.token == generation, self.state == .preparing else { return }
                 guard granted else { throw LabError.message("请在系统设置允许麦克风权限，以录制原声") }
@@ -70,7 +78,7 @@ import UIKit
                 guard route.isUsable else { throw LabError.audioUnavailable }
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent("raw-\(UUID()).caf")
                 self.rawURL = url
-                let recorder = try AVAudioRecorder(url: url, settings: [
+                let recorder = try self.recorderFactory(url, [
                     AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: route.sampleRate,
                     AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16,
                     AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false])

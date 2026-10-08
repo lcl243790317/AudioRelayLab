@@ -31,7 +31,7 @@ struct AudioEditorView: View {
             AudioRangeSlider(start:offset,end:end,duration:duration)
             LabeledContent("编辑开始位置", value: AudioPlaybackSettings.time(coordinator.editing.startOffset))
             LabeledContent("编辑结束位置", value: AudioPlaybackSettings.time(end.wrappedValue))
-            PaperCaption("拖动左圆点设置起点，右圆点设置终点；播放与 AI 使用已应用的区间。")
+            PaperCaption("拖动左圆点设置起点，右圆点设置终点；正式播放使用已应用区间，配音识别片段在配音页单独设置。")
             DisclosureGroup("微调起止位置") {
               Picker("调整位置",selection:$adjustingEnd) { Text("起点").tag(false); Text("终点").tag(true) }.pickerStyle(.segmented)
               LazyVGrid(columns:[GridItem(.adaptive(minimum:100))],spacing:8) {
@@ -63,8 +63,8 @@ struct AudioEditorView: View {
             Button("■ 停止试听") { stopPreview() }.disabled(!isPreviewActive)
                 .accessibilityIdentifier("playback.preview.stop")
                 .accessibilityValue(isPreviewActive ? (preview.state == .playing ? "正在试听" : "正在准备") : "未在试听")
-            LabeledContent("试听进度", value: AudioPlaybackSettings.time(preview.currentTime))
-            if let error = preview.errorMessage { Text(error).foregroundStyle(.orange) }
+            LabeledContent("试听进度", value: AudioPlaybackSettings.time(previewOwner.map { preview.hasContext(owner:$0) ? preview.currentTime : 0 } ?? preview.currentTime))
+            if previewOwner.map({preview.hasContext(owner:$0)}) ?? true,let error = preview.errorMessage { Text(error).foregroundStyle(.orange) }
             Button("应用这个播放设置") { coordinator.applyPlaybackSettings() }.buttonStyle(PaperButtonStyle(primary:true))
                 .accessibilityIdentifier("playback.apply")
             Text(coordinator.editing == coordinator.applied ? "当前设置已应用。" : "有未应用的调整，试听满意后点击应用。")

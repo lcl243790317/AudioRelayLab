@@ -1,10 +1,10 @@
 # AudioRelayLab 音频接力实验室
 
-当前测试版本：**1.6.6 / build 16**。底部入口为“播放／工坊／音频库”，工坊提供“配音／混音”。混音支持音乐先播、人声先播及尾声；配音统一手动生成，自动表达指令可编辑并保留手改稿。两个音频库支持批量删除，输入支持失焦收键盘，浅深主题和按钮反馈统一。
+最近已构建版本：**1.6.6 / build 16**。当前工作区在此基础上增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出。版本号暂未递增，本次修改尚未由 Xcode 构建。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，本轮证据见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
 
-本轮从 `feature/revoice-ios-1.6.0` 构建无签名 IPA，签名真机验收后再合并 main。功能与操作见 [1.6.6 修复说明](REVOICE-1.6.6-ZH.md)及 [1.6.5 功能说明](REVOICE-1.6.5-ZH.md)，构建结果见 [构建状态](BUILD-STATUS-ZH.txt)。录音只在手机识别文字，云端生成仅接收文字及声线参数；本轮不调整云端模型或部署。
+工作分支为 `feature/revoice-ios-1.6.0`。本轮只完成本地修改、CPU 回归和静态检查，未推送、触发远端 CI、构建 IPA、合并 main 或部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
 
-实际交付：`dist/AudioRelayLab-1.6.6-unsigned.ipa`。Python 94 项、Simulator XCTest 249 项、UI XCTest 18 项及 iPhone SE 小屏截图测试 1 项全部通过；Simulator Debug / iPhoneOS Release 构建成功。 [实际构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763)；见 [1.6.6 验证报告](REVOICE-1.6.6-TEST-REPORT-ZH.md)。无签名 IPA 需自行重签名，实际听感继续由真机验收。
+历史 1.6.6 交付：`dist/AudioRelayLab-1.6.6-unsigned.ipa`。当时 Python 94 项、Simulator XCTest 249 项、UI XCTest 18 项及 iPhone SE 小屏截图测试 1 项通过；Simulator Debug / iPhoneOS Release 构建成功。[历史构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763)及 [历史验证报告](REVOICE-1.6.6-TEST-REPORT-ZH.md)。该 IPA 和这些 Xcode 结果不包含本轮改动。
 
 
 预设切换恢复默认指令；手改自动指令先确认放弃，编辑和留空只影响下一次生成。两个固定参考声线保持认可的目标表达。自定义指令独立保存，配音成品最长 180 秒，混音成品最长 300 秒。Modal 双层认证、固定模型/资产哈希、单一 L4 池和 snapshot 保持，空闲窗口为 75 秒。部署说明见 [MODAL-DEPLOYMENT-ZH.md](MODAL-DEPLOYMENT-ZH.md)；先前 snapshot A/B 基准保留在 [SNAPSHOT-REPORT-ZH.md](SNAPSHOT-REPORT-ZH.md)。
@@ -15,7 +15,7 @@
 
 主实验继续以 AVAudioPlayer 为稳定路径，AVAudioEngine 为高级路径；两者共用起点、倍速、音量及可选源音频时长。1.2.1 正式倍速先用原生 TimePitch 离线生成 PCM，再用 1x player/graph 调度；等待秒数与内容速度独立。准备后的 PCM 限 512 MB，超限可缩短源时长或调整起点。预计实际时长 = 剩余/速度。先“准备实验”，再“开始实验”，倒计时由音频系统未来调度执行。A/C/D/E 可新建，旧 B 仅兼容历史。
 
-原声录音使用轻量原生组件，输入 0.3–60 秒，权限与中断处理保留。独立混音页自由选择已有原声或配音和本地音乐，使用完整人声时长；音乐起止与倍速独立于音频页。离线渲染为单声道 PCM WAV，保留来源与配音参数，可回听、分享和用于延迟播放。两个库按新增时间倒序；旧录音、元数据及历史仍可读取。
+原声录音使用轻量原生组件，录制 0.3–60 秒。配音页可从长文件中明确选择 0.3～60 秒识别片段；该区间独立于播放设置、倍速和混音。选择音频、录音失败或识别失败保留文字；识别结果可替换／追加并撤销最近一次修改。编辑草稿与冻结任务分别持久化；停止等待保留任务，须手动继续取回，尚未结束的旧任务会阻止新提交。独立混音使用完整人声，音乐片段与倍速仍独立；成品和音频库的用于播放操作在验证成功后切到播放页，手动开始延迟播放。
 
 | 格式证据分类 | 本轮范围 |
 |---|---|

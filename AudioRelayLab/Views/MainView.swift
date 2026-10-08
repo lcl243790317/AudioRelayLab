@@ -41,6 +41,7 @@ struct MainView: View {
                 }
             }
             .onDisappear { stopPreview() }
+            .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.playback)
             .keyboardDone { focusedInput = nil }
             .navigationTitle("播放")
             .buttonStyle(PaperButtonStyle())
@@ -52,7 +53,7 @@ struct MainView: View {
             .sheet(isPresented:$choosingAudio) {
                 NavigationStack {
                     AudioLibraryPickerView(coordinator:coordinator,title:"选择播放音频",includesBundled:true) { asset in
-                        coordinator.selectLocal(asset); choosingAudio = false
+                        if coordinator.selectLocal(asset) { choosingAudio = false }
                     }
                 }
             }
@@ -123,6 +124,7 @@ struct MainView: View {
 
     private var audioSection: some View {
         PaperCard("我的音频") {
+            if let notice = coordinator.navigation.playbackNotice { PaperCaption(notice).accessibilityIdentifier("playback.selection.notice") }
             if let audio = coordinator.audio {
                 HStack(spacing:16) {
                     Image(systemName:"music.note").font(.title).frame(width:58,height:58).background(PaperTheme.background)
@@ -233,7 +235,7 @@ struct MainView: View {
             LabeledContent("已应用结束位置", value: AudioPlaybackSettings.time(coordinator.applied.endPosition(duration:coordinator.audio?.duration ?? 0)))
             LabeledContent("已应用速度", value: String(format: "%gx", coordinator.applied.playbackRate))
             LabeledContent("正式音量 / 延迟", value: "\(percentage(coordinator.volume)) / \(coordinator.delay)s")
-            Label(coordinator.state.title, systemImage: stateIcon).font(.headline)
+            Label(coordinator.state.title, systemImage: stateIcon).font(.headline).accessibilityIdentifier("playback.state")
             if coordinator.busy { ProgressView("正在准备或读取音频…") }
             if coordinator.state == .prepared {
                 Text("音频已准备。点击“开始延迟播放”后才计算延迟并提交未来播放请求。")

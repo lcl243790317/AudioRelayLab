@@ -9,6 +9,19 @@ AVAudioPlayerPlaybackEngine / AVAudioEnginePlaybackEngine 分别实现播放器�
 DiagnosticsLogger 记录审计事件，ExperimentStore 隔离加载与持久化失败。
 ExportManager / ShareSheet 通过公开系统分享 UI 导出真实数据。
 
+本轮工坊增量（2026-10-07，本地源码，尚未 Xcode 验证）：
+RevoiceDraftStore 单独保存编辑状态，PendingRevoiceStore 保存冻结任务，AudioFileManager 保存成品。
+RevoiceController 在 MainActor 上串行合并草稿写入（450 ms）和关键时刻原子 flush；编辑不扫描音频库或任务目录。
+启动恢复输入引用只查询一次音频库；任务视图读 recentJobs 缓存，旧任务恢复和完成只更新任务／成品。
+RevoiceRecognitionRange 使用源音频秒数，独立于 applied、试听位置、倍速、音乐区间；临时 PCM 只供设备端识别。
+识别 task/token 与云端 task/token 分开，音频与区间代次变化拒绝迟到识别；成功插入前校验长度。
+BackgroundRevoiceTransfers 保留停止标记，明确恢复后更换传输 token；迟到取消仅针对旧 token。
+任务的 saving 阶段与失败类别使用类型表达，未确定结束的旧任务阻止新提交；旧服务同步协议仅前台兼容。
+AppNavigation 协调验证成功后的 Tab 切换与当前可见页面的试听归属；共享工具菜单也使用该 owner。
+PreviewLifecycle 只清理各页面 owner 的回听，迟到页面退出不移除新页面归属，不触碰正式实验。
+自动表达的手改状态、基础指令及识别区间存入版本化草稿；凭据仍仅在连接存储和任务限定下载存储中。
+详见 WORKSHOP-DRAFT-TASKS-ZH.md 与 WORKSHOP-LOCAL-VALIDATION-ZH.md。
+
 2. 状态与串行控制
 音频控制在 MainActor 串行执行。状态明确包含 idle / preparing / prepared / waiting /
 playing / interrupted / failed / completed / cancelled / stopped。

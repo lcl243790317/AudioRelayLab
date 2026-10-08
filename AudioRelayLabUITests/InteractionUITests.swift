@@ -7,6 +7,63 @@ final class InteractionUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    @MainActor func testRevoiceMixAndLibraryUseNavigateWithCorrectAudioAndNeverStartPlayback() {
+        let app = XCUIApplication()
+        app.launchArguments = ["library-interaction-test","workshop-result-test","day-snapshot"]; app.launch()
+        app.tabBars.buttons["工坊"].tap()
+        for (mode,use,name) in [("配音","revoice.result.use","批删测试配音一"),("混音","mix.result.use","批删测试混音")] {
+            app.segmentedControls["workshop.mode"].buttons[mode].tap()
+            let button = app.buttons[use]; reveal(button,in:app); XCTAssertTrue(button.exists); button.tap()
+            XCTAssertTrue(app.tabBars.buttons["播放"].isSelected)
+            let notice = app.staticTexts["playback.selection.notice"]
+            XCTAssertTrue(notice.waitForExistence(timeout:3)); XCTAssertTrue(notice.label.contains(name))
+            let state = app.staticTexts["playback.state"]; reveal(state,in:app)
+            XCTAssertTrue(state.label.contains("未准备")); XCTAssertFalse(app.buttons["playback.preview.stop"].isEnabled)
+            app.tabBars.buttons["工坊"].tap()
+        }
+        app.tabBars.buttons["音频库"].tap()
+        let use = app.buttons["library.use.16300000-0000-4000-8000-000000000015"]
+        reveal(use,in:app); use.tap()
+        XCTAssertTrue(app.tabBars.buttons["播放"].isSelected)
+        XCTAssertTrue(app.staticTexts["playback.selection.notice"].label.contains("批删测试音乐一"))
+        let state = app.staticTexts["playback.state"]; reveal(state,in:app); XCTAssertTrue(state.label.contains("未准备"))
+        attach(app,"工坊与音频库成品衔接播放页")
+    }
+
+    @MainActor func testWorkshopPreviewsStopOnModesTabsSelectorsSettingsAndShare() {
+        let app = XCUIApplication()
+        app.launchArguments = ["library-interaction-test","workshop-result-test","day-snapshot"]; app.launch()
+        app.tabBars.buttons["工坊"].tap()
+        for mode in ["配音","混音"] {
+            app.segmentedControls["workshop.mode"].buttons[mode].tap()
+            let prefix = mode == "配音" ? "revoice.result" : "mix.result"
+            let play = app.buttons[prefix+".preview"],stop = app.buttons[prefix+".stop"]
+            for destination in ["tab","mode","selector","cloud","share"] {
+                reveal(play,in:app); play.tap()
+                let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在回听"),object:stop)
+                XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:5),.completed)
+                switch destination {
+                case "tab": app.tabBars.buttons["音频库"].tap(); app.tabBars.buttons["工坊"].tap()
+                case "mode":
+                    app.segmentedControls["workshop.mode"].buttons[mode == "配音" ? "混音" : "配音"].tap()
+                    app.segmentedControls["workshop.mode"].buttons[mode].tap()
+                case "selector":
+                    let picker = app.buttons[mode == "配音" ? "select.Speaker" : "select.人声"]
+                    reveal(picker,in:app,towardTop:true); picker.tap(); app.buttons["取消"].tap()
+                case "cloud":
+                    app.buttons["workshop.tools"].tap(); app.buttons["云端连接设置"].tap()
+                    XCTAssertTrue(app.buttons["cloud.connection.done"].waitForExistence(timeout:3)); app.buttons["cloud.connection.done"].tap()
+                default:
+                    let share = app.buttons["分享成品"]; reveal(share,in:app); share.tap()
+                    XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout:3) || app.buttons["Close"].exists)
+                    (app.buttons["关闭"].exists ? app.buttons["关闭"] : app.buttons["Close"]).tap()
+                }
+                reveal(stop,in:app); XCTAssertFalse(stop.isEnabled); XCTAssertEqual(stop.value as? String,"未在回听")
+            }
+        }
+        attach(app,"工坊回听退出与取消")
+    }
+
     @MainActor func testAutomaticInstructionTogglePreviewAndFixedReferenceAvailability() {
         let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
         let instruction = app.textFields["revoice.instruction"]
@@ -193,7 +250,7 @@ final class InteractionUITests: XCTestCase {
         reveal(app.buttons["revoice.pending.resume"],in:app)
         XCTAssertTrue(app.buttons["revoice.pending.resume"].isHittable)
         XCTAssertTrue(app.buttons["revoice.pending.stop"].exists)
-        XCTAssertTrue(app.buttons["revoice.generate"].label.contains("当前内容"))
+        XCTAssertTrue(app.buttons["revoice.generate"].label.contains("旧任务")); XCTAssertFalse(app.buttons["revoice.generate"].isEnabled)
         XCTAssertTrue((editor.value as? String ?? "").contains("Updated draft."))
         attach(app,"旧任务与新草稿分开")
     }
@@ -284,7 +341,7 @@ final class InteractionUITests: XCTestCase {
         app.buttons["library.selection"].tap()
         XCTAssertFalse(revoice.exists); XCTAssertFalse(mix.exists)
         XCTAssertFalse(app.staticTexts["批删测试配音正文 17"].exists); XCTAssertFalse(origin.exists)
-        XCTAssertFalse(app.buttons["回听"].exists); XCTAssertFalse(app.buttons["使用"].exists); XCTAssertFalse(app.buttons["分享"].exists)
+        XCTAssertFalse(app.buttons["回听"].exists); XCTAssertFalse(app.buttons["用于播放"].exists); XCTAssertFalse(app.buttons["分享"].exists)
         let select = app.buttons["library.select."+mixID]
         reveal(select,in:app,towardTop:true); select.tap(); XCTAssertEqual(select.value as? String,"已选择")
         app.buttons["library.selection"].tap()

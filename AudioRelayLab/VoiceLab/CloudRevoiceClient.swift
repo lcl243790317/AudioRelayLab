@@ -117,10 +117,12 @@ final class CloudRevoiceClient: @unchecked Sendable {
             switch response.statusCode {
             case 200: break
             case 202 where path == "v1/jobs": break
-            case 401,403: throw LabError.message("云端认证失败，请重新导入连接配置")
-            case 429: throw LabError.message("云端正在配音或请求过于频繁，请稍后手动重试")
-            case 400,413,415,422: throw LabError.message("云端拒绝了配音参数，请检查文字、speaker 和 instruction")
-            default: throw LabError.message("云端生成未完成（HTTP \(response.statusCode)），可稍后重试")
+            case 401,403: throw RevoiceServiceError(kind:.authentication,notAccepted:body != nil)
+            case 429: throw RevoiceServiceError(kind:.busy,notAccepted:body != nil)
+            case 503: throw RevoiceServiceError(kind:.network)
+            case 404,410: throw RevoiceServiceError(kind:.expired)
+            case 400,409,413,415,422: throw RevoiceServiceError(kind:.parameters,notAccepted:body != nil)
+            default: throw RevoiceServiceError(kind:.network)
             }
             let maximum = body == nil || path.hasPrefix("v1/jobs") ? 64*1024 : 10*1024*1024
             guard response.expectedContentLength <= Int64(maximum) else { throw LabError.message("云端返回的文件过大") }
@@ -146,6 +148,7 @@ final class CloudRevoiceClient: @unchecked Sendable {
 
 enum RevoiceError {
     static func message(_ error:Error) -> String {
+        if let error = error as? RevoiceServiceError { return (error.notAccepted ? "本次提交未被接受。" : "")+error.kind.message }
         if let error = error as? LabError { return error.errorDescription ?? "重新配音未完成" }
         if error is CancellationError { return "已停止等待" }
         if let error = error as? URLError {

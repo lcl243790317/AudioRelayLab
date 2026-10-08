@@ -33,6 +33,7 @@ struct LocalAudioLibraryView: View {
     private var locked: Bool { coordinator.controlsLocked || coordinator.aiVoice.connecting }
     var body: some View {
         List {
+            PagePreviewStatus(preview:coordinator.preview,owner:previewOwner)
             if showsScope {
                 Picker("音频库分类",selection:$scopeRecordings) {
                     Text("本地音频").tag(false); Text("录音与 AI").tag(true)
@@ -66,14 +67,15 @@ struct LocalAudioLibraryView: View {
                                 .accessibilityIdentifier("library.name.\(asset.id.uuidString)")
                         }
                         PaperCaption("\(AudioPlaybackSettings.time(asset.duration)) · \(asset.formatDescription)")
-                        if !selecting { HStack {
-                            Button("回听") { coordinator.audition(asset,owner:previewOwner) }
-                            Button("使用") { coordinator.selectLocal(asset) }
+                        if !selecting { LazyVGrid(columns:[GridItem(.adaptive(minimum:95))],alignment:.leading) {
+                            Button("回听") { coordinator.audition(asset,owner:previewOwner) }.disabled(locked)
+                            Button("用于播放") { coordinator.navigation.useForPlayback(asset,coordinator:coordinator) }
+                                .accessibilityIdentifier("library.use.\(asset.id.uuidString)")
                             Button("分享") {
                                 coordinator.preview.stop(owner:previewOwner)
                                 if let url = try? AudioFileManager.url(for:asset) { share = ShareItem(url:url) }
-                            }
-                        }.buttonStyle(PaperButtonStyle(compact:true)).disabled(locked) }
+                            }.disabled(locked)
+                        }.buttonStyle(PaperButtonStyle(compact:true)) }
                         if let conversion = asset.aiConversion {
                             PaperCaption("\(conversion.voiceName) · \(conversion.modeTitle)")
                         }
@@ -89,7 +91,7 @@ struct LocalAudioLibraryView: View {
                         }
                         if !selecting, let source = asset.mixSource {
                             DisclosureGroup("混音来源") {
-                                PaperCaption("人声：\(source.voiceAssetID.uuidString)\n音乐：\(source.musicAssetID.uuidString)")
+                                PaperCaption("人声：\(sourceName(source.voiceAssetID))\n音乐：\(sourceName(source.musicAssetID))")
                                 PaperCaption("人声音量 \(source.volumes.voice) · 音乐音量 \(source.volumes.music) · 总音量 \(source.volumes.master)")
                             }.accessibilityIdentifier("library.mix.details.\(asset.id.uuidString)")
                         }
@@ -124,9 +126,9 @@ struct LocalAudioLibraryView: View {
                     if selecting {
                         Button(selectedIDs == eligibleIDs ? "取消全选" : "全选") { selectedIDs = selectedIDs == eligibleIDs ? [] : eligibleIDs }
                             .disabled(locked).accessibilityIdentifier("library.selectAll")
-                    } else { LibraryPreviewStopButton(preview:coordinator.preview) }
+                    } else { LibraryPreviewStopButton(preview:coordinator.preview,owner:previewOwner) }
                 }
-                ToolbarItem(placement:.topBarTrailing) { AppToolsMenu(coordinator:coordinator) }
+                ToolbarItem(placement:.topBarTrailing) { AppToolsMenu(coordinator:coordinator,beforePresentation:{coordinator.preview.stop(owner:previewOwner)}) }
                 ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() }
             }
             .onChange(of:scopeRecordings) { _,_ in
@@ -169,6 +171,7 @@ struct LocalAudioLibraryView: View {
                 }.appSheetAppearance()
             }
             .sheet(item:$share) { ShareSheet(url:$0.url) }
+            .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.library)
     }
 
     private func requestDeletion(_ chosen:[AudioAsset]) {
@@ -182,14 +185,16 @@ struct LocalAudioLibraryView: View {
         }
         pendingDeletion = request
     }
+    private func sourceName(_ id:UUID) -> String { coordinator.library.first(where:{$0.id == id})?.libraryName ?? "原素材已删除" }
 }
 
 private struct LibraryPreviewStopButton: View {
     @ObservedObject var preview:PreviewPlaybackController
+    let owner:UUID
     var body: some View {
-        Button("停止回听") { preview.stop() }
-            .disabled(!preview.isActive)
+        Button("停止回听") { preview.stop(owner:owner) }
+            .disabled(!preview.isOwned(by:owner))
             .accessibilityIdentifier("library.preview.stop")
-            .accessibilityValue(preview.state == .playing ? "正在回听" : "未在回听")
+            .accessibilityValue(preview.isOwned(by:owner) ? (preview.state == .playing ? "正在回听" : "正在准备") : "未在回听")
     }
 }

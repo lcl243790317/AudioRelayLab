@@ -4,8 +4,10 @@ struct VoiceMixView:View {
     @ObservedObject var coordinator:ExperimentCoordinator
     @ObservedObject var mix:VoiceMixController
     @ObservedObject var volumes:MixVolumeSettings
-    init(coordinator:ExperimentCoordinator) {
+    let previewOwner:UUID
+    init(coordinator:ExperimentCoordinator,previewOwner:UUID = UUID()) {
         self.coordinator = coordinator; mix = coordinator.voiceMix; volumes = coordinator.mixVolumes
+        self.previewOwner = previewOwner
     }
     var body:some View {
         VStack(alignment:.leading,spacing:16) {
@@ -41,8 +43,10 @@ struct VoiceMixView:View {
             }.disabled(coordinator.controlsLocked)
             if mix.busy { ProgressView(mix.status) } else { PaperCaption(mix.status) }
             if let error = mix.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
-            if let result = mix.result { RevoiceResultTools(coordinator:coordinator,result:result,title:"混音成品") }
+            if let result = mix.result { RevoiceResultTools(coordinator:coordinator,result:result,title:"混音成品",previewOwner:previewOwner) }
+            if let error = coordinator.errorMessage { Text(error).font(.callout).foregroundStyle(.orange) }
         }.keyboardDone()
+            .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.workshop)
     }
 }
 

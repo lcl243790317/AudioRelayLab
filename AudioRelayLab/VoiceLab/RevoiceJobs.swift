@@ -58,7 +58,7 @@ struct RevoiceSaveContext: Codable, Sendable {
 }
 
 struct PendingRevoiceJob: Codable, Sendable, Identifiable {
-    enum Phase:String,Codable { case submitting, downloading, waitingForForeground, suspended, abandoned, completed, failed }
+    enum Phase:String,Codable { case submitting, downloading, saving, waitingForForeground, suspended, abandoned, completed, failed }
     let context:RevoiceSaveContext
     let primaryOrigin:URL
     let connectionFingerprint:String
@@ -69,10 +69,12 @@ struct PendingRevoiceJob: Codable, Sendable, Identifiable {
     var lastError:String?
     var lastTransferFailure:RevoiceTransferFailure?
     var transferID:UUID?
+    var failureKind:RevoiceJobFailureKind?
+    var submissionRejected:Bool?
     var id:UUID { context.id }
     var networkID:String { id.uuidString.replacingOccurrences(of:"-",with:"").lowercased() }
     var expiresAt:Date { reply.map { Date(timeIntervalSince1970:$0.expiresAt) } ?? context.createdAt.addingTimeInterval(86400) }
-    var isUnfinished:Bool { [.submitting,.downloading,.waitingForForeground,.suspended].contains(phase) }
+    var isUnfinished:Bool { [.submitting,.downloading,.saving,.waitingForForeground,.suspended].contains(phase) }
     var isPending:Bool { isUnfinished && expiresAt > Date() }
 }
 
