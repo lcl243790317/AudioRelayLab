@@ -17,6 +17,8 @@ final class InteractionUITests: XCTestCase {
             XCTAssertTrue(app.tabBars.buttons["播放"].isSelected)
             let notice = app.staticTexts["playback.selection.notice"]
             XCTAssertTrue(notice.waitForExistence(timeout:3)); XCTAssertTrue(notice.label.contains(name))
+            XCTAssertTrue(notice.isHittable,"再次用于播放应显示新素材，不能停留在之前的滚动位置")
+            attach(app,mode+"成品用于播放")
             let state = app.staticTexts["playback.state"]; reveal(state,in:app)
             XCTAssertTrue(state.label.contains("未准备")); XCTAssertFalse(app.buttons["playback.preview.stop"].isEnabled)
             app.tabBars.buttons["工坊"].tap()
@@ -26,6 +28,7 @@ final class InteractionUITests: XCTestCase {
         reveal(use,in:app); use.tap()
         XCTAssertTrue(app.tabBars.buttons["播放"].isSelected)
         XCTAssertTrue(app.staticTexts["playback.selection.notice"].label.contains("批删测试音乐一"))
+        XCTAssertTrue(app.staticTexts["playback.selection.notice"].isHittable)
         let state = app.staticTexts["playback.state"]; reveal(state,in:app); XCTAssertTrue(state.label.contains("未准备"))
         attach(app,"工坊与音频库成品衔接播放页")
     }

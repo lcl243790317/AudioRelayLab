@@ -4,6 +4,7 @@ import SwiftUI
     enum Tab:Int,Hashable { case playback, workshop, library }
     @Published var tab:Tab = ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") || ProcessInfo.processInfo.arguments.contains("mix-snapshot") ? .workshop : .playback
     @Published private(set) var playbackNotice:String?
+    @Published private(set) var playbackRevealRequest:UUID?
     private var previewPage:(owner:UUID,tab:Tab)?
     func previewPageAppeared(owner:UUID,tab:Tab) {
         if self.tab == tab { previewPage = (owner,tab) }
@@ -16,11 +17,15 @@ import SwiftUI
         guard let previewPage,previewPage.tab == tab else { return }
         preview.stop(owner:previewPage.owner)
     }
-    func clearPlaybackNotice() { playbackNotice = nil }
+    func clearPlaybackNotice() { playbackNotice = nil; playbackRevealRequest = nil }
+    func completedPlaybackReveal(_ request:UUID) {
+        if playbackRevealRequest == request { playbackRevealRequest = nil }
+    }
     @discardableResult func useForPlayback(_ asset:AudioAsset,coordinator:ExperimentCoordinator) -> Bool {
         guard coordinator.selectLocal(asset) else { return false }
         playbackNotice = "已选择“\(asset.libraryName)”；设置延迟后手动开始播放。"
         tab = .playback
+        playbackRevealRequest = UUID()
         return true
     }
 }

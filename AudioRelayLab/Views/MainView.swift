@@ -7,6 +7,7 @@ struct MainView: View {
     @ObservedObject var coordinator: ExperimentCoordinator
     @ObservedObject var session: AudioSessionManager
     @ObservedObject var voice: RawVoiceRecorder
+    @ObservedObject var navigation:AppNavigation
     @State private var importing = false
     @State private var choosingAudio = false
     @State private var showResult = false
@@ -18,80 +19,90 @@ struct MainView: View {
         self.coordinator = coordinator
         session = coordinator.session
         voice = coordinator.rawRecorder
+        navigation = coordinator.navigation
     }
 
     var body: some View {
         NavigationStack {
-            PaperScreen {
-                PaperHeader(title:"音频接力",subtitle:"选一段声音，按你的节奏播放。")
-                audioSection
-                PaperCard("播放与试听") { AudioEditorView(coordinator:coordinator,previewOwner:previewOwner) }
-                experimentSection
-                if coordinator.errorMessage != nil || coordinator.state == .failed {
-                    failureSection
-                }
-                PaperCard {
-                    DisclosureGroup("高级实验设置") {
-                        Button("使用测试音频") { coordinator.useTestAudio() }.disabled(coordinator.controlsLocked)
-                        Button("仅准备音频") { coordinator.prepare() }.disabled(coordinator.controlsLocked || coordinator.audio == nil)
-                        settingsSection; sessionSection
-                        Button("填写并保存实验结果") { stopPreview(); coordinator.checkpoint(); showResult = true }
-                            .disabled(coordinator.currentExperiment == nil || coordinator.controlsLocked)
+            ScrollViewReader { proxy in
+                PaperScreen {
+                    PaperHeader(title:"音频接力",subtitle:"选一段声音，按你的节奏播放。")
+                    audioSection.id("playback.selection")
+                    PaperCard("播放与试听") { AudioEditorView(coordinator:coordinator,previewOwner:previewOwner) }
+                    experimentSection
+                    if coordinator.errorMessage != nil || coordinator.state == .failed {
+                        failureSection
+                    }
+                    PaperCard {
+                        DisclosureGroup("高级实验设置") {
+                            Button("使用测试音频") { coordinator.useTestAudio() }.disabled(coordinator.controlsLocked)
+                            Button("仅准备音频") { coordinator.prepare() }.disabled(coordinator.controlsLocked || coordinator.audio == nil)
+                            settingsSection; sessionSection
+                            Button("填写并保存实验结果") { stopPreview(); coordinator.checkpoint(); showResult = true }
+                                .disabled(coordinator.currentExperiment == nil || coordinator.controlsLocked)
+                        }
                     }
                 }
-            }
-            .onDisappear { stopPreview() }
-            .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.playback)
-            .keyboardDone { focusedInput = nil }
-            .navigationTitle("播放")
-            .buttonStyle(PaperButtonStyle())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement:.topBarTrailing) { AppToolsMenu(coordinator:coordinator,beforePresentation:stopPreview) }
-                ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() }
-            }
-            .sheet(isPresented:$choosingAudio) {
-                NavigationStack {
-                    AudioLibraryPickerView(coordinator:coordinator,title:"选择播放音频",includesBundled:true) { asset in
-                        if coordinator.selectLocal(asset) { choosingAudio = false }
+                .task(id:navigation.playbackRevealRequest) {
+                    guard let request = navigation.playbackRevealRequest else { return }
+                    await Task.yield()
+                    guard !Task.isCancelled,navigation.tab == .playback,navigation.playbackRevealRequest == request else { return }
+                    proxy.scrollTo("playback.selection",anchor:.top)
+                    navigation.completedPlaybackReveal(request)
+                }
+                .onDisappear { stopPreview() }
+                .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.playback)
+                .keyboardDone { focusedInput = nil }
+                .navigationTitle("播放")
+                .buttonStyle(PaperButtonStyle())
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement:.topBarTrailing) { AppToolsMenu(coordinator:coordinator,beforePresentation:stopPreview) }
+                    ToolbarItem(placement:.topBarTrailing) { ThemeToggleButton() }
+                }
+                .sheet(isPresented:$choosingAudio) {
+                    NavigationStack {
+                        AudioLibraryPickerView(coordinator:coordinator,title:"选择播放音频",includesBundled:true) { asset in
+                            if coordinator.selectLocal(asset) { choosingAudio = false }
+                        }
                     }
                 }
-            }
-            .sheet(isPresented: $importing) {
-                AudioDocumentPicker(onSelection: { url in
-                    // Acquire the scope and hand off the copied URL before dismissing the picker.
-                    coordinator.importAudio(url)
-                    importing = false
-                }, onCancel: {
-                    coordinator.logger.log("文件选择", "用户取消选择，当前音频保留")
-                    importing = false
-                })
-            }
-            .sheet(isPresented: $showResult) {
-                if let experiment = coordinator.currentExperiment {
-                    ExperimentResultView(experiment: experiment) { result, notes in
-                        coordinator.saveResult(result: result, notes: notes)
+                .sheet(isPresented: $importing) {
+                    AudioDocumentPicker(onSelection: { url in
+                        // Acquire the scope and hand off the copied URL before dismissing the picker.
+                        coordinator.importAudio(url)
+                        importing = false
+                    }, onCancel: {
+                        coordinator.logger.log("文件选择", "用户取消选择，当前音频保留")
+                        importing = false
+                    })
+                }
+                .sheet(isPresented: $showResult) {
+                    if let experiment = coordinator.currentExperiment {
+                        ExperimentResultView(experiment: experiment) { result, notes in
+                            coordinator.saveResult(result: result, notes: notes)
+                        }
                     }
                 }
-            }
-            .sheet(isPresented: $showTechnicalDetails) {
-                NavigationStack {
-                    ScrollView {
-                        Text(coordinator.technicalDetails ?? "本次操作没有额外技术错误，请查看诊断日志。")
-                            .font(.callout.monospaced())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                .sheet(isPresented: $showTechnicalDetails) {
+                    NavigationStack {
+                        ScrollView {
+                            Text(coordinator.technicalDetails ?? "本次操作没有额外技术错误，请查看诊断日志。")
+                                .font(.callout.monospaced())
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        }
+                        .navigationTitle("技术详情")
+                        .toolbar { Button("完成") { showTechnicalDetails = false } }
                     }
-                    .navigationTitle("技术详情")
-                    .toolbar { Button("完成") { showTechnicalDetails = false } }
                 }
-            }
-            .onChange(of: customDelay) { _, enabled in
-                if !enabled { coordinator.delay = 5 }
-            }
-            .onChange(of: coordinator.engineKind) { _, value in
-                if value == .audioPlayer { coordinator.voiceOptimized = false }
+                .onChange(of: customDelay) { _, enabled in
+                    if !enabled { coordinator.delay = 5 }
+                }
+                .onChange(of: coordinator.engineKind) { _, value in
+                    if value == .audioPlayer { coordinator.voiceOptimized = false }
+                }
             }
         }
     }
