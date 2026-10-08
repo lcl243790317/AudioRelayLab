@@ -45,7 +45,8 @@ gh run download <运行编号> --name AudioRelayLab-iOS-Build --dir dist
 本次本地与远端提交 SHA 以及干净状态记录在 BUILD-STATUS-ZH.txt。
 
 4. 必须完成的真实流水线
-macos-latest 打印 macOS、Xcode、iPhoneOS SDK、Swift、XcodeGen 和源码 SHA。
+标准 macos-26-intel runner 打印 macOS、Xcode、iPhoneOS SDK、Swift、XcodeGen 和源码 SHA。
+2026-10-08 一次 macos-latest 运行因 arm64 托管容量不足而未取得 runner，按官方诊断切换标准 Intel 池；完整测试步骤保持。
 静态检查 / Python 测试 → xcodegen generate / xcodebuild -list。
 xcodebuild Simulator Debug → 实际 iPhone Simulator 全部 XCTest → 完整 UI 回归 → iPhone SE 小屏检查 → generic iOS Release。
 两次编译禁用代码签名，用 set -euo pipefail 与 tee 同时保留输出和真实退出码。

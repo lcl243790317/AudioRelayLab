@@ -12,7 +12,7 @@
 | [26 / 37733946738](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37733946738) | `75be5eb8211f9410594d1b66718a2a56f3ed33ac` | Python 94 项通过（44.078 秒）、静态检查、工程生成及 Simulator Debug 编译通过。XCTest 前 loopback HTTPS 夹具在约 13 秒等待内未就绪，curl 退出 7；尚未开始 XCTest／UI，没有 IPA。 |
 | [27 / 37735342213](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37735342213) | `727a3469afa19f669d233b09f86098238b6b57f4` | Python 94 项通过（43.731 秒）；Simulator Debug 编译通过；274 项 XCTest 0 失败（107.583 秒）。20 项 UI 中 19 通过、1 失败（1806.800 秒）：退出多选后混音来源名称定位。小屏、iPhoneOS Release、IPA 因 UI 失败未执行。 |
 | [28 / 37813461196](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37813461196) | `af65c32fe910a50bfe2685840da395ce1328ed1d` | 关机恢复后修正混音来源显示及定位；尚在排队时发现失败反馈会被长列表遮住，补充修复后取消这次过时运行。不计为测试通过证据。 |
-| [29 / 37815191810](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37815191810) | `7a6dcc7d0386b0a953644e81058f73edac67dcaa` | 2026-10-08 17:15 UTC 触发标准完整构建；正在等待结果，尚不能计为当前源码通过。 |
+| [29 / 37815191810](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37815191810) | `7a6dcc7d0386b0a953644e81058f73edac67dcaa` | 17:15 UTC 触发，17:30 UTC 平台结束：未取得托管 runner，主任务取消、workflow failure。步骤为空，无测试、无 Artifact、无 IPA；官方注释提示 macOS arm64 容量不足。 |
 
 第 24 次运行的两项 UI 失败均已定位到测试断言：
 
@@ -26,6 +26,8 @@
 第 26 次失败产物 `11530793341`（137,590 字节）已核对官方 SHA-256：`2fb48c814eb6b47413ef4f013a23f0fc82c047d224ef2b07613a649dc79ae487`。夹具进程被清理时仍存在，`build-revoice-network.log` 为 0 字节，没有 Python 异常或应用测试失败记录；不据此推断具体宿主机性能原因。就绪检查改为最多 60 秒，检测进程提前退出并保留启动耗时及失败日志；只重试连接拒绝／连接超时，证书和 HTTP 错误立即失败，不放松生产 TLS 或跳过下载测试。
 
 实际 runner 环境（第 23 次运行）：macOS 26.6.2 / 25G83，Xcode 26.6 / 17F113，iPhoneOS SDK 26.5，Apple Swift 6.3.3。该环境不能代替 iOS 18.1.1 签名真机。
+
+第 29 次属于 runner 分配失败，不能计为应用编译或测试失败。为继续验证，工作流改用标准 `macos-26-intel`（[GitHub 官方标准 runner 表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)），仅改变 CI 宿主机架构，保持全部测试、下载夹具、签名禁用、SHA 核对和 IPA 校验。公开仓库使用该标准池免费；没有选择 larger runner。
 
 就绪检查修订后，Windows 本地 YAML 解析、项目静态检查与 `git diff --check` 通过；现有 `test_record_ci_result.py` 的 12 项证据判定回归通过（0.004 秒）。这些检查不计为 Swift 编译或 Simulator 测试结果。
 
