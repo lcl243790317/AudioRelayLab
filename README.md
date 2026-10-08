@@ -1,8 +1,8 @@
 # AudioRelayLab 音频接力实验室
 
-最近已构建版本：**1.6.6 / build 16**。当前工作区在此基础上增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出。版本号暂未递增，本次修改尚未由 Xcode 构建。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，本轮证据见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
+最近交付版本：**1.6.6 / build 16**。当前工作区在此基础上增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出。版本号暂未递增；本轮 Simulator Debug 和 274 项 XCTest 已通过，两处 UI 断言修正后继续完整验证，尚未生成本轮 IPA。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，首次检查见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)，远端进展见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
 
-工作分支为 `feature/revoice-ios-1.6.0`。本轮只完成本地修改、CPU 回归和静态检查，未推送、触发远端 CI、构建 IPA、合并 main 或部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
+工作分支为 `feature/revoice-ios-1.6.0`。首次本地验证后，用户在当前会话明确授权提交／推送及标准完整 macOS CI，实际结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。不合并 main、不创建 Release、不部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
 
 历史 1.6.6 交付：`dist/AudioRelayLab-1.6.6-unsigned.ipa`。当时 Python 94 项、Simulator XCTest 249 项、UI XCTest 18 项及 iPhone SE 小屏截图测试 1 项通过；Simulator Debug / iPhoneOS Release 构建成功。[历史构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763)及 [历史验证报告](REVOICE-1.6.6-TEST-REPORT-ZH.md)。该 IPA 和这些 Xcode 结果不包含本轮改动。
 

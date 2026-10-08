@@ -55,8 +55,12 @@ final class InteractionUITests: XCTestCase {
                     XCTAssertTrue(app.buttons["cloud.connection.done"].waitForExistence(timeout:3)); app.buttons["cloud.connection.done"].tap()
                 default:
                     let share = app.buttons["分享成品"]; reveal(share,in:app); share.tap()
-                    XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout:3) || app.buttons["Close"].exists)
-                    (app.buttons["关闭"].exists ? app.buttons["关闭"] : app.buttons["Close"]).tap()
+                    let sheet = app.otherElements["ActivityListView"]
+                    XCTAssertTrue(sheet.waitForExistence(timeout:3))
+                    let close = app.buttons["header.closeButton"]
+                    XCTAssertTrue(close.waitForExistence(timeout:3)); close.tap()
+                    let dismissed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:sheet)
+                    XCTAssertEqual(XCTWaiter.wait(for:[dismissed],timeout:3),.completed)
                 }
                 reveal(stop,in:app); XCTAssertFalse(stop.isEnabled); XCTAssertEqual(stop.value as? String,"未在回听")
             }
@@ -336,8 +340,8 @@ final class InteractionUITests: XCTestCase {
         reveal(revoice,in:app); revoice.tap()
         XCTAssertTrue(app.staticTexts["批删测试配音正文 17"].exists)
         reveal(mix,in:app,towardTop:true); mix.tap()
-        let origin = app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","人声：16300000")).firstMatch
-        XCTAssertTrue(origin.exists)
+        let origin = app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","人声：批删测试原声")).firstMatch
+        XCTAssertTrue(origin.exists); XCTAssertFalse(origin.label.contains("16300000"))
         app.buttons["library.selection"].tap()
         XCTAssertFalse(revoice.exists); XCTAssertFalse(mix.exists)
         XCTAssertFalse(app.staticTexts["批删测试配音正文 17"].exists); XCTAssertFalse(origin.exists)

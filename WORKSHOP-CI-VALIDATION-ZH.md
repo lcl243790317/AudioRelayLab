@@ -1,0 +1,25 @@
+# 2026-10-07～08 草稿与工坊功能：本轮 macOS 验证
+
+本报告记录当前会话用户明确回复“授权”后的远端验证，与 [首次本地验证](WORKSHOP-LOCAL-VALIDATION-ZH.md) 和历史 1.6.6 报告分别保留。只使用现有干净公开仓库 `lcl243790317/AudioRelayLab` 的 `feature/revoice-ios-1.6.0`，运行现有 `build-ios.yml` 的普通完整流程（`diagnosticOnly=false`）；没有合并 main、创建 Release、部署、变更云端配置或调用真实 GPU。
+
+## 构建记录
+
+| Actions run | 源码 | 本轮实际结果 |
+|---|---|---|
+| [23 / 37714884939](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37714884939) | `638f77b56b827152208dfaf9c9e4900ec3fbeee3` | Python 94 项通过（45.002 秒）；静态检查与工程生成通过。Simulator Debug 编译失败：`URLError.Code(rawValue:)` 非可选结果被用于可选绑定。未运行 XCTest／UI，未生成 IPA。 |
+| [24 / 37715213394](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37715213394) | `39ad349e62195d4da76e142ea559a4d8de98435a` | Python 94 项通过（44.113 秒）；Simulator Debug 编译通过；274 项 XCTest 0 失败（108.681 秒）。UI 执行 20 项、18 通过、2 失败（1806.950 秒）；小屏、iPhoneOS Release 和 IPA 因 UI 失败未执行。 |
+
+第 24 次运行的两项 UI 失败均已定位到测试断言：
+
+- 混音详情已经按本轮要求显示“人声：批删测试原声”，旧断言仍查找 UUID 前缀。改为验证可读名称，仍检查进入多选后详情隐藏、退出后恢复且折叠。
+- 真实系统分享页已经出现，失败附件的 accessibility hierarchy 记录关闭按钮标识为 `header.closeButton`，label 为小写 `close`；旧测试只查找“关闭”或大写 `Close`。改为检查分享页出现、点击实际按钮、等待分享页消失，再核对回听已停止。没有改变产品分享流程或跳过分享回归。
+
+第 24 次 Artifact `11524004560`（735,847,571 字节）已下载并核对官方 SHA-256：`4ca1b65ed9f1bb956bb27778bbe8a175399ba96b5f472add25a019931081179d`。原始失败记录保持，不把这次 UI 结果改记为通过。两处断言修复后继续标准完整流程；后续结果另行追加。
+
+实际 runner 环境（第 23 次运行）：macOS 26.6.2 / 25G83，Xcode 26.6 / 17F113，iPhoneOS SDK 26.5，Apple Swift 6.3.3。该环境不能代替 iOS 18.1.1 签名真机。
+
+## 验证边界
+
+本轮真机设备端语音识别、权限、听感、路由、锁屏和微信／通话期间行为尚未验证。具体操作步骤与剩余行为限制见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md#真机操作清单)。自动回归使用 PCM 夹具、注入识别器、URLProtocol 与现有可信 loopback HTTPS 服务；不请求付费 GPU。
+
+原始 CI 日志、下载归档和后续 IPA 将保存到本地忽略目录 `dist/workshop-ci-20261007/<run-id>/`，每次运行单独保留。旧 `dist/AudioRelayLab-1.6.6-unsigned.ipa` 与旧测试报告保持不变；远端产物只作为本轮候选，无签名 IPA 不证明重签后可安装或真机行为已通过。
