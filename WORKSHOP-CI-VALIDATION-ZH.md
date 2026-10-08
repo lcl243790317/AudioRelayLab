@@ -16,6 +16,7 @@
 | [30 / 37817892773](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37817892773) | `5d92321905e7096a8f63cfb2158a4a0090173d4b` | Python 94 项通过（43.448 秒）；Simulator Debug 通过；274 项 XCTest 0 失败（131.142 秒）。UI 完成 15 项：13 通过、2 失败；第 16 项执行中超过 75 分钟任务时限，官方结论 cancelled，没有完整 UI 汇总。小屏、iPhoneOS Release、IPA 未执行。 |
 | [31 / 37830588378](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37830588378) | `a89d6b303f13512915b99e5eab45121275d9e601` | 补充真实正式倒计时回归后主动取消过时验证，Simulator 编译中止；XCTest／UI／小屏／Release／IPA 未执行，不计全量通过。 |
 | [32 / 37831419860](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37831419860) | `8c5a7ea4ad469c2046a39ccf9a7d8cf76139a413` | Simulator Debug、XCTest 步骤成功；UI 阶段触及 150 分钟任务时限，21:57 UTC 官方结论 cancelled。原始日志与 Artifact 不可用，不能核对实际用例数量／UI 失败位置。小屏／Release／IPA 未执行，无新 IPA。 |
+| [33 / 37853382189](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37853382189) | `a3c7233316f10cf076c777e91205b0505cff32a1` | Simulator Debug 步骤成功；核对空草稿识别入口后发现其被旧云端任务误禁用，发出取消请求，修订后继续完整流程。XCTest 未完成，不计全量通过。 |
 
 第 24 次运行的两项 UI 失败均已定位到测试断言：
 
@@ -49,6 +50,8 @@
 根据这次证据缺失，小范围修订 CI：XCTest／UI 结束分别先上传轻量日志，最终大产物使用压缩级别 1；录屏进程清理改为有时限的自有进程组操作，保留真实测试退出码并解码验证视频。UI 默认单用例 600 秒，多上下文试听回归显式 1800 秒，最大 1800 秒；依据 [Apple XCTest 时限说明](https://developer.apple.com/documentation/xctest/xctestcase/executiontimeallowance) 和 [Xcode 11.4 参数说明](https://developer.apple.com/documentation/xcode-release-notes/xcode-11_4-release-notes)，超时必须记为失败。任务总时限 240 分钟，完整 275 XCTest／20 UI／小屏／Release／IPA 均保留；没有改 App 行为、跳过断言、自动重试失败用例或更改 GPU。
 
 2026-10-08 本地新增验证：4 项实际子进程清理回归通过（1.753 秒）；全部 Python CPU 回归 98 项通过、0 失败／错误／跳过（测试 14.332 秒，含发现用例共 15.500 秒），实际本地模拟服务运行，不调用真实 GPU。受限沙箱内的第一次 loopback 测试被网络边界阻断，保留未完成日志，仅精确终止本轮自有 launcher 与子进程；授权后的完整执行另存日志。实际 H.264 MP4 解码出画面，损坏 MP4 被拒绝。静态检查仍为 72 App／21 XCTest 文件通过；新 workflow YAML 与修改的 UI Swift 语法解析、`git diff --check` 通过。这些 Windows 结果不计为 Swift 编译或 Simulator 运行。
+
+第 33 次运行期间继续核对入口：文字为空且已经选音频时，底部“识别文字”仍复用了云端生成的禁用条件，旧任务会使设备端识别不可操作。现按实际操作区分：识别只受本地音频操作锁限制并直接调用识别器；有文字时的新生成仍受旧任务限制。扩展现有原生回归，在旧任务保留时实际识别空草稿、撤销并继续并发识别／停止云端等待；同一 UI 回归增加空稿＋真实本地输入的启用检查及旧取回入口保护。总数仍为 275 XCTest／20 UI，未触发实际云端请求。4 个修改的 Swift 文件语法解析与项目静态检查通过，Xcode 行为须由下一次完整运行确认。
 
 ## 验证边界
 

@@ -6,8 +6,9 @@ AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-08）
 首次 Windows 94 项 Python 回归、静态与语法检查通过；首次检查点见 WORKSHOP-LOCAL-VALIDATION-ZH.md。
 
 待本轮真实 CI 更新：
-- 当前候选源码提交：8c5a7ea4ad469c2046a39ccf9a7d8cf76139a413
-- 当前 Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37831419860
+- 当前候选源码提交：a3c7233316f10cf076c777e91205b0505cff32a1
+- 当前 Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37853382189
+- 第 33 次 Simulator Debug 步骤成功；发现空稿识别入口误受旧任务限制后发出取消请求。入口与原生／UI 回归已修订，下一次完整运行尚待启动，不计本次为全量通过。
 - 第 32 次标准完整 CI 于 21:57 UTC cancelled，官方原因为超过 150 分钟任务时限。Simulator Debug 与 XCTest 步骤成功，但原始数量无法核对；UI 被取消，Artifact／原始日志不可用，小屏／Release／IPA 未执行。
 - 第 30 次标准 macos-26-intel 构建：Simulator Debug 与 274 XCTest 通过；UI 完成 15 项（13 通过、2 失败）后任务超过 75 分钟时限取消。
 - 本地补齐阶段日志上传、录屏有时限清理和 XCTest 单用例时限；全量 CPU 98 项通过（15.500 秒），实际 H.264 视频校验通过。下一次标准完整流程保留 275 XCTest、20 UI、小屏 1 项、Release 与 IPA；任务总时限 240 分钟。

@@ -148,6 +148,10 @@ import UniformTypeIdentifiers
         #endif
         refreshLibrary()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("voice-recovery-empty-input-test"),
+           let input = library.first(where:{$0.id == UUID(uuidString:"16300000-0000-4000-8000-000000000013")}) {
+            revoice.selectInput(input); revoice.text = ""
+        }
         if ProcessInfo.processInfo.arguments.contains("workshop-result-test") {
             revoice.preparePreview(custom:true)
             if let result = library.first(where:{$0.id == UUID(uuidString:"16300000-0000-4000-8000-000000000017")}) { revoice.preparePreviewResult(result) }

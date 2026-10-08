@@ -276,6 +276,15 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(app.buttons["revoice.generate"].label.contains("旧任务")); XCTAssertFalse(app.buttons["revoice.generate"].isEnabled)
         XCTAssertTrue((editor.value as? String ?? "").contains("Updated draft."))
         attach(app,"旧任务与新草稿分开")
+        app.terminate()
+        app.launchArguments += ["mix-interaction-test","voice-recovery-empty-input-test"]; app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout:10)); XCTAssertEqual(editor.value as? String,"")
+        let recognize = app.buttons["revoice.generate"]
+        XCTAssertTrue(recognize.waitForExistence(timeout:5)); XCTAssertEqual(recognize.label,"识别文字")
+        XCTAssertTrue(recognize.isEnabled,"旧任务只阻止新云端提交，空草稿的设备端识别仍可操作")
+        reveal(pendingText,in:app); XCTAssertEqual(pendingText.label,"这是之前已提交的配音，恢复时请继续取回这一份。")
+        XCTAssertTrue(app.buttons["revoice.pending.stop"].exists)
+        attach(app,"旧任务保留时空草稿仍可识别")
     }
 
     @MainActor func testLargeTextCustomLayoutCanReachAllInputsAndGenerate() {

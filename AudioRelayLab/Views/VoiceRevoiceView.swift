@@ -18,12 +18,14 @@ struct VoiceRevoiceView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var draftLocked:Bool { ai.stage == .recognizing || voice.isActive }
-    private var generationLocked:Bool {
-        !ai.canGenerateDraft || voice.isActive || coordinator.isImporting || coordinator.isMixing || coordinator.isRunning || coordinator.aiVoice.busy
+    private var recognitionRequested:Bool { emptyDraft && ai.input != nil }
+    private var primaryOperationLocked:Bool {
+        if recognitionRequested { return coordinator.controlsLocked }
+        return !ai.canGenerateDraft || voice.isActive || coordinator.isImporting || coordinator.isMixing || coordinator.isRunning || coordinator.aiVoice.busy
     }
     private var emptyDraft:Bool { ai.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }
     private var generateTitle:String {
-        if emptyDraft && ai.input != nil { return "识别文字" }
+        if recognitionRequested { return "识别文字" }
         return ai.blockingJob != nil ? "旧任务尚未结束" : "生成配音"
     }
 
@@ -114,8 +116,8 @@ struct VoiceRevoiceView: View {
         }
         .safeAreaInset(edge:.bottom,spacing:0) {
             if !voice.isActive {
-                Button(generateTitle,action:generate).buttonStyle(PaperButtonStyle(primary:true))
-                    .disabled(generationLocked || (emptyDraft && ai.input == nil) || (!emptyDraft && !ai.configured))
+                Button(generateTitle,action:performPrimaryAction).buttonStyle(PaperButtonStyle(primary:true))
+                    .disabled(primaryOperationLocked || (emptyDraft && ai.input == nil) || (!emptyDraft && !ai.configured))
                     .accessibilityIdentifier("revoice.generate")
                     .padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:.infinity)
                     .background(PaperTheme.paper)
@@ -147,7 +149,11 @@ struct VoiceRevoiceView: View {
     private func chooseAudio() { dismissKeyboard(); stopPreview(); sheet = .library }
     private func selectAudio(_ asset:AudioAsset) { ai.selectInput(asset); sheet = nil }
     private func recognize() { dismissKeyboard(); stopPreview(); ai.recognize() }
-    private func generate() { dismissKeyboard(); ai.generate() }
+    private func performPrimaryAction() {
+        dismissKeyboard()
+        if recognitionRequested { stopPreview(); ai.recognize() }
+        else { ai.generate() }
+    }
     private func resume() { dismissKeyboard(); if let id = ai.pendingJobID { ai.retrieve(id) } }
     private func stopWaiting() { dismissKeyboard(); ai.stopWaiting() }
     private func stop() { dismissKeyboard(); if ai.recognizing { ai.cancelRecognition() } else { ai.cancel() } }

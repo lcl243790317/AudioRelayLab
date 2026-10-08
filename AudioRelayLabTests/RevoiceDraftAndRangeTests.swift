@@ -168,9 +168,14 @@ final class RevoiceDraftAndRangeTests:XCTestCase {
         let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
         defer { manager.invalidateForTesting() }
         let recognizer = DraftSpeechRecognizer(),ai = RevoiceController(recognizer:recognizer,connection:nil,backgroundTransfers:manager,draftStore:nil)
-        ai.text = "新草稿"; ai.selectInput(try input()); recognizer.waits = true; ai.recognize()
-        for _ in 0..<200 where recognizer.calls == 0 { try await Task.sleep(for:.milliseconds(10)) }
-        XCTAssertEqual(recognizer.calls,1); XCTAssertTrue(ai.recognizing)
+        ai.text = ""; ai.selectInput(try input()); ai.recognize(); try await settle(ai)
+        XCTAssertEqual(ai.text,"新的识别文字。"); XCTAssertEqual(recognizer.calls,1)
+        XCTAssertEqual(ai.pendingJobID,job.id); XCTAssertEqual(store.job(job.id)?.phase,.submitting)
+        XCTAssertEqual(store.job(job.id)?.context.text,"旧任务原文"); XCTAssertEqual(store.all().count,1)
+        ai.undoRecognition(); XCTAssertEqual(ai.text,"")
+        ai.text = "新草稿"; recognizer.waits = true; ai.recognize()
+        for _ in 0..<200 where recognizer.calls == 1 { try await Task.sleep(for:.milliseconds(10)) }
+        XCTAssertEqual(recognizer.calls,2); XCTAssertTrue(ai.recognizing)
         XCTAssertTrue(ai.stopWaiting())
         XCTAssertEqual(store.job(job.id)?.phase,.abandoned); XCTAssertNil(ai.pendingJobID)
         XCTAssertTrue(ai.recognizing); XCTAssertEqual(ai.text,"新草稿")
