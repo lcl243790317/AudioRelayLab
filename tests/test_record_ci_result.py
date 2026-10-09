@@ -12,6 +12,21 @@ spec.loader.exec_module(module)
 
 
 class CIEvidenceTests(unittest.TestCase):
+    def test_repository_status_document_can_be_updated_without_losing_device_notes(self):
+        # Exercise the checked-in document consumed by the last packaging step.
+        # Synthetic evidence stays in memory and is never written as build proof.
+        text = (scripts.parent / "BUILD-STATUS-ZH.txt").read_text(encoding="utf-8")
+        evidence = dict(environment=dict(macOS="test", macOSBuild="test", xcode="test",
+                         xcodeBuild="test", iPhoneOSSDK="test", swift="test", xcodegen="test"),
+                        ipa=dict(bytes=1, sha256="0" * 64), warnings=[], swiftWarningCount=0,
+                        sourceCommit="0" * 40, workflowRunURL="https://example.invalid/test",
+                        xctestCount=1, pythonTestCount=1)
+        updated = module.replace_status(text, evidence)
+        self.assertEqual(updated.count("本轮真实 CI 证据："), 1)
+        self.assertIn(evidence["workflowRunURL"], updated)
+        self.assertEqual(updated[updated.index("真机已有观察"):], text[text.index("真机已有观察"):])
+        self.assertEqual(module.replace_status(updated, evidence), updated)
+
     def test_requires_build_success_marker(self):
         with self.assertRaisesRegex(ValueError, "缺少"):
             module.require_success("compilation started", "BUILD", "Simulator")

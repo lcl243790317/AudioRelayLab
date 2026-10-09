@@ -5,7 +5,8 @@ AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-08）
 分支 feature/revoice-ios-1.6.0；当前会话已授权标准公开 CI，不合并 main、不发布、不部署。
 首次 Windows 94 项 Python 回归、静态与语法检查通过；首次检查点见 WORKSHOP-LOCAL-VALIDATION-ZH.md。
 
-当前状态：用户明确继续且后续不再阶段暂停；离线音频修复已完成本地收尾，将提交至原功能分支并运行完整标准 CI。此前暂停记录保留在 handoff.md，当前验证以本文及 WORKSHOP-CI-VALIDATION-ZH.md 为准。
+待本轮真实 CI 更新：
+当前状态：用户明确继续且后续不再阶段暂停；离线音频修复已提交，完整标准 CI 还须验证。此前暂停记录保留在 handoff.md，当前验证以本文及 WORKSHOP-CI-VALIDATION-ZH.md 为准。
 4 份修改 Swift 语法、72 App／21 XCTest 文件静态检查及 git diff --check 通过；新修订的 Swift 编译和行为测试仍待执行。
 
 最近已执行的候选验证（不包含当前未提交修订）：
