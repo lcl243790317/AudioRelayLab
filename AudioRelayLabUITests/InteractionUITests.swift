@@ -50,7 +50,7 @@ final class InteractionUITests: XCTestCase {
 
     @MainActor func testWorkshopPreviewsStopOnModesTabsSelectorsSettingsAndShare() {
         let app = XCUIApplication()
-        app.launchArguments = ["library-interaction-test","workshop-result-test","day-snapshot"]; app.launch()
+        app.launchArguments = ["library-interaction-test","workshop-result-test","preview-lifecycle-test","day-snapshot"]; app.launch()
         app.tabBars.buttons["工坊"].tap()
         for mode in ["配音","混音"] {
             app.segmentedControls["workshop.mode"].buttons[mode].tap()
@@ -102,7 +102,13 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue((previewText.value as? String ?? "").contains("warm and slow"))
         let edited = previewText.value as? String
         let content = app.textViews["revoice.text"]
-        reveal(content,in:app,towardTop:true); content.tap(); content.typeText(" Updated words."); app.buttons["keyboard.done"].tap()
+        reveal(content,in:app,towardTop:true)
+        // The native AX activation point can fall on the text-selection edge.
+        // Use one interior tap, then verify actual keyboard focus and the edit.
+        content.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.5)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3),"点击正文后应出现键盘，才能继续输入")
+        content.typeText(" Updated words."); app.buttons["keyboard.done"].tap()
+        XCTAssertTrue((content.value as? String ?? "").contains("Updated words."))
         reveal(previewText,in:app); XCTAssertEqual(previewText.value as? String,edited)
         reveal(app.staticTexts["revoice.instruction.stale"],in:app)
         XCTAssertFalse(app.buttons["revoice.generate"].isEnabled)
@@ -130,7 +136,7 @@ final class InteractionUITests: XCTestCase {
         attach(app,"自动表达指令开关与预览")
     }
     @MainActor func testBothLibraryScreensStopPreviewOnTabChangeAndNavigationBack() {
-        let app = XCUIApplication(); app.launchArguments = ["mix-interaction-test","day-snapshot"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["mix-interaction-test","preview-lifecycle-test","day-snapshot"]; app.launch()
         app.tabBars.buttons["音频库"].tap()
         for library in ["本地音频","录音与 AI"] {
             app.segmentedControls["library.scope"].buttons[library].tap()

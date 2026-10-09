@@ -97,10 +97,38 @@
 
 ## 验证边界与继续状态
 
+当前完整运行：第 37 次 [37872839111](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37872839111)，源码 `7b759fd2c99b9bb64d8b8efde2c64d9cb1f454aa`，02:04:44 UTC 启动，`diagnosticOnly=false`。预期 99 CPU／276 XCTest／20 UI／小屏 1 项及 Release／IPA；结果须从本 run 原始日志核对。在结果出现前，不重复 dispatch，也不把源码发现数量写成测试通过。
+
+第 37 次原生阶段已实际核对：检查点 Artifact `11592640058`（61,780 字节），本地 SHA-256 与官方 `aeb098358a5f6cab64bd6487abd6f7420c8f3fda6da8f4012c42e79989d752b6` 一致。原始日志确认 99 CPU 测试通过（46.304 秒）、Simulator Debug BUILD SUCCEEDED、276 XCTest／0 失败（195.915 秒；总计 200.915 秒）。新增 `testBackgroundOfflineMixRendersWithInactiveRecordOnlySession` 通过（0.293 秒）。两条既有测试代码末尾 defer 编译提示和 AppIntents 元数据提示仍保留，未产生测试失败。此阶段不证明完整 UI、小屏、Release 或 IPA 已通过。
+
+第 37 次实时 UI 日志出现自动表达用例失败（240.441 秒）：第 105 行向正文 TextView 输入时报告没有键盘焦点，快照仍为原文字。尚不能从这行日志区分焦点建立时序与应用行为，后续须核对失败附件。工作区先补充点击后的键盘出现前置断言和正文写入断言，不重试点击、不删除旧断言；4 份 Swift 语法解析及补丁检查通过。此未提交测试修订不包含在当前运行的 `7b759fd` 中，也尚无新 Xcode 结果。当前运行继续收集其余 UI 用例，避免遗漏之前三个问题的实际结果。
+
+随后实时日志记录 `testBothLibraryScreensStopPreviewOnTabChangeAndNavigationBack` 第 141 行等待“正在回听”失败（65.454 秒）。现有夹具复制 11.7 秒内置音频；这只能确认等待未满足，尚不能断定自然结束、准备延迟或实际播放错误，需结合失败录像／AX 附件判断。本地尚未修改这一项或播放器逻辑。
+
 用户随后明确继续，要求后续不再阶段暂停，也不再例行更新 handoff.md。本次继续从上述 11 份修改提交并验证；当前状态以本报告、README 和 BUILD-STATUS 为准，交接文档中的暂停为历史检查点。
 
-本地修复收尾已完成并按用户要求暂停：4 份修改 Swift 语法解析、72 App／21 XCTest 文件静态检查和 `git diff --check` 均通过。11 份修改仍未提交，没有新的远端运行或 IPA；下次继续先提交审查后的修订，再运行完整标准 CI。276 原生／20 UI 为预期发现数量，不能计为本次通过。
+此前本地暂停检查点（已恢复继续）：4 份修改 Swift 语法解析、72 App／21 XCTest 文件静态检查和 `git diff --check` 均通过，当时 11 份修改尚未提交。该检查点现已由上述提交和第 37 次实际验证推进；不再作为当前暂停状态，也不把当时预期的测试数量计作通过。
 
 本轮真机设备端语音识别、权限、听感、路由、锁屏和微信／通话期间行为尚未验证。具体操作步骤与剩余行为限制见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md#真机操作清单)。自动回归使用 PCM 夹具、注入识别器、URLProtocol 与现有可信 loopback HTTPS 服务；不请求付费 GPU。
 
 原始 CI 日志、下载归档和后续 IPA 将保存到本地忽略目录 `dist/workshop-ci-20261007/<run-id>/`，每次运行单独保留。旧 `dist/AudioRelayLab-1.6.6-unsigned.ipa` 与旧测试报告保持不变；远端产物只作为本轮候选，无签名 IPA 不证明重签后可安装或真机行为已通过。
+
+## 2026-10-09 新会话继续：第 37 次完整诊断
+
+用户明确要求沿 handoff 继续项目并使用 GitHub macOS runner。第 37 次于 04:30:36 UTC 结束，结论 failure；20 项 UI 实际执行，15 通过、5 失败、0 超时，5827.257 秒。CPU 99／原生 276 项通过仅证明相应阶段，小屏、Release、IPA 尚未运行。
+
+已取回 UI 检查点 `11595800042`（80,504 字节）和主诊断归档 `11594409502`（714,916,221 字节），分别核对官方 SHA-256 `06ef7486e9e95e690e673611d8383364cd5b23f486f04f6a2afdebd0c901bad4`、`7844097be64098e33e0da910c8af4c038539491ff903652b5bc40cdd35995b88`。录像、AX 与原始归档只保存在忽略目录。
+
+| 失败用例 | 完整证据与当前处理 |
+|---|---|
+| 自动表达正文编辑 | 正文可见且启用，实际合成 tap 在编辑框左上角内 5／8 px，随后没有键盘焦点。改为单次框内中心点击，保留键盘出现与文字写入断言；没有重复点击或更改生产焦点逻辑。 |
+| 两处音频库退出回听 | 录像确认真实进入回听；首次 AX 查询距点击约 8 秒，11.7 秒短夹具且部分快照只有 App 根节点。为退出行为提供既有 93.6 秒实际 PCM 夹具，保留播放、退出、清零等断言。 |
+| 播放页试听退出 | 前五类全段试听退出通过；云端菜单操作发生长时间 hit-point 失败后，第六次 start 的播放状态等待失败。失败附近 AX 快照缺少子节点；录像确认第六次实际播放，354～365 秒期间进度从 0.6 到 11.7 秒。xcresult 内 App stdout 在 03:53:37.615 的树显示“正在试听”与 13.039 秒，下一秒也能响应 stop 查询；有 HALC 音频周期 overload 提示，没有本 App 崩溃栈。没有据此修改生产播放或路由策略。 |
+| 预设指令编辑 | 上一用例失败后 launch 无法终止原 App PID，未执行本用例的产品断言。保留失败，后续全套再次验证。 |
+| 工坊回听退出 | 首次播放状态等待失败，失败前后 AX 快照仅含 App 根节点；短夹具更换为上述长 PCM，保留所有退出入口和断言。 |
+
+此前修订的独立离线混音、混音来源详情、连接页主题／大字体均在第 37 次通过。当前证据仍不足以将五项全部归因为 App 或 runner。
+
+标准工作流转到 `macos-15` Apple Silicon，固定 Xcode 16.4 与 iOS 18.5，选择器严格限定同一 runtime，避免在旧 Xcode 下误选更高版本模拟器。这是本项目 iOS 18 验证基线；[GitHub 官方标准池](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)与[镜像清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)确认可用。保留完整 99 CPU／276 native／20 UI／小屏 1 项、Release、真实录屏、HTTPS 下载和 IPA 验证。更新静态检查为核对新 runner、Xcode 与 runtime；不使用 larger runner、Modal 或真实 GPU。
+
+Windows 本地完整 CPU 99 项通过、0 失败／错误／跳过（10.709 秒），Python 3.12.14；静态检查与 Swift tree-sitter 语法验证通过。首次沙盒 loopback 被 WinError 10013 拒绝，保留不完整输出后在允许本地 loopback 的范围内重跑。Windows 检查仍不计为 Xcode 编译或模拟器通过；修订后的实际 macOS 结果待新一轮完整运行。

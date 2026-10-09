@@ -124,7 +124,8 @@ for marker in ["VoiceDSP", "VoiceProcessingEngine", "VoiceRecordingWriter", "sig
     if marker in spec or any(marker in p.read_text(encoding="utf-8") for p in sources):
         errors.append(f"旧实时处理依赖仍存在：{marker}")
 workflow = (root / ".github/workflows/build-ios.yml").read_text(encoding="utf-8")
-for marker in ["macos-26-intel", "workflow_dispatch", "xcodegen generate", "set -euo pipefail", "CODE_SIGNING_ALLOWED=NO",
+for marker in ["runs-on: macos-15", "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer", "AUDIOLAB_SIMULATOR_OS: '18.5'",
+               "workflow_dispatch", "xcodegen generate", "set -euo pipefail", "CODE_SIGNING_ALLOWED=NO",
                "if: always()", "contents: read", "simctl list devices available --json", "build-xctest.log", "test -only-testing:AudioRelayLabTests 2>&1", "build-uitest.log",
                "BUILD-STATUS-ZH.txt", "dist/SHA256SUMS.txt"]:
     if marker not in workflow:

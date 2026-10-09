@@ -111,25 +111,26 @@ import UniformTypeIdentifiers
         }
         if audio == nil { useTestAudio() }
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("preview-lifecycle-test"),let fixture = try? PreviewInteractionFixture.make() {
+        let longPreviewFixture = ProcessInfo.processInfo.arguments.contains("preview-lifecycle-test") ? (try? PreviewInteractionFixture.make()) : nil
+        if let fixture = longPreviewFixture {
             _ = selectLocal(fixture)
         }
-        if ProcessInfo.processInfo.arguments.contains("mix-interaction-test") || ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") || ProcessInfo.processInfo.arguments.contains("library-interaction-test"),let source = try? AudioFileManager.loadBundledAudio(),
+        if ProcessInfo.processInfo.arguments.contains("mix-interaction-test") || ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") || ProcessInfo.processInfo.arguments.contains("library-interaction-test"),let source = longPreviewFixture ?? (try? AudioFileManager.loadBundledAudio()),
            let sourceURL = try? AudioFileManager.url(for:source),let folder = try? AudioFileManager.audioDirectory() {
             let id = UUID(uuidString:"16300000-0000-4000-8000-000000000013") ?? UUID()
-            let target = folder.appendingPathComponent("混音测试原声.wav")
+            let target = folder.appendingPathComponent(longPreviewFixture == nil ? "混音测试原声.wav" : "混音测试原声-长回听.wav")
             if !FileManager.default.fileExists(atPath:target.path) { try? FileManager.default.copyItem(at:sourceURL,to:target) }
             if let fixture = try? AudioFileManager.inspect(url:target,displayName:"混音测试原声",id:id,source:.voiceLabRecording) {
                 try? AudioFileManager.register(fixture)
             }
         }
         if ProcessInfo.processInfo.arguments.contains("library-interaction-test"),
-           let source = try? AudioFileManager.loadBundledAudio(),let sourceURL = try? AudioFileManager.url(for:source),
+           let source = longPreviewFixture ?? (try? AudioFileManager.loadBundledAudio()),let sourceURL = try? AudioFileManager.url(for:source),
            let folder = try? AudioFileManager.audioDirectory() {
             for (suffix,name,kind) in [(14,"批删测试原声",AudioSource.voiceLabRecording),(15,"批删测试音乐一",.imported),(16,"批删测试音乐二",.imported),
                                        (17,"批删测试配音一",.aiConverted),(18,"批删测试配音二",.aiConverted),(19,"批删测试混音",.mixedRecording)] {
                 let id = UUID(uuidString:String(format:"16300000-0000-4000-8000-%012d",suffix)) ?? UUID()
-                let target = folder.appendingPathComponent(name+".wav")
+                let target = folder.appendingPathComponent(name+(longPreviewFixture == nil ? "" : "-长回听")+".wav")
                 if !FileManager.default.fileExists(atPath:target.path) { try? FileManager.default.copyItem(at:sourceURL,to:target) }
                 if var fixture = try? AudioFileManager.inspect(url:target,displayName:name,id:id,source:kind) {
                     if kind == .aiConverted {
