@@ -374,6 +374,7 @@ jobs:
             REVOICE-1.6.4-ZH.md
             REVOICE-1.6.5-ZH.md
             REVOICE-1.6.6-ZH.md
+            REVOICE-1.6.7-TEST-REPORT-ZH.md
             build/revoice-download-fixture-report.json
             build/revoice-fixture-readiness.log
             build/ui-*.mp4

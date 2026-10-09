@@ -272,8 +272,9 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testAutomaticCustomInstructionUsesLatestTextWithoutChangingManualDraft() async throws {
         try await exercise { ai,recognizer,_ in
+            XCTAssertTrue(ai.usesAutomaticInstruction)
             ai.kind = .custom; ai.selectedSpeaker = "Vivian"; ai.instruction = "保留明亮的角色声线"
-            ai.text = "终于成功了，太开心了！"; ai.usesAutomaticInstruction = true
+            ai.text = "终于成功了，太开心了！"
             let expected = try XCTUnwrap(ai.automaticInstructionPreview)
             ai.generate(); try await self.settle(ai)
             let first = try XCTUnwrap(RevoiceHTTPProtocol.state.submissions.last)
@@ -292,7 +293,7 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testAutomaticPresetNeverOverridesFixedReferenceOrLegacyServer() async throws {
         try await exercise { ai,_,_ in
-            ai.usesAutomaticInstruction = true; ai.text = "太开心了！"
+            XCTAssertTrue(ai.usesAutomaticInstruction); ai.text = "太开心了！"
             XCTAssertFalse(ai.canUseAutomaticInstruction); XCTAssertNil(ai.automaticInstructionPreview)
             ai.generate(); try await self.settle(ai)
             XCTAssertNil(RevoiceHTTPProtocol.state.submissions.last?["instruction"])
@@ -311,7 +312,7 @@ final class RevoiceTests:XCTestCase {
     @MainActor func testAutomaticInstructionUsesDeviceRecognizedText() async throws {
         try await exercise { ai,recognizer,input in
             RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
-            ai.usesAutomaticInstruction = true; ai.selectInput(input); ai.recognize()
+            XCTAssertTrue(ai.usesAutomaticInstruction); ai.selectInput(input); ai.recognize()
             try await self.settle(ai)
             XCTAssertEqual(recognizer.calls,1); XCTAssertEqual(ai.text,"嗯，我，我想明天再去。")
             let expected = RevoiceAutomaticInstruction.make(text:ai.text,baseInstruction:ai.presetInstruction)
@@ -380,6 +381,7 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testPresetOverrideUsesLatestDraftAndEmptyClearsDefaultWithoutRecognition() async throws {
         try await exercise { ai,recognizer,_ in
+            ai.usesAutomaticInstruction = false
             RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
             for instruction in ["  慵懒、自然。  ",""] {
                 ai.presetInstruction = instruction; ai.text = "嗯，我，我刚刚更新了文字。"
@@ -400,6 +402,7 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testPresetPendingTaskKeepsFrozenOverrideWhileNewDraftChanges() async throws {
         try await exerciseAsync { ai,_,manager,store in
+            ai.usesAutomaticInstruction = false
             RevoiceHTTPProtocol.state.presetInstructionSupported = true; ai.connect(); try await self.settle(ai)
             ai.text = "旧配音文字。"; ai.presetInstruction = "旧表达"
             RevoiceHTTPProtocol.state.failAfterSubmission = true; ai.generate(); try await self.settle(ai)
@@ -535,6 +538,7 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testAsyncNewGenerationUsesLatestSpeakerInstructionTextAndNewIDForAllSpeakers() async throws {
         try await exerciseAsync { ai,recognizer,manager,store in
+            ai.usesAutomaticInstruction = false
             ai.kind = .custom
             var ids:Set<String> = []
             for (index,speaker) in RevoiceSpeaker.all.enumerated() {
@@ -604,6 +608,7 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testNewDraftCannotReplaceInFlightSubmissionOrLoseItsRetrieval() async throws {
         try await exerciseAsync { ai,_,_,store in
+            ai.usesAutomaticInstruction = false
             ai.kind = .custom; ai.selectedSpeaker = "Serena"; ai.text = "正在提交的旧任务。"; ai.instruction = "旧指令"
             RevoiceHTTPProtocol.state.responseDelay = 0.4; ai.generate(); try await self.waitForSubmissions(1)
             let previous = try XCTUnwrap(ai.pendingJobID)
@@ -709,6 +714,7 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testCustomRecordingWaitsForReviewAndEditingDoesNotRecognizeAgain() async throws {
         try await exercise { ai,recognizer,input in
+            ai.usesAutomaticInstruction = false
             ai.kind = .custom;ai.recorded(input);try await self.settle(ai)
             XCTAssertEqual(recognizer.calls,1);XCTAssertTrue(RevoiceHTTPProtocol.state.submissions.isEmpty)
             ai.text = "修改后的原话。";ai.instruction = "  放松一点。  ";ai.generate();try await self.settle(ai)
@@ -721,6 +727,7 @@ final class RevoiceTests:XCTestCase {
     }
     @MainActor func testAutomaticRecognitionPreservesNewerDraftAndChangedCustomMode() async throws {
         try await exercise { ai,recognizer,input in
+            ai.usesAutomaticInstruction = false
             recognizer.delay = true; ai.recorded(input)
             for _ in 0..<200 where recognizer.calls == 0 { try await Task.sleep(for:.milliseconds(10)) }
             XCTAssertEqual(recognizer.calls,1)

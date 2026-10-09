@@ -10,7 +10,7 @@ import UIKit
     @Published var selectedSpeaker = "Serena" { didSet { refreshAutomaticInstruction() } }
     @Published var instruction = "" { didSet { refreshAutomaticInstruction() } }
     @Published var presetInstruction = "" { didSet { refreshAutomaticInstruction() } }
-    @Published var usesAutomaticInstruction = false { didSet { refreshAutomaticInstruction() } }
+    @Published var usesAutomaticInstruction = true { didSet { refreshAutomaticInstruction() } }
     @Published private(set) var automaticInstructionDraft:AutomaticInstructionDraft? { didSet { draftChanged() } }
     enum VoiceSelection:Equatable { case mode(Kind), preset(String), speaker(String) }
     @Published private(set) var pendingVoiceSelection:VoiceSelection?
@@ -103,7 +103,6 @@ import UIKit
     @Published private(set) var connectionWarning:String?
     var busy:Bool { stage != .idle || connecting }
     var usesAudioResources:Bool { recognizing || cloudStage == .saving }
-    @Published private(set) var recognitionRange:RevoiceRecognitionRange?
     @Published var insertionMode:SpeechInsertionMode = .replace { didSet { draftChanged() } }
     @Published private(set) var draftSaveState:DraftSaveState = .unchanged
     enum DraftSaveState:Equatable { case unchanged, pending, saved, failed(String) }
@@ -180,7 +179,10 @@ import UIKit
         transfers?.onNeedsSubmission = { [weak self] job in self?.resumeSubmission(job) }
         recentJobs = transfers?.store.all() ?? []
         let loaded = draftStore?.load()
-        if let draft = loaded?.draft { restoreEditingDraft(draft) }
+        if let draft = loaded?.draft {
+            restoreEditingDraft(draft)
+            if draft.version < RevoiceDraft.currentVersion { flushDraft() }
+        }
         draftWarning = loaded?.warning ?? draftWarning
         if let job = transfers?.pending {
             observedJobID = job.id; pendingJobID = job.id
@@ -239,7 +241,7 @@ import UIKit
     @discardableResult func selectInput(_ asset:AudioAsset?) -> Bool {
         cancelRecognition()
         inputGeneration = UUID(); input = asset; recognizedText = nil; recognizedInputGeneration = nil
-        recognitionRange = asset.flatMap { RevoiceRecognitionRange.fullIfShort($0.duration) }; errorMessage = nil
+        errorMessage = nil
         draftChanged()
         if cloudStage == .idle { status = asset == nil ? "可以录音或直接输入文字，原稿已保留" : "音频已选择，原稿保留；识别成功后按替换或追加写入" }
         return true
@@ -253,14 +255,6 @@ import UIKit
         if input?.id == id { selectInput(nil); draftWarning = "草稿的输入音频已删除，文字和指令仍保留。" }
         if result?.id == id { result = nil }
     }
-    func setRecognitionRange(_ range:RevoiceRecognitionRange) {
-        guard let input else { return }
-        do {
-            try range.validate(duration:input.duration)
-            cancelRecognition(); inputGeneration = UUID(); recognizedInputGeneration = nil
-            recognitionRange = range; errorMessage = nil; draftChanged()
-        } catch { errorMessage = RevoiceError.message(error) }
-    }
     func cancelRecognition() {
         let wasRecognizing = recognizing
         pendingRecognition = false; recognitionGeneration = UUID()
@@ -269,10 +263,9 @@ import UIKit
     }
     func recognize() {
         guard !recognizing, let input else { return }
-        guard let range = recognitionRange else { errorMessage = "请先打开配音页的识别片段，明确选择 0.3～60 秒人声"; return }
         let textAtStart = text
         let mode = insertionMode, inputToken = inputGeneration
-        let token = UUID(); recognitionGeneration = token; recognizing = true; errorMessage = nil; status = "识别中 · 在手机处理所选片段"
+        let token = UUID(); recognitionGeneration = token; recognizing = true; errorMessage = nil; status = "识别中 · 在手机处理完整音频"
         recognitionTask = Task { [weak self] in
             guard let self else { return }
             var prepared:URL?
@@ -283,8 +276,7 @@ import UIKit
             do {
                 let source = try AudioFileManager.url(for:input)
                 guard FileManager.default.fileExists(atPath:source.path) else { throw LabError.message("输入音频已不存在，请在配音页重新选择；原稿已保留") }
-                try range.validate(duration:input.duration)
-                let work = Task.detached { try AIRequestAudio.make(url:source,range:range) }
+                let work = Task.detached { try AIRequestAudio.make(url:source) }
                 prepared = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
                 try Task.checkCancellation(); guard self.recognitionGeneration == token, let prepared else { return }
                 let recognized = try await self.recognizer.transcribe(url:prepared)
@@ -386,7 +378,7 @@ import UIKit
         draft.customInstruction = instruction; draft.presetInstruction = presetInstruction
         draft.instructionPresetID = instructionPresetID; draft.automatic = usesAutomaticInstruction
         draft.automaticDraft = automaticInstructionDraft; draft.inputID = input?.id
-        draft.recognitionRange = recognitionRange; draft.insertionMode = insertionMode; draft.recognizedText = recognizedText
+        draft.insertionMode = insertionMode; draft.recognizedText = recognizedText
         return draft
     }
     private func restoreEditingDraft(_ draft:RevoiceDraft) {
@@ -401,9 +393,11 @@ import UIKit
         recognizedText = draft.recognizedText; insertionMode = draft.insertionMode
         if let id = draft.inputID {
             input = (try? AudioFileManager.listLocalAudio())?.first { $0.id == id }
-            if let input,let range = draft.recognitionRange,(try? range.validate(duration:input.duration)) != nil { recognitionRange = range }
-            else if let input { recognitionRange = RevoiceRecognitionRange.fullIfShort(input.duration) }
-            else { draftWarning = "草稿的输入音频已不存在，文字和指令仍保留。" }
+            if input == nil { draftWarning = "草稿的输入音频已不存在，文字和指令仍保留。" }
+        }
+        if usesAutomaticInstruction,canUseAutomaticInstruction,
+           automaticInstructionDraft?.userEdited != true,!automaticSource.text.isEmpty {
+            rematchAutomaticInstruction()
         }
         draftSaveState = .saved
     }
@@ -437,7 +431,6 @@ import UIKit
             automaticInstructionDraft = .init(text:job.context.instruction,userEdited:false,source:automaticSource)
         }
         if let source = job.context.sourceAudioID { input = (try? AudioFileManager.listLocalAudio())?.first { $0.id == source } }
-        recognitionRange = input.flatMap { RevoiceRecognitionRange.fullIfShort($0.duration) }
     }
     private func resumeSubmission(_ job:PendingRevoiceJob) {
         guard task == nil,let transfers,job.isPending,transfers.store.job(job.id)?.isPending == true else { return }

@@ -102,8 +102,9 @@ extension EnvironmentValues {
 
 private struct KeyboardDone: ViewModifier {
     let clearFocus:(()->Void)?
+    let dismissOnScroll:Bool
     func body(content: Content) -> some View {
-        content.scrollDismissesKeyboard(.immediately)
+        content.scrollDismissesKeyboard(dismissOnScroll ? .immediately : .never)
             .background(OutsideKeyboardDismiss(clearFocus:clearFocus).frame(width:0,height:0))
             .onDisappear { clearFocus?(); KeyboardDismiss.perform() }
             .environment(\.keyboardDismissAction,{ clearFocus?(); KeyboardDismiss.perform() })
@@ -145,6 +146,20 @@ private struct OutsideKeyboardDismiss:UIViewRepresentable {
         @objc private func dismissKeyboard() { clearFocus?(); KeyboardDismiss.perform() }
         func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldReceive touch:UITouch) -> Bool {
             guard let window else { return false }
+            // Soft keys and input accessories are input, even when UIKit hosts
+            // their touch views outside the text view's descendant hierarchy.
+            guard touch.window === window else { return false }
+            let keyboardFrame = window.keyboardLayoutGuide.layoutFrame
+            if keyboardFrame.height > window.safeAreaInsets.bottom + 1,
+               keyboardFrame.contains(touch.location(in:window)) { return false }
+            if let touched = touch.view {
+                func hitsInputAccessory(_ view:UIView) -> Bool {
+                    if view.isFirstResponder,let accessory = view.inputAccessoryView,
+                       touched === accessory || touched.isDescendant(of:accessory) { return true }
+                    return view.subviews.contains(where:hitsInputAccessory)
+                }
+                if hitsInputAccessory(window) { return false }
+            }
             var touched = touch.view
             var hitsChrome = false
             while let view = touched {
@@ -172,5 +187,7 @@ private struct OutsideKeyboardDismiss:UIViewRepresentable {
 }
 
 extension View {
-    func keyboardDone(onDismiss:(()->Void)? = nil) -> some View { modifier(KeyboardDone(clearFocus:onDismiss)) }
+    func keyboardDone(dismissOnScroll:Bool = true,onDismiss:(()->Void)? = nil) -> some View {
+        modifier(KeyboardDone(clearFocus:onDismiss,dismissOnScroll:dismissOnScroll))
+    }
 }

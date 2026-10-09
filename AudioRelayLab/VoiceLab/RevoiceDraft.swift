@@ -4,7 +4,8 @@ enum SpeechInsertionMode:String,Codable,CaseIterable { case replace, append }
 
 /// Editing data only. Connection secrets and submitted job snapshots belong elsewhere.
 struct RevoiceDraft:Codable,Equatable {
-    var version = 1
+    static let currentVersion = 2
+    var version = RevoiceDraft.currentVersion
     var text = ""
     var kind = "preset"
     var preset = "serena-original"
@@ -12,17 +13,16 @@ struct RevoiceDraft:Codable,Equatable {
     var customInstruction = ""
     var presetInstruction = ""
     var instructionPresetID:String?
-    var automatic = false
+    var automatic = true
     var automaticDraft:AutomaticInstructionDraft?
     var inputID:UUID?
-    var recognitionRange:RevoiceRecognitionRange?
     var insertionMode:SpeechInsertionMode = .replace
     var recognizedText:String?
 
     init() {}
     enum CodingKeys:String,CodingKey {
         case version,text,kind,preset,speaker,customInstruction,presetInstruction,instructionPresetID
-        case automatic,automaticDraft,inputID,recognitionRange,insertionMode,recognizedText
+        case automatic,automaticDraft,inputID,insertionMode,recognizedText
     }
     // Older files and individual damaged fields do not discard the readable text.
     init(from decoder:Decoder) throws {
@@ -36,10 +36,10 @@ struct RevoiceDraft:Codable,Equatable {
         customInstruction = (try? c.decode(String.self,forKey:.customInstruction)) ?? ""
         presetInstruction = (try? c.decode(String.self,forKey:.presetInstruction)) ?? ""
         instructionPresetID = try? c.decode(String.self,forKey:.instructionPresetID)
-        automatic = (try? c.decode(Bool.self,forKey:.automatic)) ?? false
+        // v1 defaulted to off. Enable the new default once; v2 preserves a user's off choice.
+        automatic = version < Self.currentVersion ? true : ((try? c.decode(Bool.self,forKey:.automatic)) ?? true)
         automaticDraft = try? c.decode(AutomaticInstructionDraft.self,forKey:.automaticDraft)
         inputID = try? c.decode(UUID.self,forKey:.inputID)
-        recognitionRange = try? c.decode(RevoiceRecognitionRange.self,forKey:.recognitionRange)
         insertionMode = (try? c.decode(SpeechInsertionMode.self,forKey:.insertionMode)) ?? .replace
         recognizedText = try? c.decode(String.self,forKey:.recognizedText)
     }
@@ -65,10 +65,10 @@ struct RevoiceDraftStore {
             return .init(draft:nil,warning:nil,existed:false)
         }
         if let data = read(file),let draft = decode(data) {
-            return .init(draft:draft,warning:draft.version > 1 ? "草稿版本较新，已读取可识别的编辑内容。" : nil,existed:true)
+            return .init(draft:draft,warning:draft.version > RevoiceDraft.currentVersion ? "草稿版本较新，已读取可识别的编辑内容。" : nil,existed:true)
         }
         if let data = read(file),let draft = recoverText(data) {
-            return .init(draft:draft,warning:"草稿文件损坏，已保留能读取的文字；请检查声线与识别片段。",existed:true)
+            return .init(draft:draft,warning:"草稿文件损坏，已保留能读取的文字；请检查声线与输入音频。",existed:true)
         }
         if let data = read(backup),let draft = decode(data) {
             return .init(draft:draft,warning:"草稿文件损坏，已恢复最近的副本；请检查内容。",existed:true)

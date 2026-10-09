@@ -51,7 +51,16 @@ import UniformTypeIdentifiers
         self.logger = logger
         aiVoice = AIConversionController(logger: logger)
         let previewing = ProcessInfo.processInfo.arguments.contains { $0.hasSuffix("snapshot") }
+        #if DEBUG
+        let recognitionKeyboardFixture = ProcessInfo.processInfo.arguments.contains("voice-recognition-keyboard-test")
+        revoice = RevoiceController(logger:logger,
+            recognizer:recognitionKeyboardFixture ? RecognitionKeyboardInteractionFixture() : nil,
+            connection:recognitionKeyboardFixture ? nil : CloudConnectionStore.load(),
+            backgroundTransfers:recognitionKeyboardFixture ? nil : .shared,
+            draftStore:recognitionKeyboardFixture ? RecognitionKeyboardInteractionFixture.draftStore() : (previewing ? nil : draftStore))
+        #else
         revoice = RevoiceController(logger:logger,backgroundTransfers:.shared,draftStore:previewing ? nil : draftStore)
+        #endif
         if ProcessInfo.processInfo.arguments.contains("voice-snapshot") || ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot") {
             revoice.preparePreview(custom:ProcessInfo.processInfo.arguments.contains("voice-custom-snapshot"))
         }
@@ -142,6 +151,19 @@ import UniformTypeIdentifiers
         #endif
         refreshLibrary()
         #if DEBUG
+        if recognitionKeyboardFixture {
+            navigation.tab = .workshop
+            if !ProcessInfo.processInfo.arguments.contains("voice-recognition-keyboard-resume-test") {
+                revoice.preparePreview(custom:true)
+                if let source = try? AudioFileManager.loadBundledAudio(),let sourceURL = try? AudioFileManager.url(for:source),
+                   let folder = try? AudioFileManager.audioDirectory(),
+                   let input = try? LibraryInteractionFixture.copy(from:sourceURL,directory:folder,name:"识别键盘测试原声",
+                       id:UUID(uuidString:"16300000-0000-4000-8000-000000000021") ?? UUID(),source:.voiceLabRecording) {
+                    revoice.selectInput(input)
+                }
+                revoice.text = ""; revoice.flushDraft()
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("voice-recovery-empty-input-test"),
            let input = library.first(where:{$0.id == UUID(uuidString:"16300000-0000-4000-8000-000000000013")}) {
             revoice.selectInput(input); revoice.text = ""

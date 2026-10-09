@@ -91,12 +91,11 @@ final class InteractionUITests: XCTestCase {
 
     @MainActor func testAutomaticInstructionTogglePreviewAndFixedReferenceAvailability() {
         let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
-        let instruction = app.textFields["revoice.instruction"]
-        XCTAssertTrue(instruction.waitForExistence(timeout:5)); let original = instruction.value as? String
+        let instruction = openBaseInstruction(in:app)
+        let original = instruction.value as? String
         let automatic = app.buttons["revoice.instruction.automatic"]
         reveal(automatic,in:app); XCTAssertTrue(automatic.isEnabled)
-        XCTAssertEqual(automatic.value as? String,"已关闭")
-        setAutomaticInstruction(automatic,to:true,in:app)
+        XCTAssertEqual(automatic.value as? String,"已开启","新草稿应默认按内容自动匹配表达指令")
         let summary = app.staticTexts["revoice.instruction.summary"]
         reveal(summary,in:app); XCTAssertTrue(summary.waitForExistence(timeout:3))
         let previewText = app.textViews["revoice.instruction.preview"]
@@ -196,8 +195,8 @@ final class InteractionUITests: XCTestCase {
     }
     @MainActor func testPresetInstructionEditResetAndSwitchRestoreDefault() {
         let app = XCUIApplication(); app.launchArguments = ["voice-snapshot","day-snapshot"]; app.launch()
-        let instruction = app.textFields["revoice.instruction"]
-        XCTAssertTrue(instruction.waitForExistence(timeout:5)); let original = instruction.value as? String
+        let instruction = openBaseInstruction(in:app)
+        let original = instruction.value as? String
         reveal(instruction,in:app); instruction.tap(); instruction.typeText(" relaxed"); app.buttons["keyboard.done"].tap()
         XCTAssertTrue((instruction.value as? String ?? "").contains("relaxed"))
         reveal(app.buttons["revoice.instruction.reset"],in:app); app.buttons["revoice.instruction.reset"].tap(); XCTAssertEqual(instruction.value as? String,original)
@@ -256,7 +255,7 @@ final class InteractionUITests: XCTestCase {
         let generate = app.buttons["revoice.generate"]
         XCTAssertTrue(generate.exists); XCTAssertFalse(generate.isEnabled)
         reveal(app.buttons["select.Speaker"],in:app); app.buttons["select.Speaker"].tap(); app.buttons["choice.Vivian"].tap()
-        let instruction = app.textFields["revoice.instruction"]
+        let instruction = openBaseInstruction(in:app)
         reveal(instruction,in:app); instruction.tap(); instruction.typeText("relaxed and clear")
         app.buttons["keyboard.done"].tap()
         reveal(editor,in:app,towardTop:true); editor.tap(); editor.typeText(" Latest words.")
@@ -301,7 +300,7 @@ final class InteractionUITests: XCTestCase {
         let speaker = app.buttons["select.Speaker"]
         XCTAssertTrue(speaker.waitForExistence(timeout:5)); reveal(speaker,in:app)
         speaker.tap(); XCTAssertTrue(app.buttons["choice.Dylan"].waitForExistence(timeout:5)); app.buttons["choice.Dylan"].tap()
-        let instruction = app.textFields["revoice.instruction"]
+        let instruction = openBaseInstruction(in:app)
         reveal(instruction,in:app); instruction.tap(); instruction.typeText("slow and natural")
         app.buttons["keyboard.done"].tap()
         let editor = app.textViews["revoice.text"]
@@ -312,6 +311,113 @@ final class InteractionUITests: XCTestCase {
         XCTAssertEqual(instruction.value as? String,"slow and natural")
         XCTAssertTrue((editor.value as? String ?? "").contains("Large text draft."))
         attach(app,"大字体深色配音编辑")
+    }
+
+    @MainActor func testRecognizedDraftKeepsKeyboardForRealPunctuationSymbolAndLetterKeys() {
+        let app = XCUIApplication()
+        app.launchArguments = ["voice-recognition-keyboard-test","day-snapshot"]
+        app.launchEnvironment["REVOICE_KEYBOARD_DRAFT_ID"] = UUID().uuidString
+        app.launch()
+        let editor = app.textViews["revoice.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout:5)); XCTAssertEqual(editor.value as? String,"")
+        let automatic = app.buttons["revoice.instruction.automatic"]
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,"已开启")
+        XCTAssertFalse(app.buttons["revoice.range.open"].exists)
+        XCTAssertFalse(app.buttons["设置识别片段"].exists)
+
+        // Press the real production action, which prepares PCM and calls recognize().
+        let recognize = app.buttons["revoice.generate"]
+        XCTAssertEqual(recognize.label,"识别文字"); XCTAssertTrue(recognize.isEnabled); recognize.tap()
+        let undo = app.buttons["revoice.speech.undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout:15),"识别成功应产生真实的撤销状态")
+        reveal(editor,in:app,towardTop:true)
+        var expected = "语音识别后的文字"
+        XCTAssertEqual(editor.value as? String,expected)
+        // Focus once. Every subsequent event is an actual soft-key tap, with no refocus.
+        editor.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.5)).tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout:3))
+        attachKeyboardDescription(keyboard,name:"识别后字母键盘 AX")
+        tapKeyboardKey(["more","more, numbers","123","Numbers","numbers"],in:keyboard)
+        XCTAssertTrue(keyboard.exists,"切换数字键盘不能收起键盘")
+        attachKeyboardDescription(keyboard,name:"识别后数字与符号键盘 AX")
+        for character in [".","@"] {
+            tapKeyboardKey([character],in:keyboard)
+            expected += character
+            assertKeyboardEdit(expected,editor:editor,keyboard:keyboard)
+            XCTAssertFalse(undo.exists,"手工修改后旧识别撤销入口应消失")
+        }
+        attach(app,"识别后实际标点符号按键保持键盘")
+        tapKeyboardKey(["letters","more, letters","ABC","Letters"],in:keyboard)
+        XCTAssertTrue(keyboard.exists,"切回字母键盘不能收起键盘")
+        expected += tapKeyboardKey(["a","A"],in:keyboard)
+        assertKeyboardEdit(expected,editor:editor,keyboard:keyboard)
+
+        waitForSavedDraft(in:app)
+        XCTAssertTrue(keyboard.exists,"草稿保存更新不能打断正文键盘焦点")
+        expected += tapKeyboardKey(["b","B"],in:keyboard)
+        assertKeyboardEdit(expected,editor:editor,keyboard:keyboard)
+        attach(app,"识别后实际字母按键及草稿保存保持键盘")
+        app.buttons["keyboard.done"].tap(); XCTAssertFalse(keyboard.exists)
+
+        // The isolated store is real. Explicit off/on choices must survive relaunch.
+        setAutomaticInstruction(automatic,to:false,in:app)
+        waitForSavedDraft(in:app)
+        app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout:10)); XCTAssertEqual(editor.value as? String,expected)
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,"已关闭")
+        XCTAssertFalse(app.buttons["revoice.range.open"].exists)
+        setAutomaticInstruction(automatic,to:true,in:app)
+        waitForSavedDraft(in:app)
+        app.terminate(); app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout:10)); XCTAssertEqual(editor.value as? String,expected)
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,"已开启")
+        attach(app,"自动表达默认开启与手动开关恢复")
+    }
+
+    @MainActor private func openBaseInstruction(in app:XCUIApplication) -> XCUIElement {
+        let instruction = app.textFields["revoice.instruction"]
+        if !instruction.exists {
+            let disclosure = app.buttons["角色基础风格 · 可选"]
+            reveal(disclosure,in:app)
+            XCTAssertTrue(disclosure.exists); disclosure.tap()
+        }
+        reveal(instruction,in:app)
+        XCTAssertTrue(instruction.waitForExistence(timeout:5))
+        return instruction
+    }
+
+    @MainActor private func attachKeyboardDescription(_ keyboard:XCUIElement,name:String) {
+        let attachment = XCTAttachment(string:keyboard.debugDescription)
+        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    @discardableResult
+    @MainActor private func tapKeyboardKey(_ labels:[String],in keyboard:XCUIElement) -> String {
+        let key = keyboard.keys.matching(NSPredicate(format:"label IN %@",labels)).firstMatch
+        XCTAssertTrue(key.waitForExistence(timeout:3),"缺少实际键盘按键 \(labels)，请查看键盘 AX 附件")
+        XCTAssertTrue(key.isHittable)
+        let label = key.label
+        key.tap()
+        return label
+    }
+
+    @MainActor private func assertKeyboardEdit(_ expected:String,editor:XCUIElement,keyboard:XCUIElement) {
+        let changed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@",expected),object:editor)
+        XCTAssertEqual(XCTWaiter.wait(for:[changed],timeout:3),.completed)
+        XCTAssertTrue(keyboard.exists,"输入一个字符之后键盘必须继续显示")
+        XCTAssertEqual(editor.value as? String,expected)
+    }
+
+    @MainActor private func waitForSavedDraft(in app:XCUIApplication) {
+        let saved = app.staticTexts["草稿已保存到本机"]
+        // Let the debounce elapse before accepting a saved label from an earlier edit.
+        // Relaunch assertions below independently verify the actual persisted choices.
+        let settledAfter = Date().addingTimeInterval(0.6)
+        let savedCurrentEdit = XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in
+            Date() >= settledAfter && saved.exists
+        },object:nil)
+        XCTAssertEqual(XCTWaiter.wait(for:[savedCurrentEdit],timeout:5),.completed)
     }
 
     @MainActor private func setAutomaticInstruction(_ element:XCUIElement,to value:Bool,in app:XCUIApplication) {

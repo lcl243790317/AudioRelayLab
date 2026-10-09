@@ -1,6 +1,31 @@
 import SwiftUI
 import AVFoundation
 #if DEBUG
+/// The production recognition path still prepares a real PCM file and applies its result.
+/// Only the device Speech service is replaced, so Simulator UI tests need no permissions.
+@MainActor final class RecognitionKeyboardInteractionFixture: RevoiceTranscribing {
+    static let text = "语音识别后的文字"
+    static func draftStore() -> RevoiceDraftStore {
+        let value = ProcessInfo.processInfo.environment["REVOICE_KEYBOARD_DRAFT_ID"] ?? ""
+        let id = UUID(uuidString:value) ?? UUID()
+        return RevoiceDraftStore(directory:FileManager.default.temporaryDirectory
+            .appendingPathComponent("revoice-keyboard-ui-"+id.uuidString,isDirectory:true))
+    }
+    func transcribe(url:URL) async throws -> String {
+        let file = try AVAudioFile(forReading:url)
+        guard file.processingFormat.channelCount == 1,file.processingFormat.sampleRate == 22050,
+              Double(file.length)/file.processingFormat.sampleRate >= 0.3,
+              let buffer = AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:256) else {
+            throw LabError.invalidFormat
+        }
+        try file.read(into:buffer)
+        guard buffer.frameLength > 0 else { throw LabError.invalidFormat }
+        try Task.checkCancellation()
+        return Self.text
+    }
+    func cancel() {}
+}
+
 /// A real, longer local file keeps full-preview exit checks independent of AX snapshot latency.
 @MainActor enum PreviewInteractionFixture {
     static func make() throws -> AudioAsset {

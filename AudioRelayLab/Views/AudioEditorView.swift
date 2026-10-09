@@ -32,7 +32,7 @@ struct AudioEditorView: View {
             AudioRangeSlider(start:offset,end:end,duration:duration)
             LabeledContent("编辑开始位置", value: AudioPlaybackSettings.time(coordinator.editing.startOffset))
             LabeledContent("编辑结束位置", value: AudioPlaybackSettings.time(end.wrappedValue))
-            PaperCaption("拖动左圆点设置起点，右圆点设置终点；正式播放使用已应用区间，配音识别片段在配音页单独设置。")
+            PaperCaption("拖动左圆点设置起点，右圆点设置终点；正式播放使用已应用区间，配音识别使用所选完整录音。")
             DisclosureGroup("微调起止位置") {
               Picker("调整位置",selection:$adjustingEnd) { Text("起点").tag(false); Text("终点").tag(true) }.pickerStyle(.segmented)
               LazyVGrid(columns:[GridItem(.adaptive(minimum:100))],spacing:8) {

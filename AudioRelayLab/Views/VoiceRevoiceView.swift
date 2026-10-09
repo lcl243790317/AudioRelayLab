@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 private enum RevoiceInputField:Hashable { case text, instruction, automaticInstruction }
 private enum RevoiceSheet:String,Identifiable {
-    case connection, library, range
+    case connection, library
     var id:String { rawValue }
 }
 
@@ -46,7 +46,7 @@ struct VoiceRevoiceView: View {
                 draftNotice
                 if let error = ai.errorMessage { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("revoice.editor.error") }
                 if ai.recognizing {
-                    ProgressView("设备端识别中 · 只处理所选片段")
+                    ProgressView("设备端识别中 · 在手机处理录音")
                     Button("取消本次识别") { ai.cancelRecognition() }.accessibilityIdentifier("revoice.recognition.cancel")
                 }
                 if !emptyDraft {
@@ -66,15 +66,6 @@ struct VoiceRevoiceView: View {
                         Button("用识别文字替换") { ai.applyRecognizedText(mode:.replace) }
                         Button("追加识别文字") { ai.applyRecognizedText(mode:.append) }
                     }
-                }
-                if let input = ai.input {
-                    Divider()
-                    LabeledContent("完整音频",value:AudioPlaybackSettings.time(input.duration))
-                    if let range = ai.recognitionRange {
-                        PaperCaption("识别：\(AudioPlaybackSettings.time(range.start)) ～ \(AudioPlaybackSettings.time(range.end)) · \(String(format:"%.3f",range.duration)) 秒")
-                    } else { PaperCaption("需选择 0.3～60 秒片段后才能识别；不会自动截取长文件。") }
-                    Button("设置识别片段") { dismissKeyboard(); stopPreview(); sheet = .range }
-                        .disabled(voice.isActive).accessibilityIdentifier("revoice.range.open")
                 }
             }
             PaperCard("声线与表达") {
@@ -123,7 +114,7 @@ struct VoiceRevoiceView: View {
                     .background(PaperTheme.paper)
             }
         }
-        .keyboardDone { focusedInput = nil }
+        .keyboardDone(dismissOnScroll:false) { focusedInput = nil }
         .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.workshop)
         .onDisappear { ai.flushDraft() }
         .alert("放弃手动调整的指令？",isPresented:Binding(get:{ai.pendingVoiceSelection != nil},set:{if !$0 { ai.cancelVoiceSelection() }}),presenting:ai.pendingVoiceSelection) { selection in
@@ -134,7 +125,6 @@ struct VoiceRevoiceView: View {
             switch destination {
             case .connection: CloudConnectionView(ai:ai)
             case .library: NavigationStack { AudioLibraryPickerView(coordinator:coordinator,onSelect:selectAudio) }
-            case .range: if let input = ai.input { RevoiceRecognitionRangeView(ai:ai,asset:input) }
             }
         }
         .task { connectIfNeeded() }

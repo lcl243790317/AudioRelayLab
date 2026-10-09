@@ -19,9 +19,9 @@ import XCTest
     func cancel() {}
 }
 
-final class RevoiceDraftAndRangeTests:XCTestCase {
+final class RevoiceDraftTests:XCTestCase {
     private func folder() throws -> URL {
-        let value = FileManager.default.temporaryDirectory.appendingPathComponent("draft-range-\(UUID())")
+        let value = FileManager.default.temporaryDirectory.appendingPathComponent("revoice-draft-\(UUID())")
         try FileManager.default.createDirectory(at:value,withIntermediateDirectories:true)
         addTeardownBlock { try? FileManager.default.removeItem(at:value) }
         return value
@@ -29,9 +29,9 @@ final class RevoiceDraftAndRangeTests:XCTestCase {
     private func input(seconds:Double = 1) throws -> AudioAsset {
         let source = try folder().appendingPathComponent("source.wav")
         var data = RevoiceTestAudio.wav(seconds:seconds)
-        // Three identifiable regions verify which source seconds were decoded.
+        // Distinct beginning, middle and tail verify that complete input was decoded.
         for frame in 0..<Int(seconds*24000) {
-            let sample:Int16 = frame < 30*24000 ? -6554 : (frame < 60*24000 ? 9830 : 19661)
+            let sample:Int16 = frame < Int(seconds*24000/3) ? -6554 : (frame < Int(seconds*24000*2/3) ? 9830 : 19661)
             let value = UInt16(bitPattern:sample),offset = 44+frame*2
             data[offset] = UInt8(truncatingIfNeeded:value); data[offset+1] = UInt8(truncatingIfNeeded:value >> 8)
         }
@@ -44,13 +44,15 @@ final class RevoiceDraftAndRangeTests:XCTestCase {
         for _ in 0..<300 where ai.recognizing { try await Task.sleep(for:.milliseconds(10)) }
         XCTAssertFalse(ai.recognizing)
     }
-    private func mean(_ url:URL) throws -> Double {
+    private func mean(_ url:URL,start:Double = 0,end:Double? = nil) throws -> Double {
         let file = try AVAudioFile(forReading:url)
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:AVAudioFrameCount(file.length)))
         try file.read(into:buffer)
         let samples = try XCTUnwrap(buffer.floatChannelData?[0])
-        let first = min(Int(buffer.frameLength)/4,2205)
-        let last = Int(buffer.frameLength)-first
+        let rate = file.processingFormat.sampleRate
+        let first = max(Int(start*rate),min(Int(buffer.frameLength)/10,220))
+        let last = min(Int((end ?? (Double(buffer.frameLength)/rate))*rate),Int(buffer.frameLength)-min(Int(buffer.frameLength)/10,220))
+        XCTAssertGreaterThan(last,first)
         return (first..<last).reduce(0.0) { $0+Double(samples[$1]) }/Double(last-first)
     }
     @MainActor func testUnsubmittedTextBothInstructionsAndHandEditedAutomaticDraftRestoreWithoutRecognition() throws {
@@ -59,18 +61,19 @@ final class RevoiceDraftAndRangeTests:XCTestCase {
         ai.selectInput(asset); ai.kind = .custom; ai.selectedSpeaker = "Dylan"
         ai.text = "尚未提交的文字🙂。"; ai.instruction = "自然从容"; ai.presetInstruction = "保留预设基础风格"
         ai.usesAutomaticInstruction = true; ai.editAutomaticInstruction("手改指令，保留停顿"); ai.insertionMode = .append
-        ai.setRecognitionRange(.init(start:0.2,end:0.8)); ai.flushDraft()
+        ai.flushDraft()
         let recognizer = DraftSpeechRecognizer()
         let restarted = RevoiceController(recognizer:recognizer,connection:nil,draftStore:store)
         XCTAssertEqual(restarted.text,ai.text); XCTAssertEqual(restarted.kind,.custom); XCTAssertEqual(restarted.selectedSpeaker,"Dylan")
         XCTAssertEqual(restarted.instruction,"自然从容"); XCTAssertEqual(restarted.presetInstruction,"保留预设基础风格")
         XCTAssertEqual(restarted.automaticInstructionDraft,ai.automaticInstructionDraft)
         XCTAssertEqual(restarted.automaticInstructionDraft?.userEdited,true); XCTAssertTrue(restarted.usesAutomaticInstruction)
-        XCTAssertEqual(restarted.input?.id,asset.id); XCTAssertEqual(restarted.recognitionRange,.init(start:0.2,end:0.8))
+        XCTAssertEqual(restarted.input?.id,asset.id)
         XCTAssertEqual(restarted.insertionMode,.append); XCTAssertEqual(recognizer.calls,0); XCTAssertFalse(restarted.busy)
         XCTAssertNil(restarted.pendingJobID); XCTAssertNil(restarted.result)
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with:Data(contentsOf:store.file)) as? [String:Any])
         XCTAssertNil(object["connection"]); XCTAssertNil(object["apiKey"]); XCTAssertNil(object["downloadToken"])
+        XCTAssertNil(object["recognitionRange"]); XCTAssertEqual(object["version"] as? Int,2)
     }
     @MainActor func testDebouncedLatestEditAndImmediateBackgroundSaveAreDurable() async throws {
         let store = RevoiceDraftStore(directory:try folder()),ai = RevoiceController(connection:nil,draftStore:RevoiceDraftStore(directory:try folder()))
@@ -100,6 +103,59 @@ final class RevoiceDraftAndRangeTests:XCTestCase {
         let backupText = RevoiceController(connection:nil,draftStore:store)
         XCTAssertEqual(backupText.text,"仅剩的损坏副本里可读文字"); XCTAssertNotNil(backupText.draftWarning)
         XCTAssertTrue(store.load().existed)
+    }
+    @MainActor func testAutomaticMatchingDefaultsOnAndManualOffRemainsOffAfterRestart() throws {
+        XCTAssertTrue(RevoiceDraft().automatic)
+        let store = RevoiceDraftStore(directory:try folder()),ai = RevoiceController(connection:nil,draftStore:store)
+        XCTAssertTrue(ai.usesAutomaticInstruction)
+        ai.kind = .custom; ai.text = "太开心了，我们成功了！"
+        XCTAssertNotNil(ai.automaticInstructionPreview)
+        ai.usesAutomaticInstruction = false; ai.flushDraft()
+        let restarted = RevoiceController(connection:nil,draftStore:store)
+        XCTAssertFalse(restarted.usesAutomaticInstruction); XCTAssertNil(restarted.automaticInstructionPreview)
+        XCTAssertEqual(restarted.text,ai.text); XCTAssertEqual(store.load().draft?.version,2)
+        restarted.text += " 后来继续编辑。"; restarted.flushDraft()
+        XCTAssertFalse(RevoiceController(connection:nil,draftStore:store).usesAutomaticInstruction)
+    }
+    @MainActor func testLegacyDraftEnablesMatchingOnceIgnoresOldRangeAndRetainsTextAndInput() throws {
+        let asset = try input()
+        for version in [0,1] {
+            let store = RevoiceDraftStore(directory:try folder())
+            let object:[String:Any] = ["version":version,"text":"升级前保存的文字","kind":"custom",
+                "speaker":"Vivian","customInstruction":"原来的基础风格","automatic":false,
+                "inputID":asset.id.uuidString,"recognitionRange":["start":0.2,"end":0.8],"insertionMode":"append"]
+            try JSONSerialization.data(withJSONObject:object).write(to:store.file)
+            let recognizer = DraftSpeechRecognizer(),migrated = RevoiceController(recognizer:recognizer,connection:nil,draftStore:store)
+            XCTAssertTrue(migrated.usesAutomaticInstruction); XCTAssertEqual(migrated.text,"升级前保存的文字")
+            XCTAssertNotNil(migrated.automaticInstructionPreview)
+            XCTAssertEqual(migrated.instruction,"原来的基础风格"); XCTAssertEqual(migrated.input?.id,asset.id)
+            XCTAssertEqual(migrated.selectedSpeaker,"Vivian"); XCTAssertEqual(migrated.insertionMode,.append)
+            XCTAssertEqual(recognizer.calls,0); XCTAssertFalse(migrated.busy)
+            let saved = try XCTUnwrap(try JSONSerialization.jsonObject(with:Data(contentsOf:store.file)) as? [String:Any])
+            XCTAssertEqual(saved["version"] as? Int,2); XCTAssertEqual(saved["automatic"] as? Bool,true)
+            XCTAssertNil(saved["recognitionRange"])
+            migrated.usesAutomaticInstruction = false; migrated.flushDraft()
+            let restarted = RevoiceController(connection:nil,draftStore:store)
+            XCTAssertFalse(restarted.usesAutomaticInstruction); XCTAssertEqual(restarted.text,migrated.text)
+            XCTAssertEqual(restarted.input?.id,asset.id)
+        }
+    }
+    @MainActor func testFrozenLegacyJobKeepsManualInstructionModeDespiteNewEditingDefault() throws {
+        for automatic in [Bool?.none,.some(false)] {
+            let context = RevoiceSaveContext(id:UUID(),createdAt:Date(),choice:.custom(speaker:"Serena",instruction:"旧任务手动表达"),
+                voiceName:"Serena",instruction:"旧任务手动表达",fixedReferenceID:nil,recognizedText:nil,text:"旧任务固定原稿",
+                sourceAudioID:nil,usesAutomaticInstruction:automatic)
+            let store = PendingRevoiceStore(directory:try folder())
+            let job = PendingRevoiceJob(context:context,primaryOrigin:try XCTUnwrap(URL(string:"https://unit-tests.modal.run")),connectionFingerprint:"test-only")
+            try store.save(job)
+            let manager = BackgroundRevoiceTransfers(store:store,identifier:UUID().uuidString,configuration:.ephemeral)
+            defer { manager.invalidateForTesting() }
+            let ai = RevoiceController(connection:nil,backgroundTransfers:manager,draftStore:nil)
+            XCTAssertFalse(ai.usesAutomaticInstruction); XCTAssertEqual(ai.instruction,"旧任务手动表达")
+            XCTAssertEqual(ai.pendingContext?.usesAutomaticInstruction,automatic)
+            XCTAssertEqual(store.job(job.id)?.context.instruction,"旧任务手动表达"); XCTAssertEqual(ai.text,"旧任务固定原稿")
+            XCTAssertNil(ai.automaticInstructionDraft)
+        }
     }
     @MainActor func testMissingInputKeepsTextAndInstructionsAndDoesNotRecognize() throws {
         let store = RevoiceDraftStore(directory:try folder()),asset = try input()
@@ -184,53 +240,83 @@ final class RevoiceDraftAndRangeTests:XCTestCase {
         ai.undoRecognition(); XCTAssertEqual(ai.text,"新草稿")
         XCTAssertEqual(store.job(job.id)?.context.text,"旧任务原文"); XCTAssertNil(ai.result)
     }
-    func testLongAudioDecodesSelectedRegionAndPreservesOriginal() throws {
-        let asset = try input(seconds:90),source = try AudioFileManager.url(for:asset)
+    @MainActor func testWholeShortAudioRecognitionIncludesBeginningMiddleAndTailAndPreservesSource() async throws {
+        let asset = try input(seconds:1.5),source = try AudioFileManager.url(for:asset)
         let original = try Data(contentsOf:source)
-        let prepared = try AIRequestAudio.make(url:source,range:.init(start:65,end:70))
-        defer { try? FileManager.default.removeItem(at:prepared) }
+        let recognizer = DraftSpeechRecognizer(),ai = RevoiceController(recognizer:recognizer,connection:nil,draftStore:nil)
+        recognizer.waits = true; ai.text = "完整音频识别前的原稿"; ai.selectInput(asset); ai.recognize()
+        for _ in 0..<200 where recognizer.calls == 0 { try await Task.sleep(for:.milliseconds(10)) }
+        let prepared = try XCTUnwrap(recognizer.preparedURL)
         let file = try AVAudioFile(forReading:prepared)
-        XCTAssertEqual(Double(file.length)/file.processingFormat.sampleRate,5,accuracy:2.0/22050)
-        XCTAssertEqual(try mean(prepared),0.6,accuracy:0.02)
+        XCTAssertEqual(Double(file.length)/file.processingFormat.sampleRate,1.5,accuracy:2.0/22050)
+        XCTAssertEqual(try mean(prepared,start:0.1,end:0.4),-0.2,accuracy:0.02)
+        XCTAssertEqual(try mean(prepared,start:0.6,end:0.9),0.3,accuracy:0.02)
+        XCTAssertEqual(try mean(prepared,start:1.1,end:1.4),0.6,accuracy:0.02)
+        recognizer.complete(); try await settle(ai)
+        XCTAssertEqual(ai.text,"迟到的识别文字。"); XCTAssertEqual(recognizer.calls,1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath:prepared.path))
         XCTAssertEqual(try Data(contentsOf:source),original)
     }
-    func testRangeMinimumMaximumRoundingAndBoundsAreEnforced() throws {
-        let asset = try input(seconds:90),source = try AudioFileManager.url(for:asset)
-        for range in [RevoiceRecognitionRange(start:80,end:80.3),.init(start:20.00001,end:80.00001),.init(start:89.7,end:90)] {
-            let prepared = try AIRequestAudio.make(url:source,range:range)
+    func testFullAudioMinimumMaximumAndOverlongInputAreEnforcedWithoutClipping() throws {
+        for seconds in [0.3,60.0] {
+            let asset = try input(seconds:seconds),source = try AudioFileManager.url(for:asset)
+            let prepared = try AIRequestAudio.make(url:source)
             defer { try? FileManager.default.removeItem(at:prepared) }
-            let file = try AVAudioFile(forReading:prepared),seconds = Double(file.length)/file.processingFormat.sampleRate
-            XCTAssertEqual(seconds,range.duration,accuracy:2.0/22050); XCTAssertLessThanOrEqual(seconds,60)
+            let file = try AVAudioFile(forReading:prepared),duration = Double(file.length)/file.processingFormat.sampleRate
+            XCTAssertEqual(duration,seconds,accuracy:2.0/22050); XCTAssertLessThanOrEqual(duration,60)
+            XCTAssertEqual(try mean(prepared,start:seconds*0.75,end:seconds*0.9),0.6,accuracy:0.02)
         }
-        for range in [RevoiceRecognitionRange(start:-1,end:1),.init(start:0,end:0.299),.init(start:0,end:60.001),.init(start:89,end:91),.init(start:.nan,end:1)] {
-            XCTAssertThrowsError(try AIRequestAudio.make(url:source,range:range))
+        for seconds in [0.299,60.001,90.0] {
+            let source = try AudioFileManager.url(for:input(seconds:seconds))
+            XCTAssertThrowsError(try AIRequestAudio.make(url:source))
         }
-        XCTAssertNil(RevoiceRecognitionRange.fullIfShort(90)); XCTAssertEqual(RevoiceRecognitionRange.fullIfShort(1),.init(start:0,end:1))
     }
-    @MainActor func testFrozenRangeAndInputGenerationRejectLateRecognitionAndCleanTemporary() async throws {
+    @MainActor func testLongInputRecognitionRejectsWithoutTruncatingAndKeepsDraftAndOriginalAudio() async throws {
+        let recognizer = DraftSpeechRecognizer(),store = RevoiceDraftStore(directory:try folder())
+        let ai = RevoiceController(recognizer:recognizer,connection:nil,draftStore:store)
+        let asset = try input(seconds:90),source = try AudioFileManager.url(for:asset),original = try Data(contentsOf:source)
+        // Recognition must validate the file itself, even when stale library metadata looks short.
+        var metadata = try XCTUnwrap(try JSONSerialization.jsonObject(with:JSONEncoder().encode(asset)) as? [String:Any])
+        metadata["duration"] = 1
+        let stale = try JSONDecoder().decode(AudioAsset.self,from:JSONSerialization.data(withJSONObject:metadata))
+        ai.kind = .custom; ai.text = "超长识别不能截断或覆盖的原稿"; ai.editAutomaticInstruction("保留手改表达")
+        let instruction = ai.automaticInstructionDraft
+        ai.selectInput(stale); ai.recognize(); try await settle(ai); ai.flushDraft()
+        XCTAssertEqual(recognizer.calls,0); XCTAssertNil(recognizer.preparedURL); XCTAssertNotNil(ai.errorMessage)
+        XCTAssertTrue(ai.errorMessage?.contains("0.3～60 秒") == true)
+        XCTAssertEqual(ai.text,"超长识别不能截断或覆盖的原稿"); XCTAssertEqual(ai.automaticInstructionDraft,instruction)
+        XCTAssertEqual(ai.input?.id,asset.id); XCTAssertNil(ai.recognizedText); XCTAssertFalse(ai.busy)
+        XCTAssertEqual(store.load().draft?.text,ai.text); XCTAssertEqual(try Data(contentsOf:source),original)
+    }
+    @MainActor func testInputGenerationRejectsLateFullRecognitionAndCleansTemporary() async throws {
         let recognizer = DraftSpeechRecognizer(),ai = RevoiceController(recognizer:recognizer,connection:nil,draftStore:nil)
-        let long = try input(seconds:90),next = try input()
-        ai.text = "不允许迟到识别覆盖"; ai.selectInput(long)
-        ai.recognize(); XCTAssertEqual(recognizer.calls,0); XCTAssertNotNil(ai.errorMessage)
-        ai.setRecognitionRange(.init(start:65,end:70)); recognizer.waits = true; ai.recognize()
+        let previous = try input(seconds:1.5),next = try input()
+        ai.text = "不允许迟到识别覆盖"; ai.selectInput(previous)
+        recognizer.waits = true; ai.recognize()
         for _ in 0..<200 where recognizer.calls == 0 { try await Task.sleep(for:.milliseconds(10)) }
         let temporary = try XCTUnwrap(recognizer.preparedURL)
-        XCTAssertEqual(try mean(temporary),0.6,accuracy:0.02)
+        XCTAssertEqual(try mean(temporary,start:1.1,end:1.4),0.6,accuracy:0.02)
         ai.selectInput(next); recognizer.complete()
         for _ in 0..<100 where FileManager.default.fileExists(atPath:temporary.path) { try await Task.sleep(for:.milliseconds(10)) }
         XCTAssertEqual(ai.text,"不允许迟到识别覆盖"); XCTAssertEqual(ai.input?.id,next.id); XCTAssertNil(ai.recognizedText)
         XCTAssertFalse(FileManager.default.fileExists(atPath:temporary.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:long).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath:try AudioFileManager.url(for:previous).path))
     }
-    @MainActor func testPlaybackAndMixChangesCannotChangeRecognitionRange() throws {
-        let coordinator = ExperimentCoordinator(draftStore:nil),asset = try input(seconds:90)
+    @MainActor func testPlaybackAndMixChangesCannotChangeWholeRecognitionInput() throws {
+        let coordinator = ExperimentCoordinator(draftStore:nil),asset = try input(seconds:1.5)
         let originalSelection = UserDefaults.standard.data(forKey:"selectedAudio")
         defer { UserDefaults.standard.set(originalSelection,forKey:"selectedAudio") }
         try coordinator.selectAudio(asset); coordinator.revoice.selectInput(asset)
-        let range = RevoiceRecognitionRange(start:65,end:70); coordinator.revoice.setRecognitionRange(range)
-        coordinator.editing = .init(startOffset:10,playbackRate:2,volume:0.1,endOffset:30); coordinator.applyPlaybackSettings()
-        coordinator.voiceMix.settings = .init(startOffset:3,playbackRate:0.5,endOffset:50)
-        XCTAssertEqual(coordinator.revoice.recognitionRange,range)
+        coordinator.editing = .init(startOffset:0.5,playbackRate:2,volume:0.1,endOffset:1); coordinator.applyPlaybackSettings()
+        coordinator.voiceMix.settings = .init(startOffset:0.3,playbackRate:0.5,endOffset:1)
+        let selected = try XCTUnwrap(coordinator.revoice.input),source = try AudioFileManager.url(for:selected)
+        let prepared = try AIRequestAudio.make(url:source)
+        defer { try? FileManager.default.removeItem(at:prepared) }
+        let file = try AVAudioFile(forReading:prepared)
+        XCTAssertEqual(Double(file.length)/file.processingFormat.sampleRate,1.5,accuracy:2.0/22050)
+        XCTAssertEqual(try mean(prepared,start:0.1,end:0.4),-0.2,accuracy:0.02)
+        XCTAssertEqual(try mean(prepared,start:1.1,end:1.4),0.6,accuracy:0.02)
+        XCTAssertEqual(selected.id,asset.id)
     }
     @MainActor func testRecordingPermissionDenialAndPreparationFailureKeepDraftAndInput() async throws {
         for granted in [false,true] {
