@@ -1,4 +1,4 @@
-# 2026-10-07～08 草稿与工坊功能：本轮 macOS 验证
+# 2026-10-07～09 草稿与工坊功能：本轮 macOS 验证
 
 本报告记录当前会话用户明确回复“授权”后的远端验证，与 [首次本地验证](WORKSHOP-LOCAL-VALIDATION-ZH.md) 和历史 1.6.6 报告分别保留。只使用现有干净公开仓库 `lcl243790317/AudioRelayLab` 的 `feature/revoice-ios-1.6.0`，运行现有 `build-ios.yml` 的普通完整流程（`diagnosticOnly=false`）；没有合并 main、创建 Release、部署、变更云端配置或调用真实 GPU。
 
@@ -95,7 +95,7 @@
 
 恢复标记后，本地 13 项 CI 证据回归全部通过（0.002 秒），静态检查及补丁检查通过；仅执行受影响的 Python 测试，新一轮标准 CI 再执行完整 99 项。第 36 次已于 02:03:50 UTC cancelled；只执行到静态／CPU 步骤，没有运行 Simulator 编译或 XCTest，不计作通过。
 
-## 验证边界与继续状态
+## 第 37 次运行期间的历史检查点
 
 当前完整运行：第 37 次 [37872839111](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37872839111)，源码 `7b759fd2c99b9bb64d8b8efde2c64d9cb1f454aa`，02:04:44 UTC 启动，`diagnosticOnly=false`。预期 99 CPU／276 XCTest／20 UI／小屏 1 项及 Release／IPA；结果须从本 run 原始日志核对。在结果出现前，不重复 dispatch，也不把源码发现数量写成测试通过。
 
@@ -136,3 +136,21 @@ Windows 本地完整 CPU 99 项通过、0 失败／错误／跳过（10.709 秒�
 第 38 次 [37896384758](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37896384758)，源码 `8aa66a9b07bd2ecc1b4ed64cf8826361ca5df7ec`，已实际分配 `macos-15-arm64`／macOS 15.7.9／Xcode 16.4。99 CPU 项通过（45.979 秒），随后 Simulator 编译失败：`VoiceCalibration.swift:18` 的单行 reduce 平方能量表达式触发旧编译器类型检查超时。改为相同次序、相同 Double 运算的显式累计，保留 512 点平均与原能量阈值；既有基频和静音拒绝 native 回归仍须实际执行。该 run 于 07:01 UTC failure，没有原生／UI／IPA 成功证据。
 
 第 37 次内嵌 Session 日志进一步明确，外层 10 秒 XCTWaiter 在 30 秒 AX 查询完成前中断查询，生成空快照；App 随后返回正在试听及实际进度。只将三个页面的播放／进度状态等待预算协调至 45 秒，退出停止和清零断言保持原样，不重复点击或重试失败用例。下一用例的终止请求在 Xcode 侧晚约 70 秒才处理，随即收到 App 的 signal 15；保留该失败而不据此更改 App 音频行为。
+
+## 第 39 次：iOS 18 模拟器完整验证
+
+源码 `d3e99a805f64fc400fdd523d2b8e548a21ba5bb6`，第 [39 次标准运行 / 37896992880](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37896992880) 于 07:04:51 UTC 触发，`diagnosticOnly=false`。原生阶段检查点 Artifact `11601531416`（53,895 字节）已取回并核对官方 SHA-256 `410d41a79f1d2061d0df9c163aa4ba754ae9b0f8441ad89da949723d8d856c3e`；run、完整源码 SHA 与环境日志一致。
+
+原始日志确认 Simulator Debug BUILD SUCCEEDED、99 CPU 测试通过、276 XCTest／0 失败／TEST SUCCEEDED（121.023 秒，总计 122.051 秒）。Voice Lab、Voice Mix、反馈回归、草稿与导航用例均有独立 passed 记录；既有两条测试末尾 defer 提示没有导致失败。实际环境为 macOS 15.7.9／24G830、Xcode 16.4／16F6、iPhoneOS SDK 18.5、Swift 6.1.2，ARM 架构。可信 HTTPS 夹具记录 9 次成功下载、2 次 pending，未收到长期凭据，生产 TLS 未改变。
+
+完整 UI 于 07:17:59 UTC 开始，07:45:36 UTC 失败结束；20 项实际执行、18 通过、2 失败、0 跳过／超时，耗时 1522.227 秒。此前第 37 次的自动表达、两处音频库回听、播放页试听、预设编辑和工坊回听均通过，分别为 111.951／37.532／134.408／35.848／157.558 秒。成品导航与不自动播放、旧任务／新草稿隔离、音乐主题与大字体也分别通过，109.664／38.278／66.475 秒。小屏、Release、IPA 因 UI 失败跳过；本 run 于 07:47:21 UTC 以 failure 结束，没有本轮 IPA。
+
+UI 检查点 `11602466922`（82,150 字节）与主诊断 Artifact `11601857874`（633,824,854 字节）均已取回，官方 SHA-256 分别为 `2b77c55e00d269d2936a3bad4b643a4d9268de7b362331b2f8d12b5d32b61c54`、`9d03b987f70ae28ccd8fa65d0f4abe53025a618f8bc7ac5506fec4f4010fb687`，实际摘要一致。失败为选择模式打开配音详情后的正文出现断言（第 379 行，20.762 秒）与单条删除时 App 退出（helper 第 628 行，68.242 秒）。录像清理 `forced=False; exit=0`，保留全部失败证据。
+
+单删 `.ips` 确认 07:41:19.3639 UTC 的 EXC_BREAKPOINT／SIGTRAP：主线程 `_assertionFailure` → `_NativeDictionary.merge` → `Dictionary.init(uniqueKeysWithValues:)` → `ExperimentCoordinator.deleteAudio` 第 236 行 → `LibraryHubView` 确认回调。长、短 DEBUG 回听夹具使用不同文件名却共享固定 ID 13～19，跨测试启动遗留两份索引；单删构建全库字典时触发唯一键断言。此冲突由本次夹具修订引入，修复限定为测试夹具的固定文件、实际 PCM 更新与严格匹配的旧索引迁移，并补充真实文件回归；生产删除断言与全部 UI 用例保持。
+
+选择模式的合成点击在配音详情行的空白中部（201／305 pt）；完整录像在 1346.0～1346.9 秒仍显示该行折叠，没有正文。失败 AX 附件只有 App 根节点，不能证明具体命中或重复 ID 的状态复用过程；更早画面可见两条同名原声行。先修正已确认的重复身份，保留正文及来源断言，用新的完整运行核对选择模式，不从单条点击或该次失败宣称根因。修订后的源码须再次执行完整流程。本次验证无需 Modal 登录或真实 GPU。
+
+修复保持 DEBUG 夹具 ID 13～19、显示名、来源类型和配音／混音 metadata，固定每个 ID 的原文件名；根据当前源的实际 PCM 时长／采样率／声道／字节数原子更新文件。现有 canonical 索引必须符合预留 ID、名称、路径与来源，才允许覆盖；新索引成功写入后，只移除同样严格匹配的旧“长回听”索引，保留其 PCM 本体。普通启动及 Release 不执行该测试迁移。
+
+新增 `testInteractionFixtureSwitchesPCMWithoutDuplicateIDsOrChangingUnownedFiles`：在独立临时目录实际写 11.7／93.6 秒 WAV，验证短→长→短的文件字节、解码样本、时长与单 UUID 索引，同时验证旧 PCM、无关旧索引以及非夹具 canonical 文件保持。原生预期增至 277；本地 3 份 Swift 语法、72 App／21 XCTest 静态检查及补丁检查通过，不代替新 Xcode 执行。全部 20 UI 场景和停止／清零／正文断言保持，继续新的标准完整流程。

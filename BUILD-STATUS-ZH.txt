@@ -1,9 +1,9 @@
-AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-08）
+AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-09）
 
 独立配音草稿、识别片段、冻结任务与明确取回、成品导航、统一回听退出。
 版本仍为 1.6.6 / build 16，候选按源码与 IPA 哈希区分；说明见 WORKSHOP-DRAFT-TASKS-ZH.md。
-分支 feature/revoice-ios-1.6.0；当前会话已授权标准公开 CI，不合并 main、不发布、不部署。
-首次 Windows 94 项 Python 回归、静态与语法检查通过；首次检查点见 WORKSHOP-LOCAL-VALIDATION-ZH.md。
+分支 feature/revoice-ios-1.6.0。
+当前候选源码 d3e99a805f64fc400fdd523d2b8e548a21ba5bb6 的第 39 次完整标准 CI 已失败结束：99 CPU／276 XCTest 通过，20 UI 中 18 通过、2 失败；小屏、Release 与 IPA 未执行。夹具索引冲突的修复与后续运行见 WORKSHOP-CI-VALIDATION-ZH.md。
 
 待本轮真实 CI 更新：
 当前状态：用户明确继续且后续不再阶段暂停；离线音频修复已提交，完整标准 CI 还须验证。此前暂停记录保留在 handoff.md，当前验证以本文及 WORKSHOP-CI-VALIDATION-ZH.md 为准。

@@ -19,6 +19,48 @@ import AVFoundation
     }
 }
 
+/// Explicit UI-test launches keep one library index for each reserved fixture ID.
+@MainActor enum LibraryInteractionFixture {
+    static func copy(from sourceURL:URL, directory:URL, name:String, id:UUID, source:AudioSource,
+                     configure:(inout AudioAsset)->Void = { _ in }) throws -> AudioAsset {
+        guard !name.isEmpty, !name.contains("/"), !name.contains("\\") else { throw LabError.invalidFormat }
+        let manager = FileManager.default
+        let target = directory.appendingPathComponent(name+".wav")
+        let sidecar = target.appendingPathExtension("metadata.json")
+        let legacy = directory.appendingPathComponent(name+"-长回听.wav")
+        let legacySidecar = legacy.appendingPathExtension("metadata.json")
+        func owns(_ asset:AudioAsset, file:URL) -> Bool {
+            asset.id == id && asset.fileName == name && asset.sandboxFileName == file.lastPathComponent && asset.source == source
+        }
+        func metadata(at file:URL) -> AudioAsset? {
+            (try? Data(contentsOf:file)).flatMap { try? JSONDecoder().decode(AudioAsset.self,from:$0) }
+        }
+        let previous = metadata(at:sidecar)
+        if manager.fileExists(atPath:target.path) || manager.fileExists(atPath:sidecar.path) {
+            guard let previous, owns(previous,file:target) else {
+                throw LabError.message("测试夹具路径已有其他素材，未覆盖文件")
+            }
+        }
+        let input = try AudioFileManager.inspect(url:sourceURL)
+        let current = try? AudioFileManager.inspect(url:target)
+        if current?.duration != input.duration || current?.sampleRate != input.sampleRate ||
+            current?.channelCount != input.channelCount || current?.byteCount != input.byteCount {
+            try Data(contentsOf:sourceURL,options:.mappedIfSafe).write(to:target,
+                options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+        }
+        var asset = try AudioFileManager.inspect(url:target,displayName:name,id:id,source:source)
+        asset.addedAt = previous?.addedAt ?? asset.addedAt
+        configure(&asset)
+        try JSONEncoder().encode(asset).write(to:sidecar,
+            options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+        if let old = metadata(at:legacySidecar), owns(old,file:legacy) {
+            // Old selections can still hold this PCM path; only retire its duplicate library index.
+            try manager.removeItem(at:legacySidecar)
+        }
+        return asset
+    }
+}
+
 /// Debug-only harness uses the same production selection and keyboard controls.
 struct InteractionTestScreen: View {
     @State private var text = ""

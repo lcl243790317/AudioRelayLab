@@ -1,10 +1,10 @@
 # AudioRelayLab 音频接力实验室
 
-当前检查点：用户已要求持续推进，离线音频初始化及两项 UI 回归修订已完成本地复核，进入新源码的完整 macOS 验证。4 份 Swift 语法、项目静态检查及补丁检查通过，Xcode／UI／IPA 结果须以新运行的原始日志为准。后续状态记入 [验证报告](WORKSHOP-CI-VALIDATION-ZH.md)；handoff.md 保留此前暂停时的记录，不再例行更新。
+当前检查点：沿 handoff 继续后，已完成失败录像与测试通信日志的诊断，修订正文输入定位、退出回听的实际长 PCM 夹具及状态等待预算。标准 CI 使用 `macos-15` Apple Silicon、固定 Xcode 16.4／iOS 18.5。第 39 次 UI 为 18 通过、2 失败；长短测试夹具跨启动遗留重复素材 ID 已由删除崩溃栈确认，正在修复并继续完整验证。当前状态记入 [验证报告](WORKSHOP-CI-VALIDATION-ZH.md)，handoff.md 保留此前暂停时的记录。
 
-最近交付版本：**1.6.6 / build 16**。当前工作区在此基础上增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出。版本号暂未递增；候选源码 `094cb01` 的 Simulator Debug 编译、275 项 XCTest（0 失败）和 98 项 CPU 回归已经由第 35 次 CI 原始日志确认。该次 UI 日志记录 17 通过、2 失败、1 超时；小屏／Release／IPA 因 UI 失败未执行，尚无本轮 IPA。用户已明确继续；完整诊断定位了离线引擎初始化顺序、详情测试 AX 标识及连接页多场景时限问题，相应修订和新增离线混音回归待新的 Xcode 验证（应执行 276 XCTest／20 UI）。Windows 本地全量 CPU 98 项也已通过，不能替代 Xcode 或真机结果。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，首次检查见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)，远端结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
+最近交付版本：**1.6.6 / build 16**。当前候选增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出，版本号暂未递增。源码 `d3e99a805f64fc400fdd523d2b8e548a21ba5bb6` 的第 [39 次 CI](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37896992880) 原始归档已确认 Simulator Debug 编译成功、99 项 CPU 与 276 项 XCTest 全部通过；20 UI 中 18 通过、2 失败，小屏／Release／IPA 未执行。Windows 全量 CPU 99 项也已通过，不能替代 Xcode 或真机结果。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，首次检查见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)，远端结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
 
-工作分支为 `feature/revoice-ios-1.6.0`。首次本地验证后，用户在当前会话明确授权提交／推送及标准完整 macOS CI，实际结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。不合并 main、不创建 Release、不部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
+工作分支为 `feature/revoice-ios-1.6.0`。继续请求已推进源码提交／推送与标准完整 macOS CI，实际结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。不合并 main、不创建 Release、不部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
 
 历史 1.6.6 交付：`dist/AudioRelayLab-1.6.6-unsigned.ipa`。当时 Python 94 项、Simulator XCTest 249 项、UI XCTest 18 项及 iPhone SE 小屏截图测试 1 项通过；Simulator Debug / iPhoneOS Release 构建成功。[历史构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763)及 [历史验证报告](REVOICE-1.6.6-TEST-REPORT-ZH.md)。该 IPA 和这些 Xcode 结果不包含本轮改动。
 
