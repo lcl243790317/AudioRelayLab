@@ -132,3 +132,7 @@
 标准工作流转到 `macos-15` Apple Silicon，固定 Xcode 16.4 与 iOS 18.5，选择器严格限定同一 runtime，避免在旧 Xcode 下误选更高版本模拟器。这是本项目 iOS 18 验证基线；[GitHub 官方标准池](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)与[镜像清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)确认可用。保留完整 99 CPU／276 native／20 UI／小屏 1 项、Release、真实录屏、HTTPS 下载和 IPA 验证。更新静态检查为核对新 runner、Xcode 与 runtime；不使用 larger runner、Modal 或真实 GPU。
 
 Windows 本地完整 CPU 99 项通过、0 失败／错误／跳过（10.709 秒），Python 3.12.14；静态检查与 Swift tree-sitter 语法验证通过。首次沙盒 loopback 被 WinError 10013 拒绝，保留不完整输出后在允许本地 loopback 的范围内重跑。Windows 检查仍不计为 Xcode 编译或模拟器通过；修订后的实际 macOS 结果待新一轮完整运行。
+
+第 38 次 [37896384758](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37896384758)，源码 `8aa66a9b07bd2ecc1b4ed64cf8826361ca5df7ec`，已实际分配 `macos-15-arm64`／macOS 15.7.9／Xcode 16.4。99 CPU 项通过（45.979 秒），随后 Simulator 编译失败：`VoiceCalibration.swift:18` 的单行 reduce 平方能量表达式触发旧编译器类型检查超时。改为相同次序、相同 Double 运算的显式累计，保留 512 点平均与原能量阈值；既有基频和静音拒绝 native 回归仍须实际执行。该 run 于 07:01 UTC failure，没有原生／UI／IPA 成功证据。
+
+第 37 次内嵌 Session 日志进一步明确，外层 10 秒 XCTWaiter 在 30 秒 AX 查询完成前中断查询，生成空快照；App 随后返回正在试听及实际进度。只将三个页面的播放／进度状态等待预算协调至 45 秒，退出停止和清零断言保持原样，不重复点击或重试失败用例。下一用例的终止请求在 Xcode 侧晚约 70 秒才处理，随即收到 App 的 signal 15；保留该失败而不据此更改 App 音频行为。

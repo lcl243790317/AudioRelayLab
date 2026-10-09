@@ -15,7 +15,12 @@ enum VoiceCalibration {
         var pitches:[Double] = []
         let maximumLag = Int(rate/65), minimumLag = Int(rate/400)
         for start in stride(from:0,through:count-1024,by:256) {
-            let energy = (0..<512).reduce(0.0) { $0+signal[start+$1]*signal[start+$1] }/512
+            var squaredSum = 0.0
+            for offset in 0..<512 {
+                let sample = signal[start+offset]
+                squaredSum += sample*sample
+            }
+            let energy = squaredSum/512.0
             if energy < 0.0001 { continue }
             var difference = [Double](repeating:0,count:maximumLag+1)
             var sum = 0.0

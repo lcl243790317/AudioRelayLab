@@ -2,6 +2,9 @@ import XCTest
 import UIKit
 
 final class InteractionUITests: XCTestCase {
+    // Let a native AX query finish before the outer waiter interrupts it.
+    // Run 37's 10s waiter canceled a 30s query while audio was actually playing.
+    private let previewStateTimeout:TimeInterval = 45
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
@@ -59,7 +62,7 @@ final class InteractionUITests: XCTestCase {
             for destination in ["tab","mode","selector","cloud","share"] {
                 reveal(play,in:app); play.tap()
                 let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在回听"),object:stop)
-                XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:5),.completed)
+                XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:previewStateTimeout),.completed)
                 switch destination {
                 case "tab": app.tabBars.buttons["音频库"].tap(); app.tabBars.buttons["工坊"].tap()
                 case "mode":
@@ -144,7 +147,7 @@ final class InteractionUITests: XCTestCase {
             XCTAssertTrue(stop.waitForExistence(timeout:5)); XCTAssertFalse(stop.isEnabled)
             app.buttons["回听"].firstMatch.tap()
             let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在回听"),object:stop)
-            XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:5),.completed)
+            XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:previewStateTimeout),.completed)
             XCTAssertTrue(stop.isEnabled)
 
             app.tabBars.buttons["播放"].tap()
@@ -154,7 +157,7 @@ final class InteractionUITests: XCTestCase {
 
             app.buttons["回听"].firstMatch.tap()
             let replaying = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在回听"),object:stop)
-            XCTAssertEqual(XCTWaiter.wait(for:[replaying],timeout:5),.completed)
+            XCTAssertEqual(XCTWaiter.wait(for:[replaying],timeout:previewStateTimeout),.completed)
             app.buttons["workshop.tools"].tap(); app.buttons["实验历史"].tap()
             app.navigationBars.buttons["音频库"].tap()
             XCTAssertTrue(stop.waitForExistence(timeout:3)); XCTAssertFalse(stop.isEnabled)
@@ -498,10 +501,10 @@ final class InteractionUITests: XCTestCase {
                         guard let value = progress.value as? String,let seconds = Double(value) else { return false }
                         return seconds > 0 && seconds < 6
                     },object:nil)
-                    XCTAssertEqual(XCTWaiter.wait(for:[advanced],timeout:10),.completed)
+                    XCTAssertEqual(XCTWaiter.wait(for:[advanced],timeout:previewStateTimeout),.completed)
                 } else {
                     let playing = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@","正在试听"),object:stop)
-                    XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:10),.completed)
+                    XCTAssertEqual(XCTWaiter.wait(for:[playing],timeout:previewStateTimeout),.completed)
                 }
                 switch destination {
                 case "工坊","音频库":
