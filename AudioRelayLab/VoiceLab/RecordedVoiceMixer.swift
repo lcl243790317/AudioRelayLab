@@ -26,13 +26,14 @@ enum RecordedVoiceMixer {
         defer { try? FileManager.default.removeItem(at:musicCopy) }
         let musicFile = try AVAudioFile(forReading:musicCopy)
         let engine = AVAudioEngine(), voice = AVAudioPlayerNode(), music = AVAudioPlayerNode()
+        // File mixing must not initialize the device output while constructing its graph.
+        try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
+        defer { voice.stop(); music.stop(); engine.stop(); engine.disableManualRenderingMode() }
         engine.attach(voice); engine.attach(music)
         engine.connect(voice,to:engine.mainMixerNode,format:voiceFile.processingFormat)
         engine.connect(music,to:engine.mainMixerNode,format:musicFile.processingFormat)
         voice.volume = volumes.voice; music.volume = volumes.music
         engine.mainMixerNode.outputVolume = volumes.master
-        try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
-        defer { voice.stop(); music.stop(); engine.stop(); engine.disableManualRenderingMode() }
         voice.scheduleFile(voiceFile,at:AVAudioTime(sampleTime:voiceStart,atRate:voiceFile.processingFormat.sampleRate))
         // Offline rendering uses the player's sample timeline, not wall-clock delays.
         let musicStart = AVAudioFramePosition((timing.musicStartDelay*musicFile.processingFormat.sampleRate).rounded())

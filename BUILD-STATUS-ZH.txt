@@ -5,15 +5,22 @@ AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-08）
 分支 feature/revoice-ios-1.6.0；当前会话已授权标准公开 CI，不合并 main、不发布、不部署。
 首次 Windows 94 项 Python 回归、静态与语法检查通过；首次检查点见 WORKSHOP-LOCAL-VALIDATION-ZH.md。
 
-待本轮真实 CI 更新：
-- 当前候选源码提交：e9619d8e901245fc7b9a3330a9d4316f7fbcb6ea
-- 当前 Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37854548644
-- 第 34 次标准完整 CI 于 22:36 UTC 触发，补齐批删回归实际所需时限后发出取消请求；等待过时任务结束，再验证新测试配置。空稿的设备端识别独立于旧任务的新云端提交限制。
+当前状态：用户明确继续且后续不再阶段暂停；离线音频修复已完成本地收尾，将提交至原功能分支并运行完整标准 CI。此前暂停记录保留在 handoff.md，当前验证以本文及 WORKSHOP-CI-VALIDATION-ZH.md 为准。
+4 份修改 Swift 语法、72 App／21 XCTest 文件静态检查及 git diff --check 通过；新修订的 Swift 编译和行为测试仍待执行。
+
+最近已执行的候选验证（不包含当前未提交修订）：
+- 最近已验证源码提交：094cb0106e8dc9c9f12da4169080fea7666d48d6
+- 对应 Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37855655509
+- 第 35 次标准完整 CI 于 2026-10-09 00:59 UTC 结束，结论 failure（本地仍为 10 月 8 日）。Simulator Debug BUILD SUCCEEDED；原始日志确认 Python 98 项通过（46.100 秒）、275 XCTest 0 失败（147.201 秒）。UI 日志确认 20 用例开始，17 通过、2 失败、1 超时；小屏／Release／IPA 因 UI 失败未执行。空稿设备端识别独立于旧任务的新云端提交限制，其 UI 扩展回归已通过。
+- XCTest 阶段检查点 11584782692 已下载；61,075 字节，官方 SHA-256：869c93d5e4fe9edbcfdc3709715451539dac83047cfe620d0c35bdb940d65ea8。
+- UI 阶段检查点 11589165108 已下载；87,819 字节，官方 SHA-256：4827f536ffe04b7d5ee2efd4493f132b82ec21c4987146583eecfcc2e116cbeb。
+- 用户已明确继续。第 35 次完整主 Artifact 11588743405 已取回并通过官方 SHA-256 校验。崩溃栈确认离线准备过早访问 mainMixerNode，触发 AURemoteIO 初始化 RPC 超时并 SIGABRT；两处离线引擎已调整初始化顺序。详情 AX 附件确认父标识覆盖子标识，测试改为按该素材的实际标识和来源文字定位。连接页十次设置访问显式设 1800 秒，保留全部断言。
+- 新增后台离线混音在未激活 record-only 会话中的真实 PCM 回归；当前应执行 276 XCTest、20 UI、小屏 1 项及 Release／IPA。上述修订仍需新的实际 Xcode 运行验证，第 35 次失败记录不改记为通过。
 - 第 33 次过时运行已于 22:35 UTC 主动取消；检查点官方哈希已核对，98 CPU 回归、Simulator Debug 通过，原生测试尚未开始。
 - 第 32 次标准完整 CI 于 21:57 UTC cancelled，官方原因为超过 150 分钟任务时限。Simulator Debug 与 XCTest 步骤成功，但原始数量无法核对；UI 被取消，Artifact／原始日志不可用，小屏／Release／IPA 未执行。
 - 第 30 次标准 macos-26-intel 构建：Simulator Debug 与 274 XCTest 通过；UI 完成 15 项（13 通过、2 失败）后任务超过 75 分钟时限取消。
-- 本地补齐阶段日志上传、录屏有时限清理和 XCTest 单用例时限；全量 CPU 98 项通过（15.500 秒），实际 H.264 视频校验通过。下一次标准完整流程保留 275 XCTest、20 UI、小屏 1 项、Release 与 IPA；任务总时限 240 分钟。
-- 尚未完成整条流水线，没有当前候选 IPA；修订后最终数量与哈希须从新 run 原始日志及产物核对。
+- 本地补齐阶段日志上传、录屏有时限清理和 XCTest 单用例时限；此前全量 CPU 98 项通过（15.500 秒），本地 H.264 视频校验通过。后续修订保留全部测试、小屏、Release 与 IPA；任务总时限 240 分钟。
+- 本轮验证未全部通过，没有当前候选 IPA；修订后最终数量与哈希须从实际 run 原始日志及产物核对。
 - 第 29 次未取得 arm64 托管 runner，第 27 次 19/20 UI 通过等阶段结果见 WORKSHOP-CI-VALIDATION-ZH.md。
 - 历史 1.6.6 包及 249 XCTest / 18 UI 结果另存于 REVOICE-1.6.6-TEST-REPORT-ZH.md，不作为当前候选证据。
 

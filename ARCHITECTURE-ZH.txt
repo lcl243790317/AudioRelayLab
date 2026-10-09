@@ -139,6 +139,7 @@ PreviewPlaybackController 有独立 AVAudioPlayer 与 token，50ms Timer 只更�
 前台 5秒试听限时，正式未来调度依旧不靠 Timer。进入后台停止 preview。
 AudioPlaybackSettings 用 TimeInterval；编辑与 applied 值独立，正式 volume 另存。
 非1x正式实验先离线渲染源起点、时长与倍速，AVAudioPlayer/Engine 均以1x调度。
+RateAdjustedAudio 和 RecordedVoiceMixer 在首次访问 mainMixerNode 前启用 offline manual rendering，再连接文件节点。第 35 次 UI 诊断确认旧顺序会在文件处理阶段初始化 RemoteIO，并在硬件 RPC 超时时 SIGABRT；调整初始化顺序使离线图从建立时就使用手动渲染模式。生产代码不为文件混音激活或修改 AVAudioSession；回归覆盖后台执行、未激活的 record-only 会话、真实 PCM 时长／能量和原文件保持不变。正式播放的硬件节点仍由原播放器管理。
 1x的 AVAudioPlayer 从 currentTime 起点播放，有限源时长时裁剪 offset 后 CAF。
 Engine 根据实际播放文件采样率算 initial/resume/end frame；两者预计
 实际时长=源剩余或源 duration 限制除以 rate。旧历史起点=0/rate=1。

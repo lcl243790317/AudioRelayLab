@@ -52,7 +52,7 @@ xcodebuild Simulator Debug → 实际 iPhone Simulator 全部 XCTest → 完整 
 两次编译禁用代码签名，用 set -euo pipefail 与 tee 同时保留输出和真实退出码。
 真机 Release 成功后再打包 IPA，执行 verify_ipa.py，检查日志错误与 warning。
 具体执行次序和 XCTest destination 以 workflow 的完整命令为准。
-标准完整任务有 240 分钟上限。UI 启用 XCTest 单用例时限：默认 600 秒，多退出上下文的试听与批量删除用例显式 1800 秒，最大 1800 秒；超时是测试失败，不能记为通过。批删在第 30 次实际通过耗时 697.099 秒，因此单独配置更长时限。
+标准完整任务有 240 分钟上限。UI 启用 XCTest 单用例时限：默认 600 秒，多退出上下文的试听、批量删除和连接页主题／大字体用例显式 1800 秒，最大 1800 秒；超时是测试失败，不能记为通过。批删在第 30 次实际通过耗时 697.099 秒；连接页十次设置访问在第 35 次超过 600 秒，日志在 781.83 秒仍有布局检查，故对该多场景用例单独配置更长时限，保留全部断言。
 scripts/run-recorded-ui-tests.py 运行实际 xcodebuild，保留退出码，只清理自己创建的录屏／测试进程；录屏退出按 20／5／5 秒升级终止，视频必须经 ffmpeg 解码出真实画面。
 在 XCTest 和完整 UI 阶段分别上传 AudioRelayLab-XCTest-Checkpoint、AudioRelayLab-UI-Logs，完整产物保留在 AudioRelayLab-iOS-Build；阶段日志可提前取回，不能用阶段成功替代整条流水线。
 如果产生编译错误，必须修复真正源文件并再次 CI，不能只写一份成功报告。

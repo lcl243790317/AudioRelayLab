@@ -18,12 +18,14 @@ enum RateAdjustedAudio {
             throw LabError.message("倍速准备后的 PCM 超过 512 MB，请缩短源播放时长或调整起点")
         }
         let engine = AVAudioEngine(), node = AVAudioPlayerNode(), pitch = AVAudioUnitTimePitch()
+        // Enter offline mode before mainMixerNode lazily creates an output node.
+        // Otherwise even file-only work can initialize RemoteIO and its hardware RPC.
+        try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
+        defer { node.stop(); engine.stop(); engine.disableManualRenderingMode() }
         engine.attach(node); engine.attach(pitch)
         engine.connect(node,to:pitch,format:format)
         engine.connect(pitch,to:engine.mainMixerNode,format:format)
         pitch.rate = rate
-        try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
-        defer { node.stop(); engine.stop(); engine.disableManualRenderingMode() }
         node.scheduleSegment(file,startingFrame:first,frameCount:UInt32(sourceFrames),at:nil)
         try engine.start(); node.play()
         let latency = pitch.auAudioUnit.latency

@@ -369,7 +369,10 @@ final class InteractionUITests: XCTestCase {
         reveal(revoice,in:app); revoice.tap()
         XCTAssertTrue(app.staticTexts["批删测试配音正文 17"].exists)
         reveal(mix,in:app,towardTop:true); mix.tap()
-        let origin = app.staticTexts["library.mix.sources."+mixID]
+        // DisclosureGroup propagates its identifier to content in the actual AX tree.
+        // Match the source text for this asset, excluding the volume caption.
+        let origin = app.staticTexts.matching(identifier:"library.mix.details."+mixID)
+            .matching(NSPredicate(format:"label BEGINSWITH %@","人声：")).firstMatch
         XCTAssertTrue(origin.waitForExistence(timeout:3))
         XCTAssertTrue(origin.label.contains("人声：批删测试原声")); XCTAssertTrue(origin.label.contains("音乐：内置测试音"))
         XCTAssertFalse(origin.label.contains("16300000"))
@@ -413,6 +416,8 @@ final class InteractionUITests: XCTestCase {
     }
 
     @MainActor func testCloudConnectionBothEntriesFollowThemeAndLargeType() {
+        // Ten settings visits across themes/type sizes exceeded 600 s on run 35.
+        executionTimeAllowance = 1800
         let app = XCUIApplication()
         var normalCaptionHeights:[String:CGFloat] = [:]
         for night in [false,true] {

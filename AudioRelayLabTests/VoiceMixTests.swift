@@ -3,6 +3,32 @@ import XCTest
 @testable import AudioRelayLab
 
 final class VoiceMixTests:XCTestCase {
+    @MainActor func testBackgroundOfflineMixRendersWithInactiveRecordOnlySession() async throws {
+        let session = AVAudioSession.sharedInstance()
+        let category = session.category,mode = session.mode,options = session.categoryOptions
+        try session.setActive(false)
+        try session.setCategory(.record,mode:.default,options:[])
+        defer { try? session.setCategory(category,mode:mode,options:options) }
+        let voiceURL = try tone(seconds:0.8,sampleRate:24000),musicURL = try tone(seconds:1.4,sampleRate:44100)
+        defer { try? FileManager.default.removeItem(at:voiceURL); try? FileManager.default.removeItem(at:musicURL) }
+        let originalVoice = try Data(contentsOf:voiceURL),originalMusic = try Data(contentsOf:musicURL)
+        // Exercise both real offline engines on the same background path used by Save Mix.
+        let mixed = try await Task.detached {
+            try RecordedVoiceMixer.mix(voiceURL:voiceURL,musicURL:musicURL,
+                settings:.init(startOffset:0.2,playbackRate:0.5,endOffset:1.2),
+                volumes:.init(voice:1,music:0.5,master:1),
+                timing:.init(musicStartDelay:0.2,musicTailDuration:0.2))
+        }.value
+        defer { try? AudioFileManager.removeAudio(mixed) }
+        XCTAssertEqual(mixed.duration,1,accuracy:2/48000.0)
+        XCTAssertGreaterThan(try energy(mixed,from:0.05,to:0.15),0.01)
+        XCTAssertGreaterThan(try energy(mixed,from:0.85,to:0.95),0.005)
+        XCTAssertEqual(session.category,.record); XCTAssertEqual(session.mode,.default)
+        XCTAssertEqual(session.categoryOptions,[])
+        XCTAssertEqual(try Data(contentsOf:voiceURL),originalVoice)
+        XCTAssertEqual(try Data(contentsOf:musicURL),originalMusic)
+    }
+
     func testDelayedVoiceAt11025HzRetainsItsLastFrameAfterRateConversion() throws {
         let rate = 11025.0,delay = 0.3,tail = 0.1
         let voiceURL = try tone(seconds:1.1,sampleRate:rate),musicURL = try tone(seconds:2)

@@ -17,7 +17,8 @@
 | [31 / 37830588378](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37830588378) | `a89d6b303f13512915b99e5eab45121275d9e601` | 补充真实正式倒计时回归后主动取消过时验证，Simulator 编译中止；XCTest／UI／小屏／Release／IPA 未执行，不计全量通过。 |
 | [32 / 37831419860](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37831419860) | `8c5a7ea4ad469c2046a39ccf9a7d8cf76139a413` | Simulator Debug、XCTest 步骤成功；UI 阶段触及 150 分钟任务时限，21:57 UTC 官方结论 cancelled。原始日志与 Artifact 不可用，不能核对实际用例数量／UI 失败位置。小屏／Release／IPA 未执行，无新 IPA。 |
 | [33 / 37853382189](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37853382189) | `a3c7233316f10cf076c777e91205b0505cff32a1` | Python 98 项通过（46.071 秒）、Simulator Debug 通过；发现空草稿识别入口被旧云端任务误禁用，修订后取消过时运行，22:35 UTC 结束。原生测试尚未开始，小屏／Release／IPA 未执行。 |
-| [34 / 37854548644](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37854548644) | `e9619d8e901245fc7b9a3330a9d4316f7fbcb6ea` | 22:36 UTC 触发标准完整流程，结果待阶段日志和最终产物核对。 |
+| [34 / 37854548644](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37854548644) | `e9619d8e901245fc7b9a3330a9d4316f7fbcb6ea` | Simulator Debug 步骤成功；补齐批删用例实际时限后主动取消过时验证。原生测试阶段取消，UI／小屏／Release／IPA 未执行，不计全量通过。 |
+| [35 / 37855655509](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37855655509) | `094cb0106e8dc9c9f12da4169080fea7666d48d6` | Python 98 项通过（46.100 秒）、Simulator Debug 通过；275 XCTest 0 失败（147.201 秒）。UI 日志记录 20 用例开始，17 通过、2 失败、1 超时；小屏／Release／IPA 因 UI 失败未执行。00:59 UTC 结束，结论 failure。阶段日志已取回，按用户要求暂停。 |
 
 第 24 次运行的两项 UI 失败均已定位到测试断言：
 
@@ -58,7 +59,41 @@
 
 补充核对第 30 次全部已完成用例耗时：批量删除回归实际通过耗时 697.099 秒，超过新增的 600 秒默认单用例上限。该多步骤用例也显式设为 1800 秒，其他断言与数量不变；修订后需要新的标准完整运行，第 34 次作为过时验证取消，不计为当前源码全量通过。
 
+第 35 次 XCTest 检查点 `11584782692`（61,075 字节）已实际下载并核对官方 SHA-256：`869c93d5e4fe9edbcfdc3709715451539dac83047cfe620d0c35bdb940d65ea8`。原始日志确认 Python 98 项通过（46.100 秒），Simulator Debug BUILD SUCCEEDED，275 XCTest 全部通过、0 失败（147.201 秒）；新增的草稿／区间 15 项、导航／试听 5 项及旧任务保留时空草稿识别的扩展回归均已执行。实际环境为 macOS 26.6.1 / 25G76、Xcode 26.6 / 17F113、iPhoneOS SDK 26.5、Swift 6.3.3，不能代替签名真机。实时网页只显示部分日志行，不能从可见末行判断截图命令卡住；阶段归档确认本次运行继续并完成原生测试，未因此修改工作流或取消正在推进的验证。原生日志有两条测试代码 `defer` 位于作用域末尾的编译提示，清理仍执行，测试未失败。完整 UI 于 23:10:32 UTC 开始，其结果、小屏、Release 和 IPA 另行核对，不从该检查点推断。
+
+## 第 35 次 UI 阶段结果与暂停点
+
+2026-10-09 00:57 UTC 完整 UI 步骤失败，阶段日志上传成功；00:59:36 UTC 整个 run 以 failure 结束（本地日期仍为 10 月 8 日）。已下载 `AudioRelayLab-UI-Logs`，Artifact `11589165108`，87,819 字节，官方 SHA-256 核对通过：`4827f536ffe04b7d5ee2efd4493f132b82ec21c4987146583eecfcc2e116cbeb`。原始日志记录 20 个用例开始、17 个 passed、2 个 failed，另外连接页用例超过 600 秒。后半段 XCTest 汇总为 15 项／2 失败，不能用这段局部汇总代替全次用例记录；最终明确列出三个问题并记录 `TEST FAILED`。
+
+| 剩余问题 | 本次原始证据 | 明确继续后的诊断入口 |
+|---|---|---|
+| 连接页主题／大字体回归超时 | `testCloudConnectionBothEntriesFollowThemeAndLargeType` 超过 10 分钟时限；日志随后仍有操作，到 781.83 秒后需附上 xcresult 的提示 | 核对各布局操作的附件和时间线，判断必要时限及是否有异常等待；不从网页截断归因 |
+| 独立混音回归失败 | `InteractionUITests.swift:184` 等待保存提示时，快照报 Lost connection to the application；397.007 秒 failed | 下载该用例的 xcresult、系统／应用崩溃资料和录像，区分应用退出与测试通信问题；当前日志未确定根因 |
+| 选择模式回归失败 | `InteractionUITests.swift:373` 展开混音详情后，等待来源 StaticText 出现的断言失败；90.255 秒 failed | 核对点击目标、滚动位置、实际详情和 AX 层级，再决定修订；不先删除断言或把所有等待一律加长 |
+
+本轮成品导航 UI 通过（365.334 秒）、工坊回听五类退出入口通过（524.836 秒）、旧任务／新草稿隔离及空草稿识别入口通过（134.021 秒）。播放页试听退出、两处音频库回听退出、音量独立、自动表达、手改草稿、大字体输入、音乐片段设置、键盘、批删和单删等其余通过记录均保存在本 run 的独立日志中。
+
+录屏清理日志为 `forced=False; exit=0`，没有强制终止；本次完整视频和 xcresult 尚未在本地取回，不能把清理状态视为本地视频检查。远端已导出失败诊断截图并上传主 Artifact，小屏、iPhoneOS Release、IPA 和最终成功证据核对均被跳过。没有新 IPA，也没有签名真机结果。
+
+按当前用户要求，本小阶段到此暂停。已保留两个轻量检查点和本轮文档修改，不开始新的源码修订、推送或 CI。下一次明确继续时先取回第 35 次主诊断 Artifact，再处理以上三个真实问题；后续仍需完整 UI、小屏、Release 与 IPA 校验，不使用旧 IPA 补齐证据。
+
+主诊断归档 `AudioRelayLab-iOS-Build`，Artifact `11588743405`，658,541,416 字节，官方元数据摘要为 `a662d10d487d265b2da568509100ad1f4f54534ae6f2d07627809c252159f8b8`，远端保留到 2026-10-23 00:58:02 UTC；本地尚未下载，恢复时须核对实际文件摘要。监测辅助进程已随 run 结束退出。
+
+## 恢复继续后的第 35 次根因核对
+
+用户明确继续后，完整主 Artifact `11588743405` 已下载，658,541,416 字节，与官方 SHA-256 `a662d10d487d265b2da568509100ad1f4f54534ae6f2d07627809c252159f8b8` 一致。原始归档、`.ips`、AX 层级和分析记录保留在同一 run 的忽略目录，前述“尚未下载”为暂停时的历史状态。
+
+独立混音的 `.ips` 确认应用 SIGABRT，触发线程在 `RateAdjustedAudio.swift:23`：mainMixerNode → GetOutputNode → AURemoteIO::Initialize → _ReportRPCTimeout。旧代码先访问 mixer 才启用离线模式；倍速准备和最终混音两处现均先进入 offline manual rendering，再连接图节点。Apple 的[离线渲染说明](https://developer.apple.com/documentation/avfaudio/performing-offline-audio-processing)说明该模式使引擎 I/O 脱离硬件。新增 native 回归在未激活的 record-only 会话内从后台实际执行倍速和混音，核对 PCM 时长、首段／尾声能量、会话参数及原文件保持不变；预计原生总数增至 276，结果待后续 CI。
+
+选择模式的失败 AX 层级和 expanded 标记证实混音来源已打开且两种素材名称正确；子文字实际 identifier 为父 DisclosureGroup 的 `library.mix.details.<id>`，而非测试查询的 `library.mix.sources.<id>`。修订查询为该素材实际 identifier 与“人声：”前缀的交集，保留所有显示、隐藏、折叠恢复和内容断言，未放宽等待时间。
+
+连接页附件已覆盖浅色常规／大字体、深色常规两种入口；在十次设置访问结束前超出 600 秒，日志到 781.83 秒仍执行布局检查。该多场景测试单独设 1800 秒，与已有长场景上限一致，未移除场景或断言。工作流整体、GPU 和云端配置保持。三个修订须由新源码的完整实际运行确认，第 35 次仍记录失败。
+
 ## 验证边界
+
+用户随后明确继续，要求后续不再阶段暂停，也不再例行更新 handoff.md。本次继续从上述 11 份修改提交并验证；当前状态以本报告、README 和 BUILD-STATUS 为准，交接文档中的暂停为历史检查点。
+
+本地修复收尾已完成并按用户要求暂停：4 份修改 Swift 语法解析、72 App／21 XCTest 文件静态检查和 `git diff --check` 均通过。11 份修改仍未提交，没有新的远端运行或 IPA；下次继续先提交审查后的修订，再运行完整标准 CI。276 原生／20 UI 为预期发现数量，不能计为本次通过。
 
 本轮真机设备端语音识别、权限、听感、路由、锁屏和微信／通话期间行为尚未验证。具体操作步骤与剩余行为限制见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md#真机操作清单)。自动回归使用 PCM 夹具、注入识别器、URLProtocol 与现有可信 loopback HTTPS 服务；不请求付费 GPU。
 
