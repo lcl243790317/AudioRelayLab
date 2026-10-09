@@ -16,4 +16,6 @@ Windows 本地完整 CPU 99 项通过（12.037 秒），0 失败／错误／跳�
 
 Simulator Debug、原生 XCTest、完整 UI、小屏、iPhoneOS Release 和新 IPA 尚待本次新的 macOS CI；此前第 40 次运行仅覆盖 1.6.6 的源码 `a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3`，不能作为本次通过证据。
 
+首次源码为 `f2627d0e584602f3faa82401723bed2888338ba8`。第 [41 次标准完整运行 / 38005302731](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38005302731) 于 2026-10-09 23:37:08 UTC（纽约 19:37）启动，`diagnosticOnly=false`；CPU 检查通过，Simulator 编译失败：移除识别片段文件时遗漏了同文件内的 `RevoiceRecentTasks`。该组件现已原样恢复到独立文件。第 41 次不计作通过，后续完整运行将使用修复后的源码。
+
 本轮普通回归使用真实 PCM、注入设备端识别器与既有 HTTPS 夹具，不调用生产配音或 GPU，不部署 Modal。需用户重签后在原设备复测语音输入后的实际键盘输入、权限、听感、路由与后台行为。
