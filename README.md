@@ -1,8 +1,8 @@
 # AudioRelayLab 音频接力实验室
 
-当前检查点：沿 handoff 继续后，已完成失败录像与测试通信日志的诊断，修订正文输入定位、退出回听的实际长 PCM 夹具及状态等待预算。标准 CI 使用 `macos-15` Apple Silicon、固定 Xcode 16.4／iOS 18.5。第 39 次 UI 为 18 通过、2 失败；长短测试夹具跨启动遗留重复素材 ID 已由删除崩溃栈确认，正在修复并继续完整验证。当前状态记入 [验证报告](WORKSHOP-CI-VALIDATION-ZH.md)，handoff.md 保留此前暂停时的记录。
+当前交付：沿 handoff 继续后，已修复完整验证中发现的离线音频初始化、测试输入定位及长短回听夹具身份冲突。源码 `a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3` 的第 [40 次 CI](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37902418824) 全部成功：99 项 CPU、277 项原生、20 项 UI 和 1 项 iPhone SE 小屏测试通过，Simulator Debug／iPhoneOS Release 构建成功。标准 CI 使用 `macos-15` Apple Silicon、固定 Xcode 16.4／iOS 18.5；完整证据见 [验证报告](WORKSHOP-CI-VALIDATION-ZH.md)。handoff.md 保留此前暂停时的记录。
 
-最近交付版本：**1.6.6 / build 16**。当前候选增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出，版本号暂未递增。源码 `d3e99a805f64fc400fdd523d2b8e548a21ba5bb6` 的第 [39 次 CI](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37896992880) 原始归档已确认 Simulator Debug 编译成功、99 项 CPU 与 276 项 XCTest 全部通过；20 UI 中 18 通过、2 失败，小屏／Release／IPA 未执行。Windows 全量 CPU 99 项也已通过，不能替代 Xcode 或真机结果。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，首次检查见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)，远端结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
+本轮版本仍为 **1.6.6 / build 16**，增加独立配音草稿自动保存、识别片段、最近任务取回、成品到播放页的导航及统一试听退出。交付文件为 `dist/AudioRelayLab-workshop-a81e84d-unsigned.ipa`，SHA-256 为 `6ee9efe70d026b865bda2f258550edec7cc62b24e9415d1b2b1dc7ca98f0e880`；需用户证书重新签名后进行真机验收。Windows 全量 CPU 99 项也已通过，不能替代 Xcode 或真机结果。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，首次检查见 [本地验证记录](WORKSHOP-LOCAL-VALIDATION-ZH.md)，远端结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。
 
 工作分支为 `feature/revoice-ios-1.6.0`。继续请求已推进源码提交／推送与标准完整 macOS CI，实际结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。不合并 main、不创建 Release、不部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
 

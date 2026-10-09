@@ -2,6 +2,8 @@
 
 本报告记录当前会话用户明确回复“授权”后的远端验证，与 [首次本地验证](WORKSHOP-LOCAL-VALIDATION-ZH.md) 和历史 1.6.6 报告分别保留。只使用现有干净公开仓库 `lcl243790317/AudioRelayLab` 的 `feature/revoice-ios-1.6.0`，运行现有 `build-ios.yml` 的普通完整流程（`diagnosticOnly=false`）；没有合并 main、创建 Release、部署、变更云端配置或调用真实 GPU。
 
+当前结论：源码 `a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3` 的第 [40 次运行](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37902418824) 全部成功，99 CPU／277 原生／20 UI／小屏 1 项通过，Debug／Release 与未签名 IPA 已核验。交付文件为 `dist/AudioRelayLab-workshop-a81e84d-unsigned.ipa`，版本仍为 1.6.6 / build 16。签名真机的识别、听感、路由、锁屏及微信／通话行为仍按既有协议验收；当前无需 Modal 登录或新增密钥。下方保留失败与暂停的历史证据，最终成功记录见文末第 40 次。
+
 ## 构建记录
 
 | Actions run | 源码 | 本轮实际结果 |
@@ -154,3 +156,30 @@ UI 检查点 `11602466922`（82,150 字节）与主诊断 Artifact `11601857874`
 修复保持 DEBUG 夹具 ID 13～19、显示名、来源类型和配音／混音 metadata，固定每个 ID 的原文件名；根据当前源的实际 PCM 时长／采样率／声道／字节数原子更新文件。现有 canonical 索引必须符合预留 ID、名称、路径与来源，才允许覆盖；新索引成功写入后，只移除同样严格匹配的旧“长回听”索引，保留其 PCM 本体。普通启动及 Release 不执行该测试迁移。
 
 新增 `testInteractionFixtureSwitchesPCMWithoutDuplicateIDsOrChangingUnownedFiles`：在独立临时目录实际写 11.7／93.6 秒 WAV，验证短→长→短的文件字节、解码样本、时长与单 UUID 索引，同时验证旧 PCM、无关旧索引以及非夹具 canonical 文件保持。原生预期增至 277；本地 3 份 Swift 语法、72 App／21 XCTest 静态检查及补丁检查通过，不代替新 Xcode 执行。全部 20 UI 场景和停止／清零／正文断言保持，继续新的标准完整流程。
+
+## 第 40 次：修复夹具身份后完整重跑
+
+修订已提交并推送为 `a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3`。第 [40 次标准运行 / 37902418824](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37902418824) 于 2026-10-09 08:01:24 UTC 启动，`diagnosticOnly=false`，08:41:27 UTC（纽约 04:41）全部成功结束。用户暂停期间仅停止本地监测，已启动的远端 CI 自行完成；明确继续后取回本 run 全部证据。
+
+| 实际阶段 | 本 run 原始日志结果 |
+|---|---|
+| CPU | 99 项通过，45.595 秒 |
+| Simulator Debug | BUILD SUCCEEDED |
+| 原生 XCTest | 277 项通过，0 失败，126.068 秒 |
+| 完整 UI | 20 项通过，0 失败／跳过／超时，1306.903 秒 |
+| iPhone SE（第三代） | 小屏 UI 1 项通过，72.676 秒，iOS 18.5 |
+| iPhoneOS Release／IPA | BUILD SUCCEEDED，打包与 verify_ipa 成功 |
+
+新增夹具文件回归明确通过（0.047 秒）；第 39 次失败的多选模式与单条删除此次分别通过（34.527／48.906 秒）。此前正文输入、两处音频库回听、播放页试听、预设编辑、工坊回听、成品导航与不自动播放、旧任务／新草稿隔离均有独立通过记录。修复夹具身份后没有追加选择点击、放宽正文断言或修改生产删除逻辑。
+
+实际 runner 为 macOS 15.7.9／24G830、arm64；Xcode 16.4／16F6、iPhoneOS SDK 18.5、Swift 6.1.2、XcodeGen 2.46.0。常规 iPhone 16 Pro 与小屏均固定 iOS 18.5。两条测试末尾 `defer` 编译警告仍存在，另有 AppIntents 元数据提取提示；构建与测试通过，不宣称零警告。隔离 HTTPS 夹具实际记录 9 次成功下载、2 次 pending、0 拒绝请求，未收到长期凭据，生产 TLS 未改变。
+
+主 Artifact `11603759851`（501,193,546 字节）已实际下载并核对官方 SHA-256：`19eafeb6c1e2cd24031cd4d73f22c07c6b2c51b95ed2e8baccf9d4a4e5546833`。原生检查点 `11603492073`（52,742 字节）与 UI 日志 `11604014909`（81,465 字节）也已独立核对官方摘要，分别为 `04f1d3269e53f9b28bf7588fe39ea13ffb84d577faed06e6a921a6872335b8a8`、`21c79479d980e28dcfcdf6e19f113b26b8bf230fb6a4979809cd33d8f33ed69d`。全部原始材料保存在忽略目录 `dist/workshop-ci-20261007/37902418824/`。
+
+本地 `verify_evidence.py` 复核 run／源码、日志哈希与字节数、真实工程、实际测试数、可信 HTTPS 清单及 IPA 均通过。59 张 PNG 附件已核对摘要；其中常规屏与 SE 各 8 个混音场景覆盖浅深主题、常规／大字体和滚动首尾，另抽查 10 张基础页面。实际截图未发现明显重叠、文字不可读或固定控件遮挡；大字体内容在卡片内换行，视口下缘裁切为可滚动内容。复核索引与联系表位于该 run 的 `visual-review/`。
+
+真实完整录屏也已抽查：全局视频时间 127.5／129.5 秒确认正文获得键盘焦点、修改文字保留且键盘收起；323.5／326 秒确认音频库回听后返回时状态消失、停止按钮禁用；1161.8～1175.5 秒确认正文实际展开，进入多选后详情与操作隐藏，退出后折叠并可再次展开；1204.3～1231.5 秒确认单删取消保留文件、再次确认后显示“已删除 1 项”且 App 继续运行。录像清理正常（`forced=False; exit=0`）。抽样帧、摘要与原始视频身份记录在该 run 的 `video-review/current-visual-qa.json`，抽查只证明记录中列出的画面和动作。
+
+交付文件 `dist/AudioRelayLab-workshop-a81e84d-unsigned.ipa`，1,666,271 字节，SHA-256 `6ee9efe70d026b865bda2f258550edec7cc62b24e9415d1b2b1dc7ca98f0e880`；相邻 `.sha256` 文件可用于复核。包内实际 Mach-O 为 arm64／iPhoneOS，最低 iOS 17.0，bundle ID `com.audiorelaylab.AudioRelayLab`，版本 1.6.6 / build 16，未含签名或 provisioning profile；本机复制后的摘要与官方归档内 IPA 一致。旧 1.6.6 IPA 保留，交付按源码与哈希区分。
+
+本次自动验证与产物整理完成；本轮签名真机验收尚未完成，操作步骤见 [真机操作清单](WORKSHOP-LOCAL-VALIDATION-ZH.md#真机操作清单)。普通回归只用 PCM／识别器／HTTPS 测试夹具，没有调用真实 GPU，也无需重新登录 Modal 或提供相关密钥。

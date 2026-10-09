@@ -3,27 +3,26 @@ AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-09）
 独立配音草稿、识别片段、冻结任务与明确取回、成品导航、统一回听退出。
 版本仍为 1.6.6 / build 16，候选按源码与 IPA 哈希区分；说明见 WORKSHOP-DRAFT-TASKS-ZH.md。
 分支 feature/revoice-ios-1.6.0。
-当前候选源码 d3e99a805f64fc400fdd523d2b8e548a21ba5bb6 的第 39 次完整标准 CI 已失败结束：99 CPU／276 XCTest 通过，20 UI 中 18 通过、2 失败；小屏、Release 与 IPA 未执行。夹具索引冲突的修复与后续运行见 WORKSHOP-CI-VALIDATION-ZH.md。
+当前交付源码 a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3 的第 40 次完整标准 CI 全部成功：99 CPU／277 XCTest／20 UI／小屏 1 项通过，Simulator Debug、iPhoneOS Release 与 IPA 校验成功。交付文件 dist/AudioRelayLab-workshop-a81e84d-unsigned.ipa，最低 iOS 17.0、arm64、未签名。失败诊断、修复与本次原始证据见 WORKSHOP-CI-VALIDATION-ZH.md；签名真机验收仍待完成。
 
-待本轮真实 CI 更新：
-当前状态：用户明确继续且后续不再阶段暂停；离线音频修复已提交，完整标准 CI 还须验证。此前暂停记录保留在 handoff.md，当前验证以本文及 WORKSHOP-CI-VALIDATION-ZH.md 为准。
-4 份修改 Swift 语法、72 App／21 XCTest 文件静态检查及 git diff --check 通过；新修订的 Swift 编译和行为测试仍待执行。
-
-最近已执行的候选验证（不包含当前未提交修订）：
-- 最近已验证源码提交：094cb0106e8dc9c9f12da4169080fea7666d48d6
-- 对应 Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37855655509
-- 第 35 次标准完整 CI 于 2026-10-09 00:59 UTC 结束，结论 failure（本地仍为 10 月 8 日）。Simulator Debug BUILD SUCCEEDED；原始日志确认 Python 98 项通过（46.100 秒）、275 XCTest 0 失败（147.201 秒）。UI 日志确认 20 用例开始，17 通过、2 失败、1 超时；小屏／Release／IPA 因 UI 失败未执行。空稿设备端识别独立于旧任务的新云端提交限制，其 UI 扩展回归已通过。
-- XCTest 阶段检查点 11584782692 已下载；61,075 字节，官方 SHA-256：869c93d5e4fe9edbcfdc3709715451539dac83047cfe620d0c35bdb940d65ea8。
-- UI 阶段检查点 11589165108 已下载；87,819 字节，官方 SHA-256：4827f536ffe04b7d5ee2efd4493f132b82ec21c4987146583eecfcc2e116cbeb。
-- 用户已明确继续。第 35 次完整主 Artifact 11588743405 已取回并通过官方 SHA-256 校验。崩溃栈确认离线准备过早访问 mainMixerNode，触发 AURemoteIO 初始化 RPC 超时并 SIGABRT；两处离线引擎已调整初始化顺序。详情 AX 附件确认父标识覆盖子标识，测试改为按该素材的实际标识和来源文字定位。连接页十次设置访问显式设 1800 秒，保留全部断言。
-- 新增后台离线混音在未激活 record-only 会话中的真实 PCM 回归；当前应执行 276 XCTest、20 UI、小屏 1 项及 Release／IPA。上述修订仍需新的实际 Xcode 运行验证，第 35 次失败记录不改记为通过。
-- 第 33 次过时运行已于 22:35 UTC 主动取消；检查点官方哈希已核对，98 CPU 回归、Simulator Debug 通过，原生测试尚未开始。
-- 第 32 次标准完整 CI 于 21:57 UTC cancelled，官方原因为超过 150 分钟任务时限。Simulator Debug 与 XCTest 步骤成功，但原始数量无法核对；UI 被取消，Artifact／原始日志不可用，小屏／Release／IPA 未执行。
-- 第 30 次标准 macos-26-intel 构建：Simulator Debug 与 274 XCTest 通过；UI 完成 15 项（13 通过、2 失败）后任务超过 75 分钟时限取消。
-- 本地补齐阶段日志上传、录屏有时限清理和 XCTest 单用例时限；此前全量 CPU 98 项通过（15.500 秒），本地 H.264 视频校验通过。后续修订保留全部测试、小屏、Release 与 IPA；任务总时限 240 分钟。
-- 本轮验证未全部通过，没有当前候选 IPA；修订后最终数量与哈希须从实际 run 原始日志及产物核对。
-- 第 29 次未取得 arm64 托管 runner，第 27 次 19/20 UI 通过等阶段结果见 WORKSHOP-CI-VALIDATION-ZH.md。
-- 历史 1.6.6 包及 249 XCTest / 18 UI 结果另存于 REVOICE-1.6.6-TEST-REPORT-ZH.md，不作为当前候选证据。
+本轮真实 CI 证据：
+- 源码提交：a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/37902418824
+- 官方 Artifact：11603759851；归档 SHA-256：19eafeb6c1e2cd24031cd4d73f22c07c6b2c51b95ed2e8baccf9d4a4e5546833
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：277 项，0 失败，TEST SUCCEEDED。
+- UI 测试：20 项通过；真实录屏见 build/ui-interaction.mp4。
+- 小屏布局：iPhone SE（第三代）UI 截图测试 1 项通过；常规屏及小屏附件展示已选音乐后的浅色、深色和大字体时间控件。
+- 隔离 HTTPS 下载：9 次成功，202 续取回已验证；未发送长期密钥。
+- Python 自检：99 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-workshop-a81e84d-unsigned.ipa；1666271 字节。
+- SHA-256：6ee9efe70d026b865bda2f258550edec7cc62b24e9415d1b2b1dc7ca98f0e880
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 15.7.9 / 24G830；Xcode 16.4 / 16F6；iPhoneOS SDK 18.5；Swift 6.1.2；XcodeGen 2.46.0。
+- Swift 编译警告：2；全部构建警告：'defer' statement at end of scope always executes immediately; replace with 'do' statement to silence this warning；Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
 
 真机已有观察（历史版本）：
 重签名设备曾出现 NSCocoaErrorDomain:513 / NSPOSIXErrorDomain:1；1.6.3 已改前台取回路径。
