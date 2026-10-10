@@ -271,6 +271,23 @@ jobs:
             build-environment.log
             build-uitest.log
             build-ui-recording.log
+      - name: 导出不含输入内容的 DEBUG 键盘事件
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f build-test-destination.log ]; then
+            SIMULATOR_UDID="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          print(re.search(r'UDID: ([0-9A-F-]+)',Path('build-test-destination.log').read_text())[1])
+          PY
+          )"
+            APP_DATA="$(xcrun simctl get_app_container "$SIMULATOR_UDID" com.audiorelaylab.AudioRelayLab data)"
+            if [ -d "$APP_DATA/Library/Application Support/KeyboardDiagnostics" ]; then
+              mkdir -p build/keyboard-events
+              cp "$APP_DATA/Library/Application Support/KeyboardDiagnostics/"*.log build/keyboard-events/
+            fi
+          fi
       - name: 在小屏 iPhone SE 验证已选音乐的主题与大字体布局
         run: |
           set -euo pipefail
@@ -380,6 +397,7 @@ jobs:
             build/ui-*.mp4
             build/ui-attachments/
             build/ui-small-attachments/
+            build/keyboard-events/
       - name: 记录最终状态
         if: always()
         env:

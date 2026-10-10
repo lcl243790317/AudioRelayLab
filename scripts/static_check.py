@@ -115,7 +115,7 @@ for view in (root / "AudioRelayLab/Views").rglob("*.swift"):
     if "AudioSessionProfile.allCases" in swift_code_only(view.read_text(encoding="utf-8")):
         errors.append(f"新实验 UI 不应暴露历史 B 配置：{view.relative_to(root)}")
 spec = (root / "project.yml").read_text(encoding="utf-8")
-for marker in ["AudioRelayLabTests:", "bundle.unit-test", "bundle.ui-testing", "AudioRelayLabUITests:", "testTargets:", "CallKit.framework", "Speech.framework", "NSSpeechRecognitionUsageDescription", "'1.6.7'", "CURRENT_PROJECT_VERSION: '17'"]:
+for marker in ["AudioRelayLabTests:", "bundle.unit-test", "bundle.ui-testing", "AudioRelayLabUITests:", "testTargets:", "CallKit.framework", "Speech.framework", "NSSpeechRecognitionUsageDescription", "'1.6.8'", "CURRENT_PROJECT_VERSION: '18'"]:
     if marker not in spec:
         errors.append(f"XcodeGen 缺少配置：{marker}")
 if not test_sources or any("@testable import AudioRelayLab" not in p.read_text(encoding="utf-8") for p in test_sources):

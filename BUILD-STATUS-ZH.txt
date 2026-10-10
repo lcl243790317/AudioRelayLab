@@ -1,28 +1,12 @@
-AudioRelayLab 工坊增量候选 — 当前验证状态（2026-10-09）
+AudioRelayLab 1.6.8 / build 18 — 三个编辑框键盘修复候选
 
-当前修订 1.6.7 / build 17：配音识别后持续软键输入、移除识别片段设置、自动表达默认开启。
-独立草稿、冻结任务与明确取回、成品导航、统一回听退出保持；说明见 WORKSHOP-DRAFT-TASKS-ZH.md。
-分支 feature/revoice-ios-1.6.0。
-本次修订的第 44 次标准 macOS CI 全部成功；原始日志、官方 Artifact 摘要、1.6.7 / build 17 IPA 与来源已核验，见 REVOICE-1.6.7-TEST-REPORT-ZH.md。以下为本次源码 f3fcff9 的真实证据。签名后原 iPhone 系统键盘及其他真机验收仍待完成。
+分支 feature/revoice-ios-1.6.0。Windows 静态检查、96 份 Swift 语法解析和 CPU 99 项通过；这不是 Xcode 编译验证。
+当前完整 macOS CI 待执行，新 IPA 尚未生成。诊断、修改和真机验收见 REVOICE-1.6.8-TEST-REPORT-ZH.md。
+旧 CI44 / 1.6.7 是历史证据，用户已确认其真机键盘仍不可用。
 
-本轮真实 CI 证据：
-- 源码提交：f3fcff9838ccdc53f521855903617c144cbcd5bb
-- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/38011577234
-- 官方 Artifact：11654657883；归档 SHA-256：97d1750de4f5ec05519f857fa9aace76a037330100461940cc4869c06f88836f
-- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
-- 实际 iPhone Simulator XCTest：281 项，0 失败，TEST SUCCEEDED。
-- UI 测试：21 项通过；真实录屏见 build/ui-interaction.mp4。
-- 小屏布局：iPhone SE（第三代）UI 截图测试 1 项通过；常规屏及小屏附件展示已选音乐后的浅色、深色和大字体时间控件。
-- 隔离 HTTPS 下载：9 次成功，202 续取回已验证；未发送长期密钥。
-- Python 自检：99 项通过。
-- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
-- unsigned IPA：dist/AudioRelayLab-workshop-f3fcff9-unsigned.ipa；1638364 字节。
-- SHA-256：9fc5b638383650f4ab768a6fce2f4a4945bf5fe70dd339846b4700a1fda2913e
-- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
-- 环境：macOS 15.7.9 / 24G830；Xcode 16.4 / 16F6；iPhoneOS SDK 18.5；Swift 6.1.2；XcodeGen 2.46.0。
-- Swift 编译警告：2；全部构建警告：'defer' statement at end of scope always executes immediately; replace with 'do' statement to silence this warning；Metadata extraction skipped. No AppIntents.framework dependency found.
-- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
-- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
+待本轮真实 CI 更新：
+- 新源码尚无完整 macOS 通过证据，不提供旧 IPA 充当本轮交付。
+- 真机验收待用户复测；完成前保持发布阻断。
 
 真机已有观察（历史版本）：
 重签名设备曾出现 NSCocoaErrorDomain:513 / NSPOSIXErrorDomain:1；1.6.3 已改前台取回路径。

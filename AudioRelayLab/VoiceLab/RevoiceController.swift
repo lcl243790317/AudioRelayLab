@@ -11,7 +11,7 @@ import UIKit
     @Published var instruction = "" { didSet { refreshAutomaticInstruction() } }
     @Published var presetInstruction = "" { didSet { refreshAutomaticInstruction() } }
     @Published var usesAutomaticInstruction = true { didSet { refreshAutomaticInstruction() } }
-    @Published private(set) var automaticInstructionDraft:AutomaticInstructionDraft? { didSet { draftChanged() } }
+    @Published private(set) var automaticInstructionDraft:AutomaticInstructionDraft? { didSet { if KeyboardDiagnostics.legacyState || oldValue != automaticInstructionDraft { draftChanged() } } }
     enum VoiceSelection:Equatable { case mode(Kind), preset(String), speaker(String) }
     @Published private(set) var pendingVoiceSelection:VoiceSelection?
     private var deferredVoiceSelection:VoiceSelection?
@@ -36,18 +36,33 @@ import UIKit
         automaticInstructionDraft.map { $0.userEdited && $0.source != automaticSource } ?? false
     }
     private func refreshAutomaticInstruction() {
-        defer { draftChanged() }
+        KeyboardDiagnostics.record("automatic.refresh",automaticInstructionDraft?.userEdited == true ? "manual-preserved" : "derived")
+        if KeyboardDiagnostics.legacyState {
+            defer { draftChanged() }
+            guard !restoringDraft,usesAutomaticInstruction,canUseAutomaticInstruction,
+                  automaticInstructionDraft?.userEdited != true,!automaticSource.text.isEmpty else { return }
+            rematchAutomaticInstruction(); return
+        }
         guard !restoringDraft,usesAutomaticInstruction,canUseAutomaticInstruction,
-              automaticInstructionDraft?.userEdited != true,!automaticSource.text.isEmpty else { return }
-        rematchAutomaticInstruction()
+              automaticInstructionDraft?.userEdited != true,!automaticSource.text.isEmpty else { draftChanged(); return }
+        if !updateAutomaticInstruction() { draftChanged() }
     }
     func rematchAutomaticInstruction() {
-        guard canUseAutomaticInstruction,!automaticSource.text.isEmpty else { return }
-        automaticInstructionDraft = .init(text:RevoiceAutomaticInstruction.make(text:text,baseInstruction:baseInstruction),
+        KeyboardDiagnostics.record("automatic.rematch")
+        _ = updateAutomaticInstruction()
+    }
+    @discardableResult private func updateAutomaticInstruction() -> Bool {
+        guard canUseAutomaticInstruction,!automaticSource.text.isEmpty else { return false }
+        let next = AutomaticInstructionDraft(text:RevoiceAutomaticInstruction.make(text:text,baseInstruction:baseInstruction),
             userEdited:false,source:automaticSource)
+        guard KeyboardDiagnostics.legacyState || next != automaticInstructionDraft else { return false }
+        automaticInstructionDraft = next; return true
     }
     func editAutomaticInstruction(_ value:String) {
-        automaticInstructionDraft = .init(text:value,userEdited:true,source:automaticInstructionDraft?.source ?? automaticSource)
+        let next = AutomaticInstructionDraft(text:value,userEdited:true,source:automaticInstructionDraft?.source ?? automaticSource)
+        guard KeyboardDiagnostics.legacyState || next != automaticInstructionDraft else { return }
+        KeyboardDiagnostics.record("automatic.edit","userEdited=true")
+        automaticInstructionDraft = next
     }
     func requestVoiceSelection(_ value:VoiceSelection,deferConfirmation:Bool = false) {
         switch value {
@@ -403,7 +418,9 @@ import UIKit
     }
     private func draftChanged() {
         guard !restoringDraft,draftStore != nil else { return }
-        draftSaveTask?.cancel(); draftSaveState = .pending
+        KeyboardDiagnostics.record("draft.schedule")
+        draftSaveTask?.cancel()
+        if KeyboardDiagnostics.legacyState || draftSaveState != .pending { draftSaveState = .pending }
         draftSaveTask = Task { [weak self] in
             do { try await Task.sleep(for:.milliseconds(450)) } catch { return }
             self?.flushDraft()
@@ -412,7 +429,8 @@ import UIKit
     func flushDraft() {
         draftSaveTask?.cancel(); draftSaveTask = nil
         guard let draftStore else { return }
-        do { try draftStore.save(editingDraft); draftSaveState = .saved }
+        KeyboardDiagnostics.record("draft.save.begin")
+        do { try draftStore.save(editingDraft); if KeyboardDiagnostics.legacyState || draftSaveState != .saved { draftSaveState = .saved }; KeyboardDiagnostics.record("draft.save.end","saved") }
         catch { draftSaveState = .failed("草稿保存失败，当前内容仍在内存；请检查空间后重试保存。") }
     }
     private func restoreDraft(_ job:PendingRevoiceJob) {

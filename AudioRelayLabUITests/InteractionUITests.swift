@@ -317,6 +317,7 @@ final class InteractionUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["voice-recognition-keyboard-test","day-snapshot"]
         app.launchEnvironment["REVOICE_KEYBOARD_DRAFT_ID"] = UUID().uuidString
+        app.launchEnvironment["KEYBOARD_DIAGNOSTICS"] = "1"
         app.launch()
         let editor = app.textViews["revoice.text"]
         XCTAssertTrue(editor.waitForExistence(timeout:5)); XCTAssertEqual(editor.value as? String,"")
@@ -378,6 +379,206 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout:10)); XCTAssertEqual(editor.value as? String,expected)
         reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,"已开启")
         attach(app,"自动表达默认开启与手动开关恢复")
+    }
+
+    @MainActor func testKeyboardControlledIsolationAcrossAllProductionEditors() {
+        executionTimeAllowance = 1200
+        // Each comparison changes ONE factor relative to the 1.6.7 baseline.
+        // Simulator passing in A does not establish the user's device root cause.
+        for variant in ["legacy","no-outside","no-disappear","coalesced-state"] {
+            XCTContext.runActivity(named:"keyboard-isolation-"+variant) { _ in
+                let app = keyboardApp(experiment:variant)
+                let text = app.textViews["revoice.text"]
+                focusOnce(text,in:app)
+                var expected = softWord("cat",editor:text,in:app,starting:"")
+                waitForSavedDraft(in:app); XCTAssertTrue(app.keyboards.firstMatch.exists)
+                pressSoft(["space"],in:app); expected += " "
+                assertKeyboardEdit(expected,editor:text,keyboard:app.keyboards.firstMatch)
+                app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+                let baseline = openBaseInstruction(in:app)
+                XCTAssertTrue(baseline.isEnabled,"自定义 Speaker 模式合法支持基础风格编辑")
+                focusOnce(baseline,in:app)
+                _ = softWord("calm",editor:baseline,in:app,starting:"")
+                app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+                let automatic = app.textViews["revoice.instruction.preview"]
+                reveal(automatic,in:app); focusOnce(automatic,in:app)
+                clearWithSystemMenu(automatic,in:app)
+                _ = softWord("clear",editor:automatic,in:app,starting:"")
+                waitForSavedDraft(in:app); XCTAssertTrue(app.keyboards.firstMatch.exists)
+                attach(app,"keyboard-isolation-"+variant+"-automatic")
+                app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+                app.terminate()
+            }
+        }
+    }
+
+    @MainActor func testEmptyAndRestoredTextContinuousSoftKeysDeleteReturnAndEditorSwitch() {
+        let app = keyboardApp()
+        let editor = app.textViews["revoice.text"]
+        focusOnce(editor,in:app)
+        var expected = softWord("cat",editor:editor,in:app,starting:"")
+        pressSoft(["delete","Delete"],in:app); expected.removeLast()
+        assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
+        expected += pressSoft(["t","T"],in:app)
+        assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
+        pressSoft(["return","Return"],in:app); expected += "\n"
+        assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
+        expected = softWord("dog",editor:editor,in:app,starting:expected)
+        pressSoft(["numbers","123","more, numbers"],in:app)
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        for symbol in [".","@"] {
+            pressSoft([symbol],in:app); expected += symbol
+            assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
+        }
+        pressSoft(["letters","ABC","more, letters"],in:app)
+        waitForSavedDraft(in:app); XCTAssertTrue(app.keyboards.firstMatch.exists)
+        expected = softWord("cat",editor:editor,in:app,starting:expected)
+        attach(app,"empty-text-soft-keys-delete-return-autosave")
+        // Switching inputs is intentional; no per-character refocusing occurs.
+        let baseline = openBaseInstruction(in:app); focusOnce(baseline,in:app)
+        _ = softWord("calm",editor:baseline,in:app,starting:"")
+        reveal(editor,in:app,towardTop:true); focusOnce(editor,in:app)
+        pressSoft(["numbers","123","more, numbers"],in:app)
+        pressSoft(["!"],in:app); expected += "!"
+        assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+        XCTAssertEqual(editor.value as? String,expected)
+        waitForSavedDraft(in:app)
+        app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout:10)); XCTAssertEqual(editor.value as? String,expected)
+        focusOnce(editor,in:app)
+        pressSoft(["numbers","123","more, numbers"],in:app)
+        pressSoft(["."],in:app); expected += "."
+        assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
+        app.tabBars.buttons["音频库"].tap(); assertKeyboardHidden(in:app)
+        app.tabBars.buttons["工坊"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout:5)); XCTAssertEqual(editor.value as? String,expected)
+        attach(app,"restored-text-edit-and-tab-exit")
+    }
+
+    @MainActor func testBaseStyleFirstTapContinuousSoftKeysAutomaticOnOffAndRestore() {
+        let app = keyboardApp()
+        let automatic = app.buttons["revoice.instruction.automatic"]
+        let baseline = openBaseInstruction(in:app)
+        XCTAssertTrue(baseline.isEnabled)
+        focusOnce(baseline,in:app)
+        var expected = softWord("calm",editor:baseline,in:app,starting:"")
+        waitForSavedDraft(in:app); XCTAssertTrue(app.keyboards.firstMatch.exists)
+        pressSoft(["numbers","123","more, numbers"],in:app); pressSoft(["."],in:app); expected += "."
+        assertKeyboardEdit(expected,editor:baseline,keyboard:app.keyboards.firstMatch)
+        attach(app,"baseline-first-tap-soft-keys-automatic-on")
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+        setAutomaticInstruction(automatic,to:false,in:app)
+        let manualBaseline = openBaseInstruction(in:app)
+        XCTAssertEqual(manualBaseline.value as? String,expected)
+        focusOnce(manualBaseline,in:app)
+        pressSoft(["numbers","123","more, numbers"],in:app); pressSoft(["!"],in:app); expected += "!"
+        assertKeyboardEdit(expected,editor:manualBaseline,keyboard:app.keyboards.firstMatch)
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app); waitForSavedDraft(in:app)
+        app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
+        let restored = openBaseInstruction(in:app)
+        XCTAssertEqual(restored.value as? String,expected)
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,"已关闭")
+        // Exercise default reset under a legitimately editable preset, with its
+        // production confirmation rules; fixed-reference permission remains tested.
+        app.segmentedControls["revoice.mode"].buttons["预设声线"].tap()
+        let preset = openBaseInstruction(in:app)
+        XCTAssertEqual(preset.value as? String,"自然、放松的日常表达。")
+        focusOnce(preset,in:app); clearWithSystemMenu(preset,in:app)
+        _ = softWord("calm",editor:preset,in:app,starting:"")
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+        app.buttons["revoice.instruction.reset"].tap()
+        XCTAssertEqual(preset.value as? String,"自然、放松的日常表达。")
+        attach(app,"baseline-restored-and-preset-reset")
+    }
+
+    @MainActor func testAutomaticInstructionContinuousSoftKeysManualPreservationStaleRematchAndRestore() {
+        let app = keyboardApp()
+        let text = app.textViews["revoice.text"]
+        focusOnce(text,in:app); _ = softWord("cat",editor:text,in:app,starting:"")
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+        let automatic = app.textViews["revoice.instruction.preview"]
+        reveal(automatic,in:app); XCTAssertFalse((automatic.value as? String ?? "").isEmpty)
+        focusOnce(automatic,in:app); clearWithSystemMenu(automatic,in:app)
+        let manual = softWord("clear",editor:automatic,in:app,starting:"")
+        waitForSavedDraft(in:app); XCTAssertTrue(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["revoice.instruction.summary"].label.contains("已手动调整"))
+        attach(app,"automatic-manual-soft-keys-and-autosave")
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+        reveal(text,in:app,towardTop:true); focusOnce(text,in:app)
+        pressSoft(["numbers","123","more, numbers"],in:app); pressSoft(["!"],in:app)
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+        let baseline = openBaseInstruction(in:app); focusOnce(baseline,in:app)
+        _ = softWord("calm",editor:baseline,in:app,starting:"")
+        app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,manual)
+        XCTAssertTrue(app.staticTexts["revoice.instruction.stale"].exists)
+        waitForSavedDraft(in:app)
+        app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,manual)
+        XCTAssertTrue(app.staticTexts["revoice.instruction.summary"].label.contains("已手动调整"))
+        // Voice change retains the existing explicit cancel/discard confirmation.
+        reveal(app.buttons["select.Speaker"],in:app,towardTop:true)
+        app.buttons["select.Speaker"].tap(); app.buttons["choice.Dylan"].tap()
+        XCTAssertTrue(app.alerts["放弃手动调整的指令？"].waitForExistence(timeout:5))
+        app.alerts.buttons["取消"].tap()
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,manual)
+        let rematch = app.buttons["revoice.instruction.rematch"]
+        reveal(rematch,in:app); rematch.tap()
+        XCTAssertFalse(app.staticTexts["revoice.instruction.summary"].label.contains("已手动调整"))
+        XCTAssertFalse(app.staticTexts["revoice.instruction.stale"].exists)
+        XCTAssertNotEqual(automatic.value as? String,manual)
+        setAutomaticInstruction(app.buttons["revoice.instruction.automatic"],to:false,in:app)
+        XCTAssertFalse(automatic.exists)
+        XCTAssertEqual(openBaseInstruction(in:app).value as? String,"Calm")
+        attach(app,"automatic-restored-manual-cancel-rematch-off")
+    }
+
+    @MainActor private func keyboardApp(experiment:String = "fixed") -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["voice-recognition-keyboard-test","day-snapshot"]
+        app.launchEnvironment["REVOICE_KEYBOARD_DRAFT_ID"] = UUID().uuidString
+        app.launchEnvironment["KEYBOARD_DIAGNOSTICS"] = "1"
+        app.launchEnvironment["KEYBOARD_EXPERIMENT"] = experiment
+        app.launch(); XCTAssertTrue(app.textViews["revoice.text"].waitForExistence(timeout:10))
+        return app
+    }
+    @MainActor private func focusOnce(_ editor:XCUIElement,in app:XCUIApplication) {
+        XCTAssertTrue(editor.isEnabled); XCTAssertTrue(editor.isHittable)
+        editor.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3),"首次点击必须唤起键盘，禁止重试聚焦")
+        attachKeyboardDescription(app.keyboards.firstMatch,name:"keyboard-first-focus-"+editor.identifier)
+    }
+    @discardableResult @MainActor private func pressSoft(_ labels:[String],in app:XCUIApplication) -> String {
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.exists,"按下软键之前键盘必须存在")
+        let key = keyboard.descendants(matching:.any).matching(NSPredicate(format:"label IN %@ OR identifier IN %@",labels,labels)).firstMatch
+        XCTAssertTrue(key.waitForExistence(timeout:3)); XCTAssertTrue(key.isHittable)
+        let label = key.label; key.tap()
+        XCTAssertTrue(keyboard.exists,"每个真实软键后键盘必须持续存在")
+        return label
+    }
+    @MainActor private func softWord(_ word:String,editor:XCUIElement,in app:XCUIApplication,starting:String) -> String {
+        var expected = starting
+        for character in word {
+            let value = String(character)
+            expected += pressSoft([value,value.uppercased()],in:app)
+            assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
+        }
+        return expected
+    }
+    @MainActor private func clearWithSystemMenu(_ editor:XCUIElement,in app:XCUIApplication) {
+        editor.press(forDuration:1.2)
+        let select = app.descendants(matching:.any).matching(NSPredicate(format:"label IN %@",["Select All","全选"])).firstMatch
+        XCTAssertTrue(select.waitForExistence(timeout:3),"必须通过系统选择菜单清空生成的内容")
+        select.tap(); pressSoft(["delete","Delete"],in:app)
+        assertKeyboardEdit("",editor:editor,keyboard:app.keyboards.firstMatch)
+    }
+    @MainActor private func assertKeyboardHidden(in app:XCUIApplication) {
+        let hidden = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.keyboards.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for:[hidden],timeout:3),.completed)
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
     }
 
     @MainActor private func openBaseInstruction(in app:XCUIApplication) -> XCUIElement {

@@ -84,10 +84,11 @@ struct StablePicker<Value: Hashable>: View {
 }
 
 @MainActor enum KeyboardDismiss {
-    static func perform() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-            for window in scene.windows { window.endEditing(true) }
+    static func perform(source:String = #function) {
+        KeyboardDiagnostics.record("dismiss.explicit",source)
+        // An explicit user action belongs to the foreground app window only.
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) where scene.activationState == .foregroundActive {
+            scene.windows.first(where:{ $0.isKeyWindow })?.endEditing(true)
         }
     }
 }
@@ -103,91 +104,143 @@ extension EnvironmentValues {
 private struct KeyboardDone: ViewModifier {
     let clearFocus:(()->Void)?
     let dismissOnScroll:Bool
+    @StateObject private var scope = KeyboardContentScope()
     func body(content: Content) -> some View {
         content.scrollDismissesKeyboard(dismissOnScroll ? .immediately : .never)
-            .background(OutsideKeyboardDismiss(clearFocus:clearFocus).frame(width:0,height:0))
-            .onDisappear { clearFocus?(); KeyboardDismiss.perform() }
-            .environment(\.keyboardDismissAction,{ clearFocus?(); KeyboardDismiss.perform() })
+            .background(OutsideKeyboardDismiss(scope:scope,clearFocus:clearFocus))
+            .onDisappear { scope.pageDisappeared() }
+            .environment(\.keyboardDismissAction,{ scope.dismiss(source:"presentation") })
             .toolbar { ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("完成") { clearFocus?(); KeyboardDismiss.perform() }
+                Button("完成") { scope.dismiss(source:"done") }
                     .buttonStyle(PaperButtonStyle(compact:true)).accessibilityIdentifier("keyboard.done")
             } }
     }
 }
 
+/// Touches outside the app content hierarchy never enter this recognizer. No keyboard
+/// coordinates, private UIKit classes, re-focusing or cross-window endEditing are needed.
+@MainActor final class KeyboardContentScope:NSObject,ObservableObject,UIGestureRecognizerDelegate {
+    var clearFocus:(()->Void)?
+    private weak var host:UIView?
+    private weak var content:UIView?
+    private weak var editor:UIView?
+    private var taps:[UITapGestureRecognizer] = []
+    func attach(_ marker:UIView) {
+        host = marker
+        guard marker.window != nil,let owner = Self.owner(of:marker) else { detach(); return }
+        guard let root = owner.viewIfLoaded else { detach(); return }
+        guard content !== root else { return }
+        detach(); content = root
+        var targets:[UIView] = [root]
+        var controller:UIViewController? = owner
+        while let value = controller {
+            if let nav = value as? UINavigationController { targets.append(nav.navigationBar) }
+            if let tab = value as? UITabBarController { targets.append(tab.tabBar) }
+            controller = value.parent
+        }
+        for target in targets where !(target is UIWindow) && !taps.contains(where:{ $0.view === target }) {
+            let tap = UITapGestureRecognizer(target:self,action:#selector(outsideTap))
+            tap.cancelsTouchesInView = false; tap.delaysTouchesBegan = false; tap.delaysTouchesEnded = false
+            tap.delegate = self; target.addGestureRecognizer(tap); taps.append(tap)
+        }
+        KeyboardDiagnostics.record("scope.attach")
+    }
+    func detach() {
+        for tap in taps { tap.view?.removeGestureRecognizer(tap) }
+        taps = []; content = nil
+    }
+    static func owner(of marker:UIView) -> UIViewController? {
+        var responder:UIResponder? = marker.next
+        while let value = responder {
+            if let controller = value as? UIViewController { return controller }
+            responder = value.next
+        }
+        return nil
+    }
+    /// A UIControl wrapper must not take precedence over a native editor hit.
+    static func editor(at point:CGPoint,in root:UIView) -> UIView? {
+        guard !root.isHidden,root.alpha > 0.01 else { return nil }
+        if root.clipsToBounds && !root.bounds.contains(point) { return nil }
+        for child in root.subviews.reversed() {
+            if let result = editor(at:child.convert(point,from:root),in:child) { return result }
+        }
+        return root is UITextInput && root.bounds.contains(point) ? root : nil
+    }
+    static func firstResponder(in root:UIView) -> UIView? {
+        if root.isFirstResponder { return root }
+        return root.subviews.lazy.compactMap { firstResponder(in:$0) }.first
+    }
+    private func insidePage(_ point:CGPoint,in root:UIView) -> Bool {
+        guard let host,host.window != nil else { return false }
+        return host.bounds.contains(host.convert(point,from:root))
+    }
+    func dismiss(source:String) {
+        // A departing page never resigns an editor which another page just acquired.
+        guard let editor,editor.isFirstResponder else { return }
+        KeyboardDiagnostics.record("dismiss.scoped","\(source) \(KeyboardDiagnostics.editorID(editor))")
+        clearFocus?(); editor.resignFirstResponder()
+    }
+    func pageDisappeared() {
+        KeyboardDiagnostics.record("scope.disappear",KeyboardDiagnostics.editorID(editor))
+        dismiss(source:"page-exit")
+    }
+    @objc private func outsideTap() { dismiss(source:"outside-content") }
+    func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldReceive touch:UITouch) -> Bool {
+        guard let root = content,let target = gestureRecognizer.view,let touched = touch.view,
+              touched === target || touched.isDescendant(of:target) else {
+            KeyboardDiagnostics.record("scope.touch.ignore","outside-hierarchy"); return false
+        }
+        let point = touch.location(in:root)
+        if target === root {
+            guard insidePage(point,in:root) else { return false }
+            var ancestor:UIView? = touched
+            while let value = ancestor {
+                if value is UITextInput { editor = value; KeyboardDiagnostics.record("scope.touch.ignore","input \(KeyboardDiagnostics.editorID(value))"); return false }
+                ancestor = value.superview
+            }
+            if let hit = Self.editor(at:point,in:root) {
+                editor = hit; KeyboardDiagnostics.record("scope.touch.ignore","editor-frame \(KeyboardDiagnostics.editorID(hit))"); return false
+            }
+        }
+        // Only this scope's current editor can be dismissed, including chrome taps.
+        let active = editor?.isFirstResponder == true
+        KeyboardDiagnostics.record("scope.touch.decision",active ? "dismiss" : "ignore-no-owned-editor")
+        return active
+    }
+    func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith other:UIGestureRecognizer) -> Bool { true }
+}
+
 private struct OutsideKeyboardDismiss:UIViewRepresentable {
+    let scope:KeyboardContentScope
     let clearFocus:(()->Void)?
-    func makeCoordinator() -> Coordinator { Coordinator(clearFocus:clearFocus) }
+    func makeCoordinator() -> KeyboardContentScope { scope }
     func makeUIView(context:Context) -> Host {
         let view = Host(); view.isUserInteractionEnabled = false
-        view.changedWindow = { [weak coordinator = context.coordinator] window in coordinator?.attach(window) }
+        view.changed = { [weak scope] host in scope?.attach(host) }
+        scope.clearFocus = clearFocus
         return view
     }
-    func updateUIView(_ view:Host,context:Context) { context.coordinator.clearFocus = clearFocus }
-    static func dismantleUIView(_ view:Host,coordinator:Coordinator) { coordinator.attach(nil) }
+    func updateUIView(_ view:Host,context:Context) { scope.clearFocus = clearFocus }
+    static func dismantleUIView(_ view:Host,coordinator:KeyboardContentScope) { coordinator.detach(); view.changed = nil }
     final class Host:UIView {
-        var changedWindow:((UIWindow?)->Void)?
-        override func didMoveToWindow() { super.didMoveToWindow(); changedWindow?(window) }
-    }
-    @MainActor final class Coordinator:NSObject,UIGestureRecognizerDelegate {
-        var clearFocus:(()->Void)?
-        private weak var window:UIWindow?
-        private lazy var tap:UITapGestureRecognizer = {
-            let value = UITapGestureRecognizer(target:self,action:#selector(dismissKeyboard))
-            value.cancelsTouchesInView = false; value.delaysTouchesBegan = false; value.delaysTouchesEnded = false
-            value.delegate = self; return value
-        }()
-        init(clearFocus:(()->Void)?) { self.clearFocus = clearFocus }
-        func attach(_ value:UIWindow?) {
-            guard window !== value else { return }
-            window?.removeGestureRecognizer(tap); window = value; value?.addGestureRecognizer(tap)
-        }
-        @objc private func dismissKeyboard() { clearFocus?(); KeyboardDismiss.perform() }
-        func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldReceive touch:UITouch) -> Bool {
-            guard let window else { return false }
-            // Soft keys and input accessories are input, even when UIKit hosts
-            // their touch views outside the text view's descendant hierarchy.
-            guard touch.window === window else { return false }
-            let keyboardFrame = window.keyboardLayoutGuide.layoutFrame
-            if keyboardFrame.height > window.safeAreaInsets.bottom + 1,
-               keyboardFrame.contains(touch.location(in:window)) { return false }
-            if let touched = touch.view {
-                func hitsInputAccessory(_ view:UIView) -> Bool {
-                    if view.isFirstResponder,let accessory = view.inputAccessoryView,
-                       touched === accessory || touched.isDescendant(of:accessory) { return true }
-                    return view.subviews.contains(where:hitsInputAccessory)
-                }
-                if hitsInputAccessory(window) { return false }
-            }
-            var touched = touch.view
-            var hitsChrome = false
-            while let view = touched {
-                if view is UITextField || view is UITextView { return false }
-                if view is UINavigationBar || view is UITabBar || view is UIControl { hitsChrome = true }
-                touched = view.superview
-            }
-            // Chrome/controls can cover an editor's offscreen accessibility frame.
-            // Prefer the actual hit view, while preserving taps within an editor.
-            if hitsChrome { return true }
-            // SwiftUI's touch view can be a hosting view rather than the native editor.
-            // Exclude editor frames as well as their descendants to preserve focus/selection.
-            func hitsEditor(_ view:UIView) -> Bool {
-                guard !view.isHidden,view.alpha > 0.01 else { return false }
-                if view.clipsToBounds,!view.bounds.contains(touch.location(in:view)) { return false }
-                if view is UITextField || view is UITextView {
-                    if view.bounds.contains(touch.location(in:view)) { return true }
-                }
-                return view.subviews.contains(where:hitsEditor)
-            }
-            return !hitsEditor(window)
-        }
-        func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith other:UIGestureRecognizer) -> Bool { true }
+        var changed:((UIView)->Void)?
+        override func didMoveToWindow() { super.didMoveToWindow(); changed?(self) }
+        override func didMoveToSuperview() { super.didMoveToSuperview(); changed?(self) }
+        override func layoutSubviews() { super.layoutSubviews(); changed?(self) }
     }
 }
 
 extension View {
-    func keyboardDone(dismissOnScroll:Bool = true,onDismiss:(()->Void)? = nil) -> some View {
+    @ViewBuilder func keyboardDone(dismissOnScroll:Bool = true,onDismiss:(()->Void)? = nil) -> some View {
+        #if DEBUG
+        if KeyboardDiagnostics.experiment != "fixed" {
+            modifier(LegacyKeyboardDone(clearFocus:onDismiss,dismissOnScroll:dismissOnScroll))
+        } else {
+            modifier(KeyboardDone(clearFocus:onDismiss,dismissOnScroll:dismissOnScroll))
+        }
+        #else
         modifier(KeyboardDone(clearFocus:onDismiss,dismissOnScroll:dismissOnScroll))
+        #endif
     }
 }

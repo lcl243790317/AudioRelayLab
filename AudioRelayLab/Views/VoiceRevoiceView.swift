@@ -116,7 +116,9 @@ struct VoiceRevoiceView: View {
         }
         .keyboardDone(dismissOnScroll:false) { focusedInput = nil }
         .previewLifecycle(coordinator:coordinator,owner:previewOwner,tab:.workshop)
-        .onDisappear { ai.flushDraft() }
+        .onAppear { KeyboardDiagnostics.record("revoice.appear") }
+        .onDisappear { KeyboardDiagnostics.record("revoice.disappear"); ai.flushDraft() }
+        .onChange(of:focusedInput) { _,value in KeyboardDiagnostics.record("swiftui.focus",value.map { String(describing:$0) } ?? "none") }
         .alert("放弃手动调整的指令？",isPresented:Binding(get:{ai.pendingVoiceSelection != nil},set:{if !$0 { ai.cancelVoiceSelection() }}),presenting:ai.pendingVoiceSelection) { selection in
             Button("取消",role:.cancel) { ai.cancelVoiceSelection() }
             Button("放弃并切换",role:.destructive) { ai.confirmVoiceSelection(selection) }

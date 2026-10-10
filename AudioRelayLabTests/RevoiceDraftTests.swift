@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import XCTest
 @testable import AudioRelayLab
 
@@ -20,6 +21,26 @@ import XCTest
 }
 
 final class RevoiceDraftTests:XCTestCase {
+    @MainActor func testRepeatedRematchDoesNotRepublishIdenticalDerivedDraftAndPendingSaveIsCoalesced() async throws {
+        let store = RevoiceDraftStore(directory:try folder())
+        let ai = RevoiceController(connection:nil,draftStore:store)
+        ai.kind = .custom; ai.text = "明天下午见。"; ai.flushDraft()
+        var publishedDrafts = 0, pendingSaves = 0
+        let draftToken = ai.$automaticInstructionDraft.dropFirst().sink { _ in publishedDrafts += 1 }
+        let saveToken = ai.$draftSaveState.dropFirst().sink { if $0 == .pending { pendingSaves += 1 } }
+        defer { draftToken.cancel(); saveToken.cancel() }
+        for _ in 0..<5 { ai.rematchAutomaticInstruction() }
+        XCTAssertEqual(publishedDrafts,0)
+        ai.editAutomaticInstruction("手改指令"); let manual = ai.automaticInstructionDraft
+        for number in 0..<20 { ai.text = "正文 \(number)"; ai.instruction = "基础 \(number)" }
+        XCTAssertEqual(publishedDrafts,1); XCTAssertEqual(pendingSaves,1)
+        XCTAssertEqual(ai.automaticInstructionDraft,manual); XCTAssertTrue(ai.automaticInstructionIsStale)
+        try await Task.sleep(for:.milliseconds(700))
+        XCTAssertEqual(ai.draftSaveState,.saved); XCTAssertEqual(store.load().draft?.automaticDraft,manual)
+        XCTAssertEqual(store.load().draft?.text,"正文 19"); XCTAssertEqual(store.load().draft?.customInstruction,"基础 19")
+        ai.rematchAutomaticInstruction()
+        XCTAssertEqual(ai.automaticInstructionDraft?.userEdited,false); XCTAssertFalse(ai.automaticInstructionIsStale)
+    }
     private func folder() throws -> URL {
         let value = FileManager.default.temporaryDirectory.appendingPathComponent("revoice-draft-\(UUID())")
         try FileManager.default.createDirectory(at:value,withIntermediateDirectories:true)
