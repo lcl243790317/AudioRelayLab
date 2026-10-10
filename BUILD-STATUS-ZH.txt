@@ -1,12 +1,27 @@
 AudioRelayLab 1.6.8 / build 18 — 三个编辑框键盘修复候选
 
 分支 feature/revoice-ios-1.6.0。Windows 静态检查、96 份 Swift 语法解析和 CPU 99 项通过；这不是 Xcode 编译验证。
-当前完整 macOS CI 待执行，新 IPA 尚未生成。诊断、修改和真机验收见 REVOICE-1.6.8-TEST-REPORT-ZH.md。
+当前标准完整 macOS CI55 / 38046537225 成功，新 unsigned IPA 已核验。代码与自动化验证完成，待真机验收；诊断和清单见 REVOICE-1.6.8-TEST-REPORT-ZH.md。
 旧 CI44 / 1.6.7 是历史证据，用户已确认其真机键盘仍不可用。
 
-待本轮真实 CI 更新：
-- 新源码尚无完整 macOS 通过证据，不提供旧 IPA 充当本轮交付。
-- 真机验收待用户复测；完成前保持发布阻断。
+本轮真实 CI 证据：
+- 源码提交：965a3485279b89b98235b86a02f36d0fd39af682
+- Actions run：https://github.com/lcl243790317/AudioRelayLab/actions/runs/38046537225
+- 官方 Artifact：11669605516；归档 SHA-256：1bb6a7b44f59a124ebf789c5fa7c98d56359bc2a8921ca5a611d6780ba933138
+- XcodeGen 已生成真实工程；Simulator Debug 与 iPhoneOS Release 均记录 BUILD SUCCEEDED。
+- 实际 iPhone Simulator XCTest：286 项，0 失败，TEST SUCCEEDED。
+- UI 测试：25 项通过；真实录屏见 build/ui-interaction.mp4。
+- 小屏布局：iPhone SE（第三代）UI 截图测试 1 项通过；常规屏及小屏附件展示已选音乐后的浅色、深色和大字体时间控件。
+- 隔离 HTTPS 下载：9 次成功，202 续取回已验证；未发送长期密钥。
+- Python 自检：99 项通过。
+- 上述 xcodebuild 命令由此前工作流步骤的 set -euo pipefail 保证返回 0，证据步骤才会运行。
+- unsigned IPA：dist/AudioRelayLab-workshop-965a348-unsigned.ipa；1655490 字节。
+- SHA-256：2f6e677ab9804ad877d766922a154c0d30049c67bfc6b3ab3adfd8c3c3998a15
+- verify_ipa 重新检查通过，结果与 ipa-manifest.json 完全一致；未签名，需用户证书重新签名。
+- 环境：macOS 15.7.9 / 24G830；Xcode 16.4 / 16F6；iPhoneOS SDK 18.5；Swift 6.1.2；XcodeGen 2.46.0。
+- Swift 编译警告：2；全部构建警告：'defer' statement at end of scope always executes immediately; replace with 'do' statement to silence this warning；Metadata extraction skipped. No AppIntents.framework dependency found.
+- Artifact 同时包含 dist/build-evidence.json、环境/构建日志、xcresult、生成工程和 IPA manifest。
+- 编译和自动测试不证明新版本通话中音频行为；下方真机 release blocker 仍须实测。
 
 真机已有观察（历史版本）：
 重签名设备曾出现 NSCocoaErrorDomain:513 / NSPOSIXErrorDomain:1；1.6.3 已改前台取回路径。

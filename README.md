@@ -1,17 +1,17 @@
 # AudioRelayLab 音频接力实验室
 
-当前修订为 **1.6.8 / build 18**：排查三个配音编辑框的系统键盘故障，移除正式路径的全窗口手势，限定收键盘的页面所有权，并补齐连续真实软键、自动保存和恢复回归。当前已完成 Windows 静态／语法检查与 CPU 99 项；标准完整 macOS CI 尚待执行，不能将本地检查视为 iOS 编译或真机通过。进度与独立真机清单见 [1.6.8 验证报告](REVOICE-1.6.8-TEST-REPORT-ZH.md)。基线保持 `macos-15`、Xcode 16.4／iOS 18.5。
+当前修订为 **1.6.8 / build 18**：三个配音编辑框的键盘候选修复，正式收键盘逻辑限定本页所有权，并减少自动匹配／保存的重复发布。[标准完整 CI55](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38046537225) 全部通过：99 CPU、286 XCTest、25 UI、1 SE，Simulator Debug／iPhoneOS Release 成功，0 失败。实际 App 源码 `965a3485279b89b98235b86a02f36d0fd39af682`；unsigned IPA `dist/AudioRelayLab-workshop-965a348-unsigned.ipa`。**代码与自动化验证完成，待真机验收；真机验收待用户复测。** 中文候选、iOS 18.1.1 原设备和签名安装不能由 Simulator 结果替代，详见 [1.6.8 验证报告](REVOICE-1.6.8-TEST-REPORT-ZH.md)。
 
 配音草稿自动保存、最近任务取回、成品到播放页的导航及统一试听退出继续保留。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。上一次 1.6.6 源码 `a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3` 的第 [40 次 CI](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37902418824) 全部通过，记录在 [工坊验证历史](WORKSHOP-CI-VALIDATION-ZH.md)；该 IPA 不包含本次输入修复。
 
-工作分支为 `feature/revoice-ios-1.6.0`。本轮继续提交、推送并运行标准完整 CI；不合并 main、不创建 Release、不部署 Modal。旧 1.6.7 的 CI44 仅是历史自动化证据，用户已报告该包真机故障，不能作为当前修复成功依据。
+工作分支为 `feature/revoice-ios-1.6.0`。本轮已提交、推送并完成标准完整 CI；不合并 main、不创建 Release、不部署 Modal。旧 1.6.7 的 CI44 仅是历史自动化证据，用户已报告该包真机故障，不能作为当前修复成功依据。
 
 历史 1.6.6 交付：`dist/AudioRelayLab-1.6.6-unsigned.ipa`。当时 Python 94 项、Simulator XCTest 249 项、UI XCTest 18 项及 iPhone SE 小屏截图测试 1 项通过；Simulator Debug / iPhoneOS Release 构建成功。[历史构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763)及 [历史验证报告](REVOICE-1.6.6-TEST-REPORT-ZH.md)。该 IPA 和这些 Xcode 结果不包含本轮改动。
 
 
 预设切换恢复默认指令；手改自动指令先确认放弃，编辑和留空只影响下一次生成。两个固定参考声线保持认可的目标表达。自定义指令独立保存，配音成品最长 180 秒，混音成品最长 300 秒。Modal 双层认证、固定模型/资产哈希、单一 L4 池和 snapshot 保持，空闲窗口为 75 秒。部署说明见 [MODAL-DEPLOYMENT-ZH.md](MODAL-DEPLOYMENT-ZH.md)；先前 snapshot A/B 基准保留在 [SNAPSHOT-REPORT-ZH.md](SNAPSHOT-REPORT-ZH.md)。
 
-现有 iPhone 项目的增量版本，最低 iOS 17.0，功能边界为 iOS 18.1.1；保留 SwiftUI、两套播放器、实验历史、诊断、XcodeGen 和原有 Git 历史。
+现有 iPhone 项目的增量版本，最低 iOS 17.0；用户历史设备为 iOS 18.1.1，本轮尚未完成该设备验收。保留 SwiftUI、两套播放器、实验历史、诊断、XcodeGen 和原有 Git 历史。
 
 播放页选择 Bundle 测试音或外部文件，系统授权 URL 经协调读取、真实 PCM 验证、UUID 沙盒复制后进入统一音频库。导入中的“取消导入”和“内置测试音”可恢复控制；旧任务不能覆盖新选择。原生 UIDocumentPicker 以复制模式只允许八种支持的音频类型，其他类型显示灰色；真实 PCM 验证决定是否接受；默认测试音固定 ID/test-tone.wav，升级合并旧重复副本，历史仍能解析。选音频后立即显示格式、时长、采样率、声道和大小。拖动起点，±10/±1/±0.1 秒精调，设 0.5～2x 倍速，从此处试听或试听 5 秒，再点击“应用这个播放设置”。编辑位置、preview playhead 与正式 applied 设置独立。
 

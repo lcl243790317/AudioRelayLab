@@ -1,7 +1,10 @@
-当前修订 1.6.8 / build 18：三个正式编辑框的键盘修复候选，当前 macOS CI／新 IPA 结果见 REVOICE-1.6.8-TEST-REPORT-ZH.md。真机验收待用户复测，禁止用下面旧 1.6.7 构建结论作为本轮通过证据。
-
-以下开头保留上一版本的历史说明：
-当前源码为 1.6.7 / build 17：修订语音识别后的连续键盘输入，取消识别片段设置，完整 0.3～60 秒音频用于识别，自动表达默认开启。版本 2 草稿忽略旧识别区间；旧草稿升级采用新默认一次，此后保存手动关闭选择，冻结旧任务保持原参数。功能见 WORKSHOP-DRAFT-TASKS-ZH.md；当前实际编译与交付状态见 REVOICE-1.6.7-TEST-REPORT-ZH.md 和 BUILD-STATUS-ZH.txt。此前 1.6.6 macOS 成功及 IPA 仅为历史证据。
+当前版本 1.6.8 / build 18；源码 965a3485279b89b98235b86a02f36d0fd39af682。
+标准完整 CI55 / 38046537225 成功：99 CPU、286 原生、25 UI、1 SE，0 失败；Simulator Debug／iPhoneOS Release 成功。
+新 unsigned IPA：dist/AudioRelayLab-workshop-965a348-unsigned.ipa；大小 1,655,490 字节。
+SHA-256：2f6e677ab9804ad877d766922a154c0d30049c67bfc6b3ab3adfd8c3c3998a15
+代码与自动化验证完成，待真机验收；真机验收待用户复测。
+安装后确认 App 版本 1.6.8 / build 18，并分别复测三个编辑框；清单与证据见 REVOICE-1.6.8-TEST-REPORT-ZH.md。
+旧 1.6.7 的模拟器通过不能代表真机修复，本次不使用旧包。
 
 AudioRelayLab — 构建与验证说明
 
@@ -19,7 +22,7 @@ Windows 可以编辑、做 Python 静态检查、维护 Git，不能执行 Xcode
 本轮 CI 固定 Python 3.12 与 server/ci-requirements.txt：
 python scripts/static_check.py
 python -m unittest discover -s tests -v
-python scripts/verify_ipa.py dist/AudioRelayLab-unsigned.ipa
+python scripts/verify_ipa.py dist/AudioRelayLab-workshop-965a348-unsigned.ipa
 
 静态脚本检查源码风险标记、工程结构、资源、未来音频调度入口、通知和安全 CI 配置。
 Python 单元测试验证 IPA 检查器等脚本行为；合成校验输入不属于真正构建产物。

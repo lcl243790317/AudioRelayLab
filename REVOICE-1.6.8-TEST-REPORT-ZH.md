@@ -1,6 +1,6 @@
 # 1.6.8 / build 18：三个编辑框键盘故障调查与候选修复
 
-状态：代码候选已实现；标准完整 macOS CI 待执行；真机验收待用户复测。未宣称真实 iPhone 故障已最终解决。
+状态：代码与自动化验证完成，待真机验收。真机验收待用户复测；仍为发布阻断，未宣称真实 iPhone 故障已最终解决。
 
 ## 已核实的起点
 
@@ -25,10 +25,12 @@
 - `InteractionControls.swift`：收键盘手势挂在拥有内容的 UIViewController.view 和其导航／标签栏，拒绝 UIWindow；页内触摸范围使用本页 marker。UITextInput／实际编辑器检查先于外点处理。只结束本页记录的 native editor；普通 SwiftUI 消失通知若编辑器仍附着且控制器并未退出，不结束输入；真正控制器退出只清理本页对象，旧页不能跨窗口结束另一页编辑器。手势不取消或延迟控件触摸，完成、外点、导航、滚动行为继续回归。
 - `RevoiceController.swift`：保留 450 ms 自动保存与关键 flush、即时匹配和手改保留／stale 规则；避免相同衍生稿重复发布，避免相同 pending/saved 状态重复发布，一次衍生修改只调度一次保存。没有向 UITextInput 重写 text/markedText，没有循环重新聚焦。
 - `VoiceRevoiceView.swift`：三个输入组件使用稳定的滚动 ID；在焦点切换和系统 keyboardDidShow 时，将当前编辑器滚到内容顶部。仅聚焦期间在内容末尾提供一个当前视口高度的不可交互空白区域，避免较短预设表单滚动到底后仍被固定主操作与键盘覆盖。只移动外层视口，不更改 first responder、文字或选区，不设置延时重聚焦；A–D DEBUG 对照不启用这一新增正式可见性路径。保留原 TextEditor／纵向 TextField 和编辑权限，另记录 DEBUG 焦点及页面生命周期。
-- `KeyboardDiagnostics.swift`：DEBUG opt-in 的单调 uptime／序号／session 日志，记录 begin/end/change、键盘显示隐藏、native editor 对象身份、手势决策、dismiss 来源、自动指令和自动保存顺序。只记录静态事件及三项白名单编辑器 ID，不记录文字、软键内容、密钥或配置；Release 不启用日志／实验。
+- `KeyboardDiagnostics.swift`：DEBUG opt-in 的单调 uptime／序号／session 日志，记录 begin/end/change、键盘显示隐藏、native editor 对象身份、手势决策、dismiss 来源、自动指令和自动保存顺序。只记录静态事件及三项白名单编辑器 ID，不记录文字、软键内容、密钥或配置；Release 不启用日志／实验。键盘通知的 object 常不是 UIView，该行的 `none responder=false` 不代表编辑器失焦；判断使用 native begin/end/change、对象身份及实际软键断言交叉核对。
 - `LegacyKeyboardExperiment.swift`：旧手势和生命周期仅保留于 DEBUG 对照。A=`legacy`，B=`no-outside`（仅去窗口手势），C=`no-disappear`（仅去强制退出收键盘），D=`coalesced-state`（仅使用去重复状态路径）；正式版本为 `fixed`。
-- UI 增加四项用例：四组同页面控制变量、空稿／恢复正文、基础风格、本次表达；并扩展既有识别后用例诊断。每个输入序列只聚焦一次，每个真实软键检查精确内容和键盘持续存在；测试不靠逐字 refocus 或重试。系统全选／删除用于编辑自动生成文字，识别器注入只产生识别结果，不称其为系统键盘输入。
+- UI 增加四项用例：四组同页面控制变量、空稿／恢复正文、基础风格、本次表达；并扩展既有识别后用例诊断。每个输入序列只聚焦一次，每个真实软键检查精确内容和键盘持续存在；测试不靠逐字 refocus 或重试。系统全选／删除用于编辑自动生成文字，识别器注入只产生识别结果，不称其为系统键盘输入。UI 的可编辑预设目录来自既有 preparePreview 支持目录夹具；仍使用 canEditPresetInstruction 的服务支持／声线支持判断，固定 base 预设不可编辑的原用例也保留。该夹具不证明生产云端已连接或升级，正式能力条件没有放宽。
 - 原生新增内容边界、control 包装、裁剪编辑器命中及状态发布／持久化回归；工作流继续完整原生、完整 UI、SE 小屏、Debug/Release，并导出无文字的 DEBUG 键盘日志。
+
+本轮文件范围补充：`AudioRelayLab/Diagnostics/KeyboardDiagnostics.swift`、`AudioRelayLab/Views/LegacyKeyboardExperiment.swift` 对应 DEBUG 观测与四组实验；`AudioRelayLabTests/KeyboardScopeTests.swift` 和 `AudioRelayLabTests/RevoiceDraftTests.swift` 对应四项原生边界／焦点回归及一项状态发布／真实持久化回归。`AudioRelayLab/Experiments/ExperimentCoordinator.swift`、`AudioRelayLab/Views/InteractionTestScreen.swift` 只为 DEBUG 跨用例隔离清理确切自有键盘录音，校验 ID、名称、源类型、沙盒文件名和真实路径，不清理其他音频。`.github/workflows/build-ios.yml` 增加 always 导出的无文字 DEBUG session 日志，保留原完整流水线。`project.yml` 与 `scripts/static_check.py` 递增并校验 1.6.8/build 18。交付结果更新 `README.md`、`BUILD-STATUS-ZH.txt`、`README-BUILD-ZH.txt`、`README-INSTALL-ZH.txt` 及本报告；用户已有 `handoff.md` 改动未改写、未提交。
 
 ## 当前验证结果
 
@@ -52,7 +54,7 @@ Windows：继续后 CPU 99 项通过，0 失败，11.007 秒；静态 73 App／2
 
 该次 SE／Release 未执行，无新 IPA。官方主产物 11662286081／1,027,219,844 字节，SHA-256 `88e292bd17f93807cb90f8b219f76bda3955a0087b58d80a30979fdee551eb87` 已核验，三项失败各自的实际 AX／截图／录像及 DEBUG session 保存于本地证据目录。用户暂停期间未再修改、推送或触发 CI；继续后修订再次执行标准完整 CI。
 
-第 [51 次标准完整 CI / 38034951381](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38034951381)，源码 `eae9e22e400fa017384283efccb4e2d11cca5709`：CPU 99 项通过（45.163 秒）、Simulator Debug 成功、原生 XCTest 286 项全部通过（124.142 秒）。四项 KeyboardScopeTests 与状态发布／持久化回归均逐名核对；官方原生检查点 11664450500／53,688 字节，SHA-256 `ac59d053204ea8920e345a36234ae708de2ba743822188f70d26bc56b5c349ab` 已核验。完整 UI 运行期间继续审查，发现新增的整行可见判断需要先 guard 目标行存在／可点击，避免在 lazy List 尚未生成第 100 行时读取不存在对象的 frame。这是源码审查发现的测试边界，并非本 run 已证实的失败。补足该前置判断后停止旧 run，再执行标准完整 CI；不将中间原生结果冒充最终全套通过，SE／Release／新 IPA 仍待验证。
+第 [51 次标准完整 CI / 38034951381](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38034951381)，源码 `eae9e22e400fa017384283efccb4e2d11cca5709`：CPU 99 项通过（45.163 秒）、Simulator Debug 成功、原生 XCTest 286 项全部通过（124.142 秒）。四项 KeyboardScopeTests 与状态发布／持久化回归均逐名核对；官方原生检查点 11664450500／53,688 字节，SHA-256 `ac59d053204ea8920e345a36234ae708de2ba743822188f70d26bc56b5c349ab` 已核验。完整 UI 运行期间继续审查，发现新增的整行可见判断需要先 guard 目标行存在／可点击，避免在 lazy List 尚未生成第 100 行时读取不存在对象的 frame。这是源码审查发现的测试边界，并非本 run 已证实的失败。取消前官方 UI 日志还显示本次表达用例通过（172.068 秒）；基础用例已精确检查 `!calm.`，preset 第三次首次聚焦完成可见区域检查，并用实际系统全选／删除得到空文本，再逐键输入到 `cal`，之后被取消，没有该完整用例通过结论。官方 UI 日志 11663642341／25,966 字节，SHA-256 `8aa3567595d33cf2e663827931286275bbb780430a535964bef0430104b1e293` 已核验。补足该前置判断后停止旧 run，再执行标准完整 CI；不将中间原生结果冒充最终全套通过，SE／Release／新 IPA 仍待验证。
 
 第 [52 次标准完整 CI / 38036100866](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38036100866)，源码 `62789e38bbb260952d2766ee042003e968b39324`：CPU 99 项通过（45.206 秒）、Simulator Debug 成功、原生 286 项全部通过（128.931 秒）；完整 UI 实际执行 25 项，24 通过、1 失败（1893.605 秒）。基础风格首次聚焦、连续软键、合法 preset 系统全选／删除与恢复默认、重启恢复整条通过（111.111 秒）；本次表达手改保留／重启通过（140.221 秒），音乐列表整行可见／稳定选择通过（72.746 秒），其他原有 UI 全通过。实际 preset 首次聚焦截图已复核输入框位于固定操作与键盘上方。
 
@@ -70,20 +72,34 @@ Windows：继续后 CPU 99 项通过，0 失败，11.007 秒；静态 73 App／2
 
 测试改用键盘上方实际可点击的“混音”模式按钮，在键盘仍存在时离开正文编辑页；先验证 mix.save 出现、原编辑器消失，再执行原键盘关闭断言。返回配音精确检查原稿和未重新弹出的键盘；随后仅点击真实可点击的 Tab，验证音频库目的页面、关闭状态和返回后的原稿。保留原退出／正文断言并加强实际导航证据，不用 Done 提前掩盖输入页退出，不修改生产导航逻辑。该次 SE／Release 未执行，无 IPA。官方 UI 日志 11667077799／135,601 字节，SHA-256 `ca2ce4c20ef4618787c743de1fb25456d53add44e061b455fea4bd737d5afff8`；主产物 11667294195／1,014,671,711 字节，SHA-256 `b0e67cbd90c2c4eed5ed5877a4a0ee21ff2aa60f50fad6af0f8364eeed7d0e3a`，均已核验。修订后继续标准完整 CI。
 
+第 [55 次标准完整 CI / 38046537225](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38046537225)，源码 `965a3485279b89b98235b86a02f36d0fd39af682`，官方结论 success；CPU 99、原生 XCTest 286、完整 UI XCTest 25、SE 小屏 1 项全部通过，0 失败，共 411 次测试执行。macos-15／Xcode 16.4／iOS 18.5 基线、Simulator Debug 和 iPhoneOS Release 成功。新增四项 UI 和四项 KeyboardScopeTests 均逐名核验通过；保存源日志、真实 XCTest 附件、全程可解码模拟器录像及 DEBUG session 事件。
+
+A–D 在当前 Simulator 均通过真实三框软键序列；这没有复现用户真机故障，不能用它证明全窗口手势或生命周期是原设备唯一根因。原生受控用例证明正式手势不安装到 UIWindow、键盘 sibling 不在监听树内、UIControl 包装层中的编辑器优先、普通 disappear 保持真实 first responder，Done 正常结束，旧 scope 不结束下一编辑器。状态回归证明相同衍生稿零重复发布，手改稿与真实保存规则保留。三个正式编辑器首次单次点击后均通过完整可见区域断言，真实 XCTest 截图已复核位于固定操作与键盘上方；预设基础风格的系统全选、实际删除、输入及默认恢复通过。正文切回、正文重启与基础自动关闭步骤的原生空格触控板移动均保持原稿和键盘，开头真实 Delete 不改原稿，随后的前缀软键精确值检查通过；三张原生光标准备附件已复核，不把硬件导航或再次聚焦当作软键输入。
+
+本次官方日志实际耗时：CPU 45.490 秒、原生 126.970 秒、完整 UI 2281.846 秒、SE 108.213 秒。UI 中正文整条 211.411 秒、基础整条 120.692 秒、本次表达整条 146.024 秒、四组对照 389.029 秒、识别后编辑 75.702 秒，均逐名通过；SE 为既有混音主题／大字体检查。
+
+本地逐事件复核覆盖 13 个 DEBUG session、24 段 native begin/end、106 次 native change：每次 change 均对应当时已 begin 的同一对象且 responder=true，保存期间没有换成另一编辑器。真正模式退出的 session `086EAE66-B135-474B-B451-9BAB5D0C8B95` 中，正文对象 `0x0000000102142a00` 在 seq 14 开始、25 修改；28–30 收到 scope／页面消失，普通 still-attached 通知未强制结束其他对象；34 键盘将隐藏、35 同一正文对象 native end、36 键盘已隐藏。实际截图显示“混音”选中且无键盘，UI 又验证 mix.save、返回正文原稿以及音频库 library.scope，证明本次确实发生导航。键盘通知的 none 不作为失焦证据。
+
+已查看 15 张本地证据拼图，覆盖原始正式编辑、A–D、识别后编辑、11 张首次聚焦和 3 张原生空格触控板准备截图，以及常规／SE 浅深主题、大字体页面；另以原始分辨率复核 preset 首次聚焦截图 `7E7AA89D-B940-4C02-9C8F-8477B956E3EB.png`。拼图只组合官方原始 PNG，未重绘 App 界面。三个新增正式编辑用例的 XCTest 导出没有独立 MP4，当前录像证据来自官方完整 `build/ui-interaction.mp4`。
+
+原始完整录像为 741,450,280 字节，SHA-256 `fbb6a4bc5d308ddb0c885fdba29730f94128fc35ce8115651bc1045458d894c4`；全帧解码得到 41,081 帧，原时间轴末尾约 2318.767 秒。首轮返回 0 并读到结尾，但 null 输出提示非单调 DTS，原始诊断保留；第二轮仅在校验的丢弃输出端使用 [FFmpeg setpts 帧序时间戳](https://ffmpeg.org/ffmpeg-filters.html#setpts_002c-asetpts) 和 passthrough，帧数仍完全相同、无解码错误，原录像哈希未变。这证明可解码，不证明原时间戳严格单调；只查看了原时间轴 30 秒／中点／75% 三张取帧，没有宣称全程观看。复核索引、原始提示及审查记录位于本地 `dist/workshop-ci-20261007/38046537225/`，其中 `manual-evidence-audit.json`、`native-event-order-review.json`、`video-decode-review.json` 均标记 physicalDeviceEvidence=false。
+
+构建还有 2 条既有 RevoiceJobTests 的末尾 defer 编译警告及 AppIntents metadata 无依赖提示；构建和测试结果均为成功，没有把警告隐藏成零警告。
+
 | 验证项 | 当前结果 | 用例／证据 |
 |---|---|---|
-| 要说的话连续软键输入 | 待 macOS 执行 | 既有 RecognizedDraft 用例及新 EmptyAndRestoredText 用例 |
-| 基础角色风格键盘唤起 | 待 macOS 执行 | BaseStyleFirstTap 用例，合法 custom/preset 模式 |
-| 基础角色风格连续软键输入 | 待 macOS 执行 | BaseStyleFirstTap 用例，自动开／关 |
-| 本次表达指令连续软键输入 | 待 macOS 执行 | AutomaticInstructionContinuous 用例 |
-| 中文输入及候选处理 | 待真机验证 | 英文 Simulator 不能代表中文 IME marked text 和候选 |
-| 自动保存时保持焦点 | 待 macOS 执行 | 三框分别等待真实保存后继续软键 |
-| 输入框之间切换 | 待 macOS 执行 | 正文→基础→正文，以及自动→正文→基础 |
-| 完成按钮和页面退出 | 待 macOS 执行 | 新用例及原 outside/switch/scroll/exit 用例 |
-| 草稿重启恢复 | 待 macOS 执行 | 三框分别读取同一个真实隔离 store |
-| 原有功能回归 | CPU 通过；原生/UI 待执行 | 原有全套，不启用 GPU／生产网络 |
-| 完整 macOS CI | 未执行 | 必须 diagnosticOnly=false |
-| 真实 iPhone 验收 | 真机验收待用户复测 | 仍为发布阻断 |
+| 要说的话连续软键输入 | Simulator 通过 | 空稿／恢复稿和既有识别后用例；字母、符号、删除、换行 |
+| 基础角色风格键盘唤起 | Simulator 通过 | BaseStyleFirstTap：合法模式、展开后首次点击，不重试聚焦 |
+| 基础角色风格连续软键输入 | Simulator 通过 | 逐个实际软键及标点；自动开／关；默认 reset |
+| 本次表达指令连续软键输入 | Simulator 通过 | 系统全选／删除后实际软键；userEdited、保留／stale/rematch |
+| 中文输入及候选处理 | 待真机验证 | Simulator 英文用例不能代表中文 IME marked text 和候选 |
+| 自动保存时保持焦点 | Simulator 通过 | 三个编辑器等待真实保存，键盘仍存在；逐键无 refocus |
+| 输入框之间切换 | Simulator 通过 | 正文→基础→正文、自动→正文→基础 |
+| 完成按钮和页面退出 | Simulator 通过 | Done、外点、tab／输入页退出及原有 scroll/control 回归；原生所有权测试 |
+| 草稿重启恢复 | Simulator 通过 | 正文、基础、手改表达真实同 store 重启；自动开关选择恢复 |
+| 原有功能回归 | 自动化通过 | CPU 99、原生 286、完整 UI 25、SE 1；无生产 GPU／云端部署 |
+| 完整 macOS CI | 通过 | [标准完整 CI55](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38046537225)，diagnosticOnly=false；Debug／Release 成功 |
+| 真实 iPhone 验收 | 真机验收待用户复测 | 本环境未执行，仍为发布阻断 |
 
 ## 独立真机验收记录
 
@@ -105,6 +121,8 @@ Windows：继续后 CPU 99 项通过，0 失败，11.007 秒；静态 73 App／2
 
 ## 版本与交付
 
-候选 1.6.8 / build 18；分支 feature/revoice-ios-1.6.0。Commit、完整 run、实际测试数、Release、arm64/iPhoneOS、包内 Info.plist、文件字节数、SHA-256 和可下载性必须在构建后填写。目前无新 IPA，不以旧 1.6.7 包替代。
+版本 **1.6.8 / build 18**；分支 `feature/revoice-ios-1.6.0`。实际 App 源码／CI HEAD `965a3485279b89b98235b86a02f36d0fd39af682`；文档结果提交不改变该 App 来源。CI [38046537225](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38046537225)。
 
-剩余风险：原设备故障尚无事件轨迹；iOS 18.1.1 与 CI 18.5、中文 IME 和候选／预测栏存在环境差异；只有原设备安装复测能解除最终发布阻断。
+unsigned IPA：`dist/AudioRelayLab-workshop-965a348-unsigned.ipa`；包内 Info.plist 1.6.8/18、Bundle ID com.audiorelaylab.AudioRelayLab、arm64 Mach-O／iPhoneOS、最低 iOS 17.0、无签名材料、ZIP CRC 均核验。大小 **1,655,490 字节**；SHA-256 `2f6e677ab9804ad877d766922a154c0d30049c67bfc6b3ab3adfd8c3c3998a15`。官方 Artifact `11669605516`，下载归档 835,797,938 字节，SHA-256 `1bb6a7b44f59a124ebf789c5fa7c98d56359bc2a8921ca5a611d6780ba933138` 与官方 digest 一致；解包后所有构建日志及证据清单哈希逐项复核。签名后安装与设备端验收未执行。
+
+剩余风险：原设备故障尚无事件轨迹；iOS 18.1.1 与 CI 18.5、中文 IME 和候选／预测栏存在环境差异。SE 小屏自动化为既有音乐主题／大字体用例，不代表三框在小屏中文键盘下已通过；原设备及小屏连续输入均须真机复测。只有真实设备验收能解除最终发布阻断。
