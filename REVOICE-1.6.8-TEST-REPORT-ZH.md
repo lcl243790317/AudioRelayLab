@@ -38,6 +38,8 @@ Windows：CPU 99 项通过，0 失败，11.014 秒；静态 73 App／22 XCTest �
 
 第 [47 次完整 CI / 38018868810](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38018868810)，源码 `ed529b7d3eb3707fb93561ef1c5f1291ccacd860`：CPU 99 项通过（45.553 秒）、Simulator Debug 成功、原生 285 项全部通过（119.486 秒），包含三项 KeyboardScopeTests 和新状态发布／持久化回归。官方检查点 11657283310／53,479 字节，SHA-256 `f3135e8485a195f2b0614e070b3ce9bf6be2032fac963a7dc592fccb1a0ba108` 已核验。UI 阶段启动后继续源码审查，补足普通消失事件的“控制器确实退出”保护，以及直接验证真实 UIKit first responder 的原生安全用例：普通通知保留输入、Done 结束输入、旧 scope 不抢夺下一编辑器。该原生测试直接调用生命周期处理检查安全性，不冒充真机自然复现或实际软键输入。旧 run 在 UI 未完成时停止，不能计作完整通过或作为最终产物来源；最终修订重新执行标准完整 CI，不删除或减少原有 UI 断言。
 
+该次 UI 部分日志实际暴露三项失败：自动指令逐键输入 Clear 后，Done 提交成 clear，日志含 Done 后的 native change，键盘逐键保持；基础风格 Calm 后句点的精确值断言失败（键盘仍在，取消录像缺 moov，不能凭视频确认实际值）；批删测试残留键盘夹具录音 ID 21，导致既有清空断言失败。测试通过真实 Shift 软键选择小写字典单词，保留系统自动纠正和所有逐键／提交／恢复断言；library-interaction-test 在 DEBUG 中只清理 ID、名称、源类型、sandbox 文件名及实际路径全部匹配的自有键盘夹具录音，不删除其他音频，不降低原有批删检查。该 run 的 UI 未完整运行，任何部分通过都不算最终验收。最终版本还包含普通 disappear 不打断已附着编辑器的保护及真实 UIKit focus 原生回归。
+
 | 验证项 | 当前结果 | 用例／证据 |
 |---|---|---|
 | 要说的话连续软键输入 | 待 macOS 执行 | 既有 RecognizedDraft 用例及新 EmptyAndRestoredText 用例 |

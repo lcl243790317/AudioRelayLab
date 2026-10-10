@@ -5,6 +5,22 @@ import AVFoundation
 /// Only the device Speech service is replaced, so Simulator UI tests need no permissions.
 @MainActor final class RecognitionKeyboardInteractionFixture: RevoiceTranscribing {
     static let text = "语音识别后的文字"
+    static func removeOwnedLibraryInput() throws {
+        let directory = try AudioFileManager.audioDirectory()
+        let name = "识别键盘测试原声"
+        let target = directory.appendingPathComponent(name+".wav")
+        let sidecar = target.appendingPathExtension("metadata.json")
+        guard FileManager.default.fileExists(atPath:target.path) ||
+                FileManager.default.fileExists(atPath:sidecar.path) else { return }
+        let asset = try JSONDecoder().decode(AudioAsset.self,from:Data(contentsOf:sidecar))
+        guard asset.id == UUID(uuidString:"16300000-0000-4000-8000-000000000021"),
+              asset.fileName == name,asset.sandboxFileName == target.lastPathComponent,
+              asset.source == .voiceLabRecording,
+              try AudioFileManager.url(for:asset).standardizedFileURL == target.standardizedFileURL else {
+            throw LabError.message("键盘测试路径已有其他素材，未删除文件")
+        }
+        try AudioFileManager.removeAudio(asset)
+    }
     static func draftStore() -> RevoiceDraftStore {
         let value = ProcessInfo.processInfo.environment["REVOICE_KEYBOARD_DRAFT_ID"] ?? ""
         let id = UUID(uuidString:value) ?? UUID()

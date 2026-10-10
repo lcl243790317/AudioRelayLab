@@ -124,6 +124,12 @@ import UniformTypeIdentifiers
         if let fixture = longPreviewFixture {
             _ = selectLocal(fixture)
         }
+        if ProcessInfo.processInfo.arguments.contains("library-interaction-test") {
+            // New keyboard tests run before library tests. Retire only their
+            // exact owned recording; never clear unrelated audio to pass tests.
+            do { try RecognitionKeyboardInteractionFixture.removeOwnedLibraryInput() }
+            catch { logger.log("键盘测试夹具清理失败",diagnosticError(error)) }
+        }
         if ProcessInfo.processInfo.arguments.contains("mix-interaction-test") || ProcessInfo.processInfo.arguments.contains("mix-timing-snapshot") || ProcessInfo.processInfo.arguments.contains("library-interaction-test"),let source = longPreviewFixture ?? (try? AudioFileManager.loadBundledAudio()),
            let sourceURL = try? AudioFileManager.url(for:source),let folder = try? AudioFileManager.audioDirectory() {
             let id = UUID(uuidString:"16300000-0000-4000-8000-000000000013") ?? UUID()

@@ -564,10 +564,21 @@ final class InteractionUITests: XCTestCase {
         return label
     }
     @MainActor private func softWord(_ word:String,editor:XCUIElement,in app:XCUIApplication,starting:String) -> String {
+        // Choose lowercase with the real system Shift key. A capitalized word
+        // can be autocorrected on punctuation/Done after the per-key checks.
+        // Keep autocorrection enabled and keep exact committed-value assertions.
+        let keyboard = app.keyboards.firstMatch
+        if let first = word.first {
+            let lower = String(first).lowercased()
+            if !keyboard.keys[lower].exists && keyboard.keys[lower.uppercased()].exists {
+                pressSoft(["shift","Shift"],in:app)
+            }
+            XCTAssertTrue(keyboard.keys[lower].exists,"真实 Shift 操作后必须显示小写软键")
+        }
         var expected = starting
         for character in word {
             let value = String(character)
-            expected += pressSoft([value,value.uppercased()],in:app)
+            expected += pressSoft([value],in:app)
             assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
         }
         return expected
