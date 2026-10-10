@@ -214,11 +214,12 @@ final class InteractionUITests: XCTestCase {
         let list = app.collectionViews.firstMatch
         XCTAssertTrue(list.waitForExistence(timeout:3))
         let fullyVisible = {
+            guard row.exists,row.isHittable else { return false }
             let frame = row.frame
             let top = max(list.frame.minY,app.navigationBars["背景音乐"].frame.maxY)
             let bottom = min(list.frame.maxY,app.frame.maxY-40)
             let viewport = CGRect(x:list.frame.minX,y:top,width:list.frame.width,height:max(0,bottom-top))
-            return row.isHittable && viewport.contains(frame)
+            return viewport.contains(frame)
         }
         for _ in 0..<40 {
             if fullyVisible() { break }

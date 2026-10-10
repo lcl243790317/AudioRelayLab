@@ -52,6 +52,8 @@ Windows：继续后 CPU 99 项通过，0 失败，11.007 秒；静态 73 App／2
 
 该次 SE／Release 未执行，无新 IPA。官方主产物 11662286081／1,027,219,844 字节，SHA-256 `88e292bd17f93807cb90f8b219f76bda3955a0087b58d80a30979fdee551eb87` 已核验，三项失败各自的实际 AX／截图／录像及 DEBUG session 保存于本地证据目录。用户暂停期间未再修改、推送或触发 CI；继续后修订再次执行标准完整 CI。
 
+第 [51 次标准完整 CI / 38034951381](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38034951381)，源码 `eae9e22e400fa017384283efccb4e2d11cca5709`：CPU 99 项通过（45.163 秒）、Simulator Debug 成功、原生 XCTest 286 项全部通过（124.142 秒）。四项 KeyboardScopeTests 与状态发布／持久化回归均逐名核对；官方原生检查点 11664450500／53,688 字节，SHA-256 `ac59d053204ea8920e345a36234ae708de2ba743822188f70d26bc56b5c349ab` 已核验。完整 UI 运行期间继续审查，发现新增的整行可见判断需要先 guard 目标行存在／可点击，避免在 lazy List 尚未生成第 100 行时读取不存在对象的 frame。这是源码审查发现的测试边界，并非本 run 已证实的失败。补足该前置判断后停止旧 run，再执行标准完整 CI；不将中间原生结果冒充最终全套通过，SE／Release／新 IPA 仍待验证。
+
 | 验证项 | 当前结果 | 用例／证据 |
 |---|---|---|
 | 要说的话连续软键输入 | 待 macOS 执行 | 既有 RecognizedDraft 用例及新 EmptyAndRestoredText 用例 |
