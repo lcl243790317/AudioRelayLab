@@ -20,7 +20,7 @@
 
 ## 实际修改
 
-- `InteractionControls.swift`：收键盘手势挂在拥有内容的 UIViewController.view 和其导航／标签栏，拒绝 UIWindow；页内触摸范围使用本页 marker。UITextInput／实际编辑器检查先于外点处理。只结束本页记录的 native editor；旧页消失不能跨窗口结束另一页编辑器。手势不取消或延迟控件触摸，完成、外点、导航、滚动行为继续回归。
+- `InteractionControls.swift`：收键盘手势挂在拥有内容的 UIViewController.view 和其导航／标签栏，拒绝 UIWindow；页内触摸范围使用本页 marker。UITextInput／实际编辑器检查先于外点处理。只结束本页记录的 native editor；普通 SwiftUI 消失通知若编辑器仍附着且控制器并未退出，不结束输入；真正控制器退出只清理本页对象，旧页不能跨窗口结束另一页编辑器。手势不取消或延迟控件触摸，完成、外点、导航、滚动行为继续回归。
 - `RevoiceController.swift`：保留 450 ms 自动保存与关键 flush、即时匹配和手改保留／stale 规则；避免相同衍生稿重复发布，避免相同 pending/saved 状态重复发布，一次衍生修改只调度一次保存。没有向 UITextInput 重写 text/markedText，没有循环重新聚焦。
 - `VoiceRevoiceView.swift`：DEBUG 事件记录焦点及页面生命周期，三个 SwiftUI 原生输入组件保持原样，业务权限不放宽。
 - `KeyboardDiagnostics.swift`：DEBUG opt-in 的单调 uptime／序号／session 日志，记录 begin/end/change、键盘显示隐藏、native editor 对象身份、手势决策、dismiss 来源、自动指令和自动保存顺序。只记录静态事件及三项白名单编辑器 ID，不记录文字、软键内容、密钥或配置；Release 不启用日志／实验。
@@ -35,6 +35,8 @@ Windows：CPU 99 项通过，0 失败，11.014 秒；静态 73 App／22 XCTest �
 第 [45 次标准完整 CI / 38017749082](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38017749082)，源码 `5bb9305d7c0b9698fa41d2061d3b53f73aa4bc6d`，diagnosticOnly=false：CPU／静态通过，Simulator 编译失败，DEBUG 嵌套通知 Observer 缺少 @MainActor，调用 record/editorID 报 actor isolation 错误。已给该观察器加主线程声明；原生／UI／Release 未执行，无本次 IPA。该次不计作通过，原始日志保留。
 
 第 [46 次完整 CI / 38018027628](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38018027628)，源码 `fac4b4bd652be4a2b8f704e568754db69a43e095`：CPU 99 项通过（45.647 秒）、Simulator Debug BUILD SUCCEEDED；原生 285 项实际执行，284 通过、1 失败（124.920 秒）。唯一失败为新 KeyboardScopeTests 的隐藏 UIWindow 夹具未将 root view 接入窗口，attach 按生产保护条件拒绝安装；已显式构造窗口内容／键盘 sibling 层级，并新增 marker.window 身份断言，原无窗口手势／内容有手势／拆卸断言全部保留。新状态发布／持久化测试通过。UI、SE、Release 未执行，未生成 IPA。官方 XCTest 检查点 11657351930／53,794 字节，SHA-256 `4ada62db11bc053851b2250ae97fad2913f666ab8f86b294835e0390ed771c10` 已核验。并在实际 UI 执行前审查修正预设 reset 用例顺序：离线重启夹具没有云端目录，合法可编辑 preset 的默认恢复先在有效目录中验证，再返回 custom 保存／重启，不放宽能力检查。
+
+第 [47 次完整 CI / 38018868810](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38018868810)，源码 `ed529b7d3eb3707fb93561ef1c5f1291ccacd860`：CPU 99 项通过（45.553 秒）、Simulator Debug 成功、原生 285 项全部通过（119.486 秒），包含三项 KeyboardScopeTests 和新状态发布／持久化回归。官方检查点 11657283310／53,479 字节，SHA-256 `f3135e8485a195f2b0614e070b3ce9bf6be2032fac963a7dc592fccb1a0ba108` 已核验。UI 阶段启动后继续源码审查，补足普通消失事件的“控制器确实退出”保护，以及直接验证真实 UIKit first responder 的原生安全用例：普通通知保留输入、Done 结束输入、旧 scope 不抢夺下一编辑器。该原生测试直接调用生命周期处理检查安全性，不冒充真机自然复现或实际软键输入。旧 run 在 UI 未完成时停止，不能计作完整通过或作为最终产物来源；最终修订重新执行标准完整 CI，不删除或减少原有 UI 断言。
 
 | 验证项 | 当前结果 | 用例／证据 |
 |---|---|---|

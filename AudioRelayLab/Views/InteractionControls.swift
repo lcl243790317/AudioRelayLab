@@ -124,11 +124,13 @@ private struct KeyboardDone: ViewModifier {
     var clearFocus:(()->Void)?
     private weak var host:UIView?
     private weak var content:UIView?
+    private weak var owner:UIViewController?
     private weak var editor:UIView?
     private var taps:[UITapGestureRecognizer] = []
     func attach(_ marker:UIView) {
         host = marker
         guard marker.window != nil,let owner = Self.owner(of:marker) else { detach(); return }
+        self.owner = owner
         guard let root = owner.viewIfLoaded else { detach(); return }
         guard content !== root else { return }
         detach(); content = root
@@ -171,6 +173,7 @@ private struct KeyboardDone: ViewModifier {
         if root.isFirstResponder { return root }
         return root.subviews.lazy.compactMap { firstResponder(in:$0) }.first
     }
+    func trackEditor(_ value:UIView) { editor = value }
     private func insidePage(_ point:CGPoint,in root:UIView) -> Bool {
         guard let host,host.window != nil else { return false }
         return host.bounds.contains(host.convert(point,from:root))
@@ -183,6 +186,12 @@ private struct KeyboardDone: ViewModifier {
     }
     func pageDisappeared() {
         KeyboardDiagnostics.record("scope.disappear",KeyboardDiagnostics.editorID(editor))
+        // SwiftUI callbacks alone do not establish a navigation exit. A surviving
+        // editor must keep focus during layout/identity changes. Removed native
+        // inputs resign through UIKit; actual controller exits may finish ours.
+        guard owner?.isBeingDismissed == true || owner?.isMovingFromParent == true || editor?.window == nil else {
+            KeyboardDiagnostics.record("scope.disappear.ignore","content-still-attached"); return
+        }
         dismiss(source:"page-exit")
     }
     @objc private func outsideTap() { dismiss(source:"outside-content") }
@@ -196,11 +205,11 @@ private struct KeyboardDone: ViewModifier {
             guard insidePage(point,in:root) else { return false }
             var ancestor:UIView? = touched
             while let value = ancestor {
-                if value is UITextInput { editor = value; KeyboardDiagnostics.record("scope.touch.ignore","input \(KeyboardDiagnostics.editorID(value))"); return false }
+                if value is UITextInput { trackEditor(value); KeyboardDiagnostics.record("scope.touch.ignore","input \(KeyboardDiagnostics.editorID(value))"); return false }
                 ancestor = value.superview
             }
             if let hit = Self.editor(at:point,in:root) {
-                editor = hit; KeyboardDiagnostics.record("scope.touch.ignore","editor-frame \(KeyboardDiagnostics.editorID(hit))"); return false
+                trackEditor(hit); KeyboardDiagnostics.record("scope.touch.ignore","editor-frame \(KeyboardDiagnostics.editorID(hit))"); return false
             }
         }
         // Only this scope's current editor can be dismissed, including chrome taps.
