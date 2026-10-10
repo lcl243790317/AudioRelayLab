@@ -350,15 +350,20 @@ final class InteractionUITests: XCTestCase {
         attach(app,"识别后实际标点符号按键保持键盘")
         tapKeyboardKey(["letters","more, letters","ABC","Letters"],in:keyboard)
         XCTAssertTrue(keyboard.exists,"切回字母键盘不能收起键盘")
-        expected += tapKeyboardKey(["a","A"],in:keyboard)
-        assertKeyboardEdit(expected,editor:editor,keyboard:keyboard)
+        // A complete dictionary word avoids committing a correction for a
+        // deliberate non-word (run 42 changed "ab" to "an" on Done).
+        for labels in [["c","C"],["a","A"]] {
+            expected += tapKeyboardKey(labels,in:keyboard)
+            assertKeyboardEdit(expected,editor:editor,keyboard:keyboard)
+        }
 
         waitForSavedDraft(in:app)
         XCTAssertTrue(keyboard.exists,"草稿保存更新不能打断正文键盘焦点")
-        expected += tapKeyboardKey(["b","B"],in:keyboard)
+        expected += tapKeyboardKey(["t","T"],in:keyboard)
         assertKeyboardEdit(expected,editor:editor,keyboard:keyboard)
         attach(app,"识别后实际字母按键及草稿保存保持键盘")
         app.buttons["keyboard.done"].tap(); XCTAssertFalse(keyboard.exists)
+        XCTAssertEqual(editor.value as? String,expected,"完成输入后保留完整单词，再验证草稿重启恢复")
 
         // The isolated store is real. Explicit off/on choices must survive relaunch.
         setAutomaticInstruction(automatic,to:false,in:app)
