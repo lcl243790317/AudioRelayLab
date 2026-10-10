@@ -463,9 +463,28 @@ final class InteractionUITests: XCTestCase {
         pressSoft(["numbers","123","more, numbers"],in:app)
         pressSoft(["."],in:app); expected = "." + expected
         assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
-        app.tabBars.buttons["音频库"].tap(); assertKeyboardHidden(in:app)
-        app.tabBars.buttons["工坊"].tap()
+        // The tab bar is covered by the system keyboard. Exercise a real page
+        // exit through the visible workshop selector without dismissing first,
+        // and require the destination before checking keyboard disappearance.
+        let workshop = app.segmentedControls["workshop.mode"]
+        let mix = workshop.buttons["混音"]
+        XCTAssertTrue(mix.exists); XCTAssertTrue(mix.isHittable)
+        XCTAssertLessThan(mix.frame.maxY,app.keyboards.firstMatch.frame.minY)
+        mix.tap()
+        XCTAssertTrue(app.buttons["mix.save"].waitForExistence(timeout:5),"必须确实离开正文编辑页")
+        XCTAssertFalse(editor.exists)
+        assertKeyboardHidden(in:app)
+        attach(app,"restored-text-mode-exit-keyboard-hidden")
+        XCTAssertTrue(workshop.buttons["配音"].isHittable); workshop.buttons["配音"].tap()
         XCTAssertTrue(editor.waitForExistence(timeout:5)); XCTAssertEqual(editor.value as? String,expected)
+        assertKeyboardHidden(in:app); waitForSavedDraft(in:app)
+        let library = app.tabBars.buttons["音频库"]
+        XCTAssertTrue(library.isHittable); library.tap()
+        XCTAssertTrue(app.segmentedControls["library.scope"].waitForExistence(timeout:5))
+        assertKeyboardHidden(in:app)
+        XCTAssertTrue(app.tabBars.buttons["工坊"].isHittable); app.tabBars.buttons["工坊"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout:5)); XCTAssertEqual(editor.value as? String,expected)
+        assertKeyboardHidden(in:app)
         attach(app,"restored-text-edit-and-tab-exit")
     }
 
