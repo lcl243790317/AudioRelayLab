@@ -565,10 +565,10 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(editor.isEnabled); XCTAssertTrue(editor.isHittable)
         let before = editor.value as? String
         if atBeginning {
-            // One initial tap in the native input's first-line leading inset
-            // chooses an intentional insertion position, including restored text.
+            // Use the first-line leading edge: a 1% horizontal offset can land
+            // after a narrow initial punctuation character in restored text.
             // No hardware navigation, second tap or focus recovery is involved.
-            editor.coordinate(withNormalizedOffset:CGVector(dx:0.01,dy:0.1)).tap()
+            editor.coordinate(withNormalizedOffset:CGVector(dx:0,dy:0.1)).tap()
         } else { editor.tap() }
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3),"首次点击必须唤起键盘，禁止重试聚焦")
         if atBeginning { XCTAssertEqual(editor.value as? String,before,"首次聚焦不能修改现有文字") }
@@ -587,6 +587,13 @@ final class InteractionUITests: XCTestCase {
             attach(app,"keyboard-visible-first-focus-"+editor.identifier)
         }
         attachKeyboardDescription(app.keyboards.firstMatch,name:"keyboard-first-focus-"+editor.identifier)
+        if atBeginning {
+            // A real Delete at the document start must leave the entire draft
+            // unchanged. Verify position before inserting, rather than assuming
+            // that a focus tap places the caret before the first glyph.
+            pressSoft(["delete","Delete"],in:app)
+            XCTAssertEqual(editor.value as? String,before,"开头 Delete 必须保留原稿，不能把光标位置错误当作失焦")
+        }
     }
     @discardableResult @MainActor private func pressSoft(_ labels:[String],in app:XCUIApplication) -> String {
         let keyboard = app.keyboards.firstMatch
