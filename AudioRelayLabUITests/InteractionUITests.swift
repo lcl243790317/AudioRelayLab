@@ -438,6 +438,7 @@ final class InteractionUITests: XCTestCase {
         let baseline = openBaseInstruction(in:app); focusOnce(baseline,in:app)
         _ = softWord("calm",editor:baseline,in:app,starting:"")
         reveal(editor,in:app,towardTop:true); focusOnce(editor,in:app)
+        placeCaretAtEnd(editor,in:app)
         pressSoft(["numbers","123","more, numbers"],in:app)
         pressSoft(["!"],in:app); expected += "!"
         assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
@@ -447,6 +448,7 @@ final class InteractionUITests: XCTestCase {
         app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
         XCTAssertTrue(editor.waitForExistence(timeout:10)); XCTAssertEqual(editor.value as? String,expected)
         focusOnce(editor,in:app)
+        placeCaretAtEnd(editor,in:app)
         pressSoft(["numbers","123","more, numbers"],in:app)
         pressSoft(["."],in:app); expected += "."
         assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
@@ -472,6 +474,7 @@ final class InteractionUITests: XCTestCase {
         let manualBaseline = openBaseInstruction(in:app)
         XCTAssertEqual(manualBaseline.value as? String,expected)
         focusOnce(manualBaseline,in:app)
+        placeCaretAtEnd(manualBaseline,in:app)
         pressSoft(["numbers","123","more, numbers"],in:app); pressSoft(["!"],in:app); expected += "!"
         assertKeyboardEdit(expected,editor:manualBaseline,keyboard:app.keyboards.firstMatch)
         app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app); waitForSavedDraft(in:app)
@@ -589,6 +592,17 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(select.waitForExistence(timeout:3),"必须通过系统选择菜单清空生成的内容")
         select.tap(); pressSoft(["delete","Delete"],in:app)
         assertKeyboardEdit("",editor:editor,keyboard:app.keyboards.firstMatch)
+    }
+    @MainActor private func placeCaretAtEnd(_ editor:XCUIElement,in app:XCUIApplication) {
+        // Reentering a native editor does not guarantee its caret is at the end.
+        // This is an explicit hardware navigation key for test setup only; all
+        // text, deletion, return and punctuation still use actual system soft keys.
+        // Never tap again or refocus to recover from a lost keyboard.
+        let before = editor.value as? String
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        editor.typeKey(.downArrow,modifierFlags:[.command])
+        XCTAssertTrue(app.keyboards.firstMatch.exists,"光标移动不得收起系统键盘")
+        XCTAssertEqual(editor.value as? String,before,"光标定位不能注入或修改正文")
     }
     @MainActor private func assertKeyboardHidden(in app:XCUIApplication) {
         let hidden = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.keyboards.firstMatch)
