@@ -1,10 +1,10 @@
 # AudioRelayLab 音频接力实验室
 
-当前修订为 **1.6.7 / build 17**：修复语音识别后软键输入收键盘的风险路径，移除识别片段设置，默认开启按内容自动匹配表达指令。本次新的 macOS 完整验证进行中，结果与交付文件见 [1.6.7 验证报告](REVOICE-1.6.7-TEST-REPORT-ZH.md)。标准 CI 使用 `macos-15` Apple Silicon、固定 Xcode 16.4／iOS 18.5。
+当前修订为 **1.6.7 / build 17**：修复语音识别后软键输入收键盘的风险路径，移除识别片段设置，默认开启按内容自动匹配表达指令。源码 `f3fcff9838ccdc53f521855903617c144cbcd5bb` 的第 [44 次标准 CI](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38011577234) 全部通过：CPU 99 项、原生 XCTest 281 项、完整 UI 21 项、小屏 UI 1 项，Simulator Debug／iPhoneOS Release 均成功。新交付为 `dist/AudioRelayLab-workshop-f3fcff9-unsigned.ipa`，版本、哈希与来源已核验；未签名，需重签后在原 iPhone 系统键盘复测。结果见 [1.6.7 验证报告](REVOICE-1.6.7-TEST-REPORT-ZH.md)。标准 CI 使用 `macos-15` Apple Silicon、固定 Xcode 16.4／iOS 18.5。
 
 配音草稿自动保存、最近任务取回、成品到播放页的导航及统一试听退出继续保留。使用说明见 [草稿与任务说明](WORKSHOP-DRAFT-TASKS-ZH.md)，底部继续为“播放／工坊／音频库”，工坊提供“配音／混音”。上一次 1.6.6 源码 `a81e84d422a59e8f3cf7c46a5b6ff7c25b8b58a3` 的第 [40 次 CI](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37902418824) 全部通过，记录在 [工坊验证历史](WORKSHOP-CI-VALIDATION-ZH.md)；该 IPA 不包含本次输入修复。
 
-工作分支为 `feature/revoice-ios-1.6.0`。继续请求已推进源码提交／推送与标准完整 macOS CI，实际结果见 [本轮 macOS 验证](WORKSHOP-CI-VALIDATION-ZH.md)。不合并 main、不创建 Release、不部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
+工作分支为 `feature/revoice-ios-1.6.0`。继续请求已推进源码提交／推送与标准完整 macOS CI，实际结果见 [本轮 macOS 验证](REVOICE-1.6.7-TEST-REPORT-ZH.md)。不合并 main、不创建 Release、不部署。录音只在手机识别文字，云端生成仅接收文字及声线参数。
 
 历史 1.6.6 交付：`dist/AudioRelayLab-1.6.6-unsigned.ipa`。当时 Python 94 项、Simulator XCTest 249 项、UI XCTest 18 项及 iPhone SE 小屏截图测试 1 项通过；Simulator Debug / iPhoneOS Release 构建成功。[历史构建](https://github.com/lcl243790317/AudioRelayLab/actions/runs/37570694763)及 [历史验证报告](REVOICE-1.6.6-TEST-REPORT-ZH.md)。该 IPA 和这些 Xcode 结果不包含本轮改动。
 
