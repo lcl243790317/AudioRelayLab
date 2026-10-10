@@ -24,7 +24,7 @@
 
 - `InteractionControls.swift`：收键盘手势挂在拥有内容的 UIViewController.view 和其导航／标签栏，拒绝 UIWindow；页内触摸范围使用本页 marker。UITextInput／实际编辑器检查先于外点处理。只结束本页记录的 native editor；普通 SwiftUI 消失通知若编辑器仍附着且控制器并未退出，不结束输入；真正控制器退出只清理本页对象，旧页不能跨窗口结束另一页编辑器。手势不取消或延迟控件触摸，完成、外点、导航、滚动行为继续回归。
 - `RevoiceController.swift`：保留 450 ms 自动保存与关键 flush、即时匹配和手改保留／stale 规则；避免相同衍生稿重复发布，避免相同 pending/saved 状态重复发布，一次衍生修改只调度一次保存。没有向 UITextInput 重写 text/markedText，没有循环重新聚焦。
-- `VoiceRevoiceView.swift`：三个输入组件使用稳定的滚动 ID；在焦点切换和系统 keyboardDidShow 时，将当前编辑器滚到内容顶部，保持在固定主操作与键盘之上。只移动外层视口，不更改 first responder、文字或选区，不设置延时重聚焦；A–D DEBUG 对照不启用这一新增正式可见性路径。保留原 TextEditor／纵向 TextField 和编辑权限，另记录 DEBUG 焦点及页面生命周期。
+- `VoiceRevoiceView.swift`：三个输入组件使用稳定的滚动 ID；在焦点切换和系统 keyboardDidShow 时，将当前编辑器滚到内容顶部。仅聚焦期间在内容末尾提供一个当前视口高度的不可交互空白区域，避免较短预设表单滚动到底后仍被固定主操作与键盘覆盖。只移动外层视口，不更改 first responder、文字或选区，不设置延时重聚焦；A–D DEBUG 对照不启用这一新增正式可见性路径。保留原 TextEditor／纵向 TextField 和编辑权限，另记录 DEBUG 焦点及页面生命周期。
 - `KeyboardDiagnostics.swift`：DEBUG opt-in 的单调 uptime／序号／session 日志，记录 begin/end/change、键盘显示隐藏、native editor 对象身份、手势决策、dismiss 来源、自动指令和自动保存顺序。只记录静态事件及三项白名单编辑器 ID，不记录文字、软键内容、密钥或配置；Release 不启用日志／实验。
 - `LegacyKeyboardExperiment.swift`：旧手势和生命周期仅保留于 DEBUG 对照。A=`legacy`，B=`no-outside`（仅去窗口手势），C=`no-disappear`（仅去强制退出收键盘），D=`coalesced-state`（仅使用去重复状态路径）；正式版本为 `fixed`。
 - UI 增加四项用例：四组同页面控制变量、空稿／恢复正文、基础风格、本次表达；并扩展既有识别后用例诊断。每个输入序列只聚焦一次，每个真实软键检查精确内容和键盘持续存在；测试不靠逐字 refocus 或重试。系统全选／删除用于编辑自动生成文字，识别器注入只产生识别结果，不称其为系统键盘输入。
@@ -32,7 +32,7 @@
 
 ## 当前验证结果
 
-Windows：CPU 99 项通过，0 失败，11.014 秒；静态 73 App／22 XCTest 文件通过；96 份 Swift tree-sitter 语法解析无错误；这些不是 Xcode 类型检查、iOS 编译或真机证据。最初 sandbox 禁止 loopback 导致夹具失败，已停止该次，使用既有授权的 loopback 环境完整重跑通过，原日志保留于忽略目录 dist。
+Windows：继续后 CPU 99 项通过，0 失败，11.007 秒；静态 73 App／22 XCTest 文件通过；96 份 Swift tree-sitter 语法解析无错误；这些不是 Xcode 类型检查、iOS 编译或真机证据。最初 sandbox 禁止 loopback 导致夹具失败，已停止该次，使用既有授权的 loopback 环境完整重跑通过，原日志保留于忽略目录 dist。
 
 第 [45 次标准完整 CI / 38017749082](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38017749082)，源码 `5bb9305d7c0b9698fa41d2061d3b53f73aa4bc6d`，diagnosticOnly=false：CPU／静态通过，Simulator 编译失败，DEBUG 嵌套通知 Observer 缺少 @MainActor，调用 record/editorID 报 actor isolation 错误。已给该观察器加主线程声明；原生／UI／Release 未执行，无本次 IPA。该次不计作通过，原始日志保留。
 
@@ -45,6 +45,12 @@ Windows：CPU 99 项通过，0 失败，11.014 秒；静态 73 App／22 XCTest �
 第 [48 次标准完整 CI / 38020710581](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38020710581)，源码 `283e0b8e8bf5129fe258461f7218aed9dcebb548`：CPU 99 项通过（45.777 秒）、Simulator Debug 成功、原生 286 项全通过（130.979 秒），包括真实 first responder 生命周期用例；完整 UI 实际执行 25 项，23 通过、2 失败（2340.752 秒）。本次表达指令连续软键／手改保留／重启和 A–D 三框对照、批删及其他原有 UI 已通过。两项失败分别为基础自动关闭后继续输入和正文切回后继续输入。官方 AX 附件明确 value 为 `!calm.`、`!cat\ndog.@cat`，均标记 Keyboard Focused；实际用例录像也显示键盘保持及字符在开头。原因是测试把重入编辑器的光标假定在末尾，字符实际插入开头，不是键盘立即消失。已为这三个追加步骤明确发送 Command-Down 光标导航（仅测试准备，XCTest 硬件导航键，不冒充软键）；断言其前后键盘保持、文本不变，后续所有字母、删除、换行、符号仍点击实际软键，原精确文本／提交／恢复断言不删除、不重试聚焦。SE／Release 未执行，无 IPA。官方主产物 11659406056／948,999,291 字节，SHA-256 `ae085c65d8bdcd7b4079d9524e3c4e492fc03b196d9d663020a1d409b6a486bc` 已验证，失败证据保留。浏览器原始日志下载工具等待异常且最终空文件，不作为证据；结果来自官方 API 产物与日志。最终版本再次运行标准完整 CI。
 
 第 [49 次标准完整 CI / 38024963872](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38024963872)，源码 `9632c08288db7b0322a4696d9d5a02a5dfca19b4`：CPU 99 项通过（45.326 秒）、Simulator Debug 成功、原生 286 项通过（133.892 秒）；完整 UI 25 项实际执行，23 通过、2 失败（2191.701 秒）。基础指令追加 `calm.!` 的内容／键盘断言通过，之后预设编辑器长按未打开全选菜单；实际录像 74 秒显示输入区被固定按钮覆盖，77 秒显示识别结果及撤销入口，AX 记录了识别夹具正文。生产修订增加仅在焦点／键盘显示完成时的滚动定位，并加强首次聚焦后完整编辑器位于键盘／固定按钮上方的断言，不用测试滚动或重新点击掩盖。另一失败为正文切换基础折叠区时，辅助滚动以 500 pt/s 在上下两个位置反复越过目标；录像仍有键盘。带键盘时改用既有小屏慢速拖动并在终点停留，12 次上限、点击命中和键盘／精确内容断言保留。SE／Release 未执行，无 IPA。官方主产物 11660508543／1,012,694,187 字节，SHA-256 `84a2c11a64edce8c14b7c50da1316ecc1de0109413bdc8b61483c4ba167184be` 已验证，源日志及两项实际用例录像保存。实时日志网页后续崩溃，未把它当作构建失败或替代正式结果。修订后再次运行标准完整 CI。
+
+第 [50 次标准完整 CI / 38028676256](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38028676256)，源码 `52256ad17d5957c7fd279ccdb988e30fcd6f1e1c`：CPU 99 项通过（44.763 秒）、Simulator Debug 成功、原生 286 项全通过（126.753 秒）；完整 UI 实际执行 25 项，22 通过、3 失败（2324.075 秒）。本次表达连续软键／手改保留／重启及四组对照通过。基础用例的 custom 开／关步骤通过，但 preset 首次聚焦后完整可见区域断言失败；76 秒实际录像显示固定主操作遮挡输入框，事件日志已有 scroll 调用，未见其后失焦。短表单缺少尾部滚动空间是当前合理推断，生产修订只在聚焦期间补足视口高度空白，仍须后续完整 CI 验证。
+
+正文切回后 AX 为 `!cat\ndog.@cat`，仍 Keyboard Focused；native 对象身份相同，没有 end/dismiss。Command-Down 测试导航期间却出现 keyboard hide/show，未可靠移至末尾；因此撤回该硬件测试准备。改为在已有文字编辑器的首行开头只点击一次以明确插入位置，实际软键插入前缀，保留原稿、每个字符、键盘保持、提交、保存及重启的精确断言，不接受任意插入位置，也不重试聚焦。音乐列表原用例在 row 100 仅部分显示（y=825.3、height=82）时停止滚动，底部中心落在 home indicator 附近，点击后选择页仍在；改为有上限的列表内慢拖，要求整行位于导航栏和底部安全区域之间后再测位置稳定并点击，保留实际选择结果断言。未改正式 StablePicker。
+
+该次 SE／Release 未执行，无新 IPA。官方主产物 11662286081／1,027,219,844 字节，SHA-256 `88e292bd17f93807cb90f8b219f76bda3955a0087b58d80a30979fdee551eb87` 已核验，三项失败各自的实际 AX／截图／录像及 DEBUG session 保存于本地证据目录。用户暂停期间未再修改、推送或触发 CI；继续后修订再次执行标准完整 CI。
 
 | 验证项 | 当前结果 | 用例／证据 |
 |---|---|---|

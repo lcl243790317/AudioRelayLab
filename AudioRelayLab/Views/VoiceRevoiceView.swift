@@ -38,91 +38,100 @@ struct VoiceRevoiceView: View {
 
     var body:some View {
         ScrollViewReader { proxy in
-            PaperScreen {
-                PaperCard {
-                    RevoiceTextComposer(text:$ai.text,focus:$focusedInput,disabled:draftLocked)
-                    RevoiceInputControls(voice:voice,inputName:ai.input?.libraryName,
-                        canRecognizeAgain:!emptyDraft,
-                        disabled:coordinator.controlsLocked,libraryEmpty:coordinator.library.isEmpty,
-                        record:record,chooseAudio:chooseAudio,recognize:recognize)
-                    draftNotice
-                    if let error = ai.errorMessage { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("revoice.editor.error") }
-                    if ai.recognizing {
-                        ProgressView("设备端识别中 · 在手机处理录音")
-                        Button("取消本次识别") { ai.cancelRecognition() }.accessibilityIdentifier("revoice.recognition.cancel")
-                    }
-                    if !emptyDraft {
-                        Picker("识别结果写入方式",selection:$ai.insertionMode) {
-                            Text("替换文字").tag(SpeechInsertionMode.replace)
-                            Text("追加文字").tag(SpeechInsertionMode.append)
-                        }.pickerStyle(.segmented).disabled(draftLocked).accessibilityIdentifier("revoice.speech.mode")
-                        PaperCaption("识别成功后才修改文字；失败或取消保留原稿。")
-                    }
-                    if ai.canUndoRecognition {
-                        Button("撤销最近一次识别修改") { ai.undoRecognition() }.disabled(draftLocked)
-                            .accessibilityIdentifier("revoice.speech.undo")
-                    }
-                    if ai.hasRecognitionProposal,let recognized = ai.recognizedText {
-                        DisclosureGroup("待确认的识别文字") {
-                            Text(recognized).font(.callout)
-                            Button("用识别文字替换") { ai.applyRecognizedText(mode:.replace) }
-                            Button("追加识别文字") { ai.applyRecognizedText(mode:.append) }
+            GeometryReader { viewport in
+                PaperScreen {
+                    PaperCard {
+                        RevoiceTextComposer(text:$ai.text,focus:$focusedInput,disabled:draftLocked)
+                        RevoiceInputControls(voice:voice,inputName:ai.input?.libraryName,
+                            canRecognizeAgain:!emptyDraft,
+                            disabled:coordinator.controlsLocked,libraryEmpty:coordinator.library.isEmpty,
+                            record:record,chooseAudio:chooseAudio,recognize:recognize)
+                        draftNotice
+                        if let error = ai.errorMessage { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("revoice.editor.error") }
+                        if ai.recognizing {
+                            ProgressView("设备端识别中 · 在手机处理录音")
+                            Button("取消本次识别") { ai.cancelRecognition() }.accessibilityIdentifier("revoice.recognition.cancel")
+                        }
+                        if !emptyDraft {
+                            Picker("识别结果写入方式",selection:$ai.insertionMode) {
+                                Text("替换文字").tag(SpeechInsertionMode.replace)
+                                Text("追加文字").tag(SpeechInsertionMode.append)
+                            }.pickerStyle(.segmented).disabled(draftLocked).accessibilityIdentifier("revoice.speech.mode")
+                            PaperCaption("识别成功后才修改文字；失败或取消保留原稿。")
+                        }
+                        if ai.canUndoRecognition {
+                            Button("撤销最近一次识别修改") { ai.undoRecognition() }.disabled(draftLocked)
+                                .accessibilityIdentifier("revoice.speech.undo")
+                        }
+                        if ai.hasRecognitionProposal,let recognized = ai.recognizedText {
+                            DisclosureGroup("待确认的识别文字") {
+                                Text(recognized).font(.callout)
+                                Button("用识别文字替换") { ai.applyRecognizedText(mode:.replace) }
+                                Button("追加识别文字") { ai.applyRecognizedText(mode:.append) }
+                            }
                         }
                     }
-                }
-                PaperCard("声线与表达") {
-                    RevoiceModeControl(kind:Binding(get:{ai.kind},set:{ai.requestVoiceSelection(.mode($0),deferConfirmation:typeSize.isAccessibilitySize)}),
-                        disabled:draftLocked,onDismiss:ai.presentDeferredVoiceSelection)
-                    RevoiceVoiceSettings(kind:ai.kind,voices:ai.voices,speakers:ai.speakers,
-                        preset:Binding(get:{ai.selectedPreset},set:{ai.requestVoiceSelection(.preset($0),deferConfirmation:true)}),
-                        speaker:Binding(get:{ai.selectedSpeaker},set:{ai.requestVoiceSelection(.speaker($0),deferConfirmation:true)}),
-                        instruction:ai.kind == .preset ? $ai.presetInstruction : $ai.instruction,
-                        editablePreset:ai.canEditPresetInstruction,serviceSupportsPreset:ai.supportsPresetInstruction,
-                        automatic:ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction,
-                        resetInstruction:ai.resetPresetInstruction,onSelectionDismissed:ai.presentDeferredVoiceSelection,
-                        focus:$focusedInput,disabled:draftLocked)
-                    RevoiceAutomaticInstructionControl(ai:ai,disabled:draftLocked,focus:$focusedInput)
-                }
-                if let context = ai.pendingContext {
-                    RevoicePendingCard(context:context,status:ai.recentJobs.first(where:{$0.id == context.id})?.readableStatus ?? ai.status,
-                        error:ai.recentJobs.first(where:{$0.id == context.id})?.lastError,busy:ai.cloudStage != .idle,
-                        resume:resume,stop:stopWaiting)
-                } else if ai.configured || ai.busy || ai.errorMessage != nil {
-                    RevoiceStatusNotice(status:ai.status,error:ai.errorMessage,busy:ai.busy,stop:stop)
-                }
-                RevoiceRecentTasks(ai:ai)
-                if ai.blockingJob != nil {
-                    PaperCaption("旧任务可能仍在云端执行。可继续编辑新草稿；在当前任务或最近任务中取回旧任务后，再手动生成新配音。")
-                        .accessibilityIdentifier("revoice.generation.blocked")
-                }
-                if !ai.configured {
-                    PaperCard {
-                        RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
-                            importDisabled:ai.connecting || ai.recognizing || ai.cloudStage == .saving || voice.isActive,
-                            reconnectDisabled:ai.connecting || voice.isActive || (ai.busy && !ai.hasPendingJob),
-                            open:openConnection,reconnect:ai.connect)
-                        PaperCaption("录音在手机识别，生成配音需要连接云端。")
+                    PaperCard("声线与表达") {
+                        RevoiceModeControl(kind:Binding(get:{ai.kind},set:{ai.requestVoiceSelection(.mode($0),deferConfirmation:typeSize.isAccessibilitySize)}),
+                            disabled:draftLocked,onDismiss:ai.presentDeferredVoiceSelection)
+                        RevoiceVoiceSettings(kind:ai.kind,voices:ai.voices,speakers:ai.speakers,
+                            preset:Binding(get:{ai.selectedPreset},set:{ai.requestVoiceSelection(.preset($0),deferConfirmation:true)}),
+                            speaker:Binding(get:{ai.selectedSpeaker},set:{ai.requestVoiceSelection(.speaker($0),deferConfirmation:true)}),
+                            instruction:ai.kind == .preset ? $ai.presetInstruction : $ai.instruction,
+                            editablePreset:ai.canEditPresetInstruction,serviceSupportsPreset:ai.supportsPresetInstruction,
+                            automatic:ai.usesAutomaticInstruction && ai.canUseAutomaticInstruction,
+                            resetInstruction:ai.resetPresetInstruction,onSelectionDismissed:ai.presentDeferredVoiceSelection,
+                            focus:$focusedInput,disabled:draftLocked)
+                        RevoiceAutomaticInstructionControl(ai:ai,disabled:draftLocked,focus:$focusedInput)
+                    }
+                    if let context = ai.pendingContext {
+                        RevoicePendingCard(context:context,status:ai.recentJobs.first(where:{$0.id == context.id})?.readableStatus ?? ai.status,
+                            error:ai.recentJobs.first(where:{$0.id == context.id})?.lastError,busy:ai.cloudStage != .idle,
+                            resume:resume,stop:stopWaiting)
+                    } else if ai.configured || ai.busy || ai.errorMessage != nil {
+                        RevoiceStatusNotice(status:ai.status,error:ai.errorMessage,busy:ai.busy,stop:stop)
+                    }
+                    RevoiceRecentTasks(ai:ai)
+                    if ai.blockingJob != nil {
+                        PaperCaption("旧任务可能仍在云端执行。可继续编辑新草稿；在当前任务或最近任务中取回旧任务后，再手动生成新配音。")
+                            .accessibilityIdentifier("revoice.generation.blocked")
+                    }
+                    if !ai.configured {
+                        PaperCard {
+                            RevoiceConnectionControl(configured:ai.configured,connecting:ai.connecting,
+                                importDisabled:ai.connecting || ai.recognizing || ai.cloudStage == .saving || voice.isActive,
+                                reconnectDisabled:ai.connecting || voice.isActive || (ai.busy && !ai.hasPendingJob),
+                                open:openConnection,reconnect:ai.connect)
+                            PaperCaption("录音在手机识别，生成配音需要连接云端。")
+                        }
+                    }
+                    if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result,previewOwner:previewOwner,onMix:onMix) }
+                    if let error = coordinator.errorMessage { Text(error).font(.callout).foregroundStyle(.orange) }
+                    if focusedInput != nil,KeyboardDiagnostics.experiment == "fixed" {
+                        // A short preset form otherwise reaches its scroll limit before
+                        // the last editor clears the pinned action and keyboard. Give
+                        // scrollTo room without replacing the native input or its text.
+                        Color.clear.frame(height:viewport.size.height)
+                            .allowsHitTesting(false).accessibilityHidden(true)
                     }
                 }
-                if let result = ai.result { RevoiceResultTools(coordinator:coordinator,result:result,previewOwner:previewOwner,onMix:onMix) }
-                if let error = coordinator.errorMessage { Text(error).font(.callout).foregroundStyle(.orange) }
-            }
-            .safeAreaInset(edge:.bottom,spacing:0) {
-                if !voice.isActive {
-                    Button(generateTitle,action:performPrimaryAction).buttonStyle(PaperButtonStyle(primary:true))
-                        .disabled(primaryOperationLocked || (emptyDraft && ai.input == nil) || (!emptyDraft && !ai.configured))
-                        .accessibilityIdentifier("revoice.generate")
-                        .padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:.infinity)
-                        .background(PaperTheme.paper)
+                .safeAreaInset(edge:.bottom,spacing:0) {
+                    if !voice.isActive {
+                        Button(generateTitle,action:performPrimaryAction).buttonStyle(PaperButtonStyle(primary:true))
+                            .disabled(primaryOperationLocked || (emptyDraft && ai.input == nil) || (!emptyDraft && !ai.configured))
+                            .accessibilityIdentifier("revoice.generate")
+                            .padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:.infinity)
+                            .background(PaperTheme.paper)
+                    }
                 }
-            }
-            .onChange(of:focusedInput) { _,value in
-                revealFocusedInput(value,using:proxy)
-            }
-            .onReceive(NotificationCenter.default.publisher(for:UIResponder.keyboardDidShowNotification)) { _ in
-                // Keyboard layout changes after the initial focus update. Keep the
-                // same native editor above the pinned action; never restore focus.
-                revealFocusedInput(focusedInput,using:proxy)
+                .onChange(of:focusedInput) { _,value in
+                    revealFocusedInput(value,using:proxy)
+                }
+                .onReceive(NotificationCenter.default.publisher(for:UIResponder.keyboardDidShowNotification)) { _ in
+                    // Keyboard layout changes after the initial focus update. Keep the
+                    // same native editor above the pinned action; never restore focus.
+                    revealFocusedInput(focusedInput,using:proxy)
+                }
             }
         }
         .keyboardDone(dismissOnScroll:false) { focusedInput = nil }

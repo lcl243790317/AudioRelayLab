@@ -211,11 +211,23 @@ final class InteractionUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["interaction-test"]; app.launch()
         app.buttons["select.背景音乐"].tap()
         let row = app.buttons["choice.100"]
-        for _ in 0..<40 {
-            if row.isHittable { break }
-            app.swipeUp(velocity:400)
+        let list = app.collectionViews.firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout:3))
+        let fullyVisible = {
+            let frame = row.frame
+            let top = max(list.frame.minY,app.navigationBars["背景音乐"].frame.maxY)
+            let bottom = min(list.frame.maxY,app.frame.maxY-40)
+            let viewport = CGRect(x:list.frame.minX,y:top,width:list.frame.width,height:max(0,bottom-top))
+            return row.isHittable && viewport.contains(frame)
         }
-        XCTAssertTrue(row.isHittable)
+        for _ in 0..<40 {
+            if fullyVisible() { break }
+            // A partially clipped row can be hittable at the home indicator.
+            // Keep the entire target inside the list before measuring stability.
+            list.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.8))
+                .press(forDuration:0.05,thenDragTo:list.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.4)),withVelocity:.slow,thenHoldForDuration:0.2)
+        }
+        XCTAssertTrue(fullyVisible())
         let before = row.frame
         let idle = XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in row.isHittable && abs(row.frame.minY-before.minY)<2 },object:nil)
         XCTAssertEqual(XCTWaiter.wait(for:[idle],timeout:3),.completed)
@@ -437,20 +449,18 @@ final class InteractionUITests: XCTestCase {
         // Switching inputs is intentional; no per-character refocusing occurs.
         let baseline = openBaseInstruction(in:app); focusOnce(baseline,in:app)
         _ = softWord("calm",editor:baseline,in:app,starting:"")
-        reveal(editor,in:app,towardTop:true); focusOnce(editor,in:app)
-        placeCaretAtEnd(editor,in:app)
+        reveal(editor,in:app,towardTop:true); focusOnce(editor,in:app,atBeginning:true)
         pressSoft(["numbers","123","more, numbers"],in:app)
-        pressSoft(["!"],in:app); expected += "!"
+        pressSoft(["!"],in:app); expected = "!" + expected
         assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
         app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
         XCTAssertEqual(editor.value as? String,expected)
         waitForSavedDraft(in:app)
         app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
         XCTAssertTrue(editor.waitForExistence(timeout:10)); XCTAssertEqual(editor.value as? String,expected)
-        focusOnce(editor,in:app)
-        placeCaretAtEnd(editor,in:app)
+        focusOnce(editor,in:app,atBeginning:true)
         pressSoft(["numbers","123","more, numbers"],in:app)
-        pressSoft(["."],in:app); expected += "."
+        pressSoft(["."],in:app); expected = "." + expected
         assertKeyboardEdit(expected,editor:editor,keyboard:app.keyboards.firstMatch)
         app.tabBars.buttons["音频库"].tap(); assertKeyboardHidden(in:app)
         app.tabBars.buttons["工坊"].tap()
@@ -473,9 +483,8 @@ final class InteractionUITests: XCTestCase {
         setAutomaticInstruction(automatic,to:false,in:app)
         let manualBaseline = openBaseInstruction(in:app)
         XCTAssertEqual(manualBaseline.value as? String,expected)
-        focusOnce(manualBaseline,in:app)
-        placeCaretAtEnd(manualBaseline,in:app)
-        pressSoft(["numbers","123","more, numbers"],in:app); pressSoft(["!"],in:app); expected += "!"
+        focusOnce(manualBaseline,in:app,atBeginning:true)
+        pressSoft(["numbers","123","more, numbers"],in:app); pressSoft(["!"],in:app); expected = "!" + expected
         assertKeyboardEdit(expected,editor:manualBaseline,keyboard:app.keyboards.firstMatch)
         app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app); waitForSavedDraft(in:app)
         // Exercise default reset under a legitimately editable preset, with its
@@ -551,10 +560,17 @@ final class InteractionUITests: XCTestCase {
         app.launch(); XCTAssertTrue(app.textViews["revoice.text"].waitForExistence(timeout:10))
         return app
     }
-    @MainActor private func focusOnce(_ editor:XCUIElement,in app:XCUIApplication) {
+    @MainActor private func focusOnce(_ editor:XCUIElement,in app:XCUIApplication,atBeginning:Bool = false) {
         XCTAssertTrue(editor.isEnabled); XCTAssertTrue(editor.isHittable)
-        editor.tap()
+        let before = editor.value as? String
+        if atBeginning {
+            // One initial tap in the native input's first-line leading inset
+            // chooses an intentional insertion position, including restored text.
+            // No hardware navigation, second tap or focus recovery is involved.
+            editor.coordinate(withNormalizedOffset:CGVector(dx:0.01,dy:0.1)).tap()
+        } else { editor.tap() }
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3),"首次点击必须唤起键盘，禁止重试聚焦")
+        if atBeginning { XCTAssertEqual(editor.value as? String,before,"首次聚焦不能修改现有文字") }
         if app.launchEnvironment["KEYBOARD_EXPERIMENT"] == "fixed" {
             let visible = XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in
                 let frame = editor.frame
@@ -606,17 +622,6 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(select.waitForExistence(timeout:3),"必须通过系统选择菜单清空生成的内容")
         select.tap(); pressSoft(["delete","Delete"],in:app)
         assertKeyboardEdit("",editor:editor,keyboard:app.keyboards.firstMatch)
-    }
-    @MainActor private func placeCaretAtEnd(_ editor:XCUIElement,in app:XCUIApplication) {
-        // Reentering a native editor does not guarantee its caret is at the end.
-        // This is an explicit hardware navigation key for test setup only; all
-        // text, deletion, return and punctuation still use actual system soft keys.
-        // Never tap again or refocus to recover from a lost keyboard.
-        let before = editor.value as? String
-        XCTAssertTrue(app.keyboards.firstMatch.exists)
-        editor.typeKey(.downArrow,modifierFlags:[.command])
-        XCTAssertTrue(app.keyboards.firstMatch.exists,"光标移动不得收起系统键盘")
-        XCTAssertEqual(editor.value as? String,before,"光标定位不能注入或修改正文")
     }
     @MainActor private func assertKeyboardHidden(in app:XCUIApplication) {
         let hidden = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.keyboards.firstMatch)
