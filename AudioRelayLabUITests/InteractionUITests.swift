@@ -565,9 +565,9 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(editor.isEnabled); XCTAssertTrue(editor.isHittable)
         let before = editor.value as? String
         if atBeginning {
-            // Use the first-line leading edge: a 1% horizontal offset can land
-            // after a narrow initial punctuation character in restored text.
-            // No hardware navigation, second tap or focus recovery is involved.
+            // This single tap establishes focus and chooses the first line.
+            // UIKit can snap a tap after leading punctuation even at its edge;
+            // move the caret with the native keyboard trackpad below.
             editor.coordinate(withNormalizedOffset:CGVector(dx:0,dy:0.1)).tap()
         } else { editor.tap() }
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3),"首次点击必须唤起键盘，禁止重试聚焦")
@@ -588,6 +588,21 @@ final class InteractionUITests: XCTestCase {
         }
         attachKeyboardDescription(app.keyboards.firstMatch,name:"keyboard-first-focus-"+editor.identifier)
         if atBeginning {
+            let keyboard = app.keyboards.firstMatch
+            XCTAssertTrue(keyboard.exists)
+            let space = keyboard.descendants(matching:.any)
+                .matching(NSPredicate(format:"label IN %@ OR identifier IN %@",["space","Space","空格"],["space","Space","空格"])).firstMatch
+            XCTAssertTrue(space.waitForExistence(timeout:3)); XCTAssertTrue(space.isHittable)
+            // Apple's native Space-bar trackpad moves the insertion point while
+            // keeping the existing editor focused. Drag within the keyboard to
+            // its leading edge; do not tap the editor again or use hardware keys.
+            let endY = (space.frame.midY-app.frame.minY)/app.frame.height
+            space.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.5))
+                .press(forDuration:1,thenDragTo:app.coordinate(withNormalizedOffset:CGVector(dx:0.01,dy:endY)),
+                       withVelocity:.slow,thenHoldForDuration:0.2)
+            XCTAssertTrue(keyboard.exists,"系统光标移动期间键盘必须保持")
+            XCTAssertEqual(editor.value as? String,before,"系统触控板只能移动光标，不能改变原稿")
+            attach(app,"keyboard-native-trackpad-start-"+editor.identifier)
             // A real Delete at the document start must leave the entire draft
             // unchanged. Verify position before inserting, rather than assuming
             // that a focus tap places the caret before the first glyph.
