@@ -555,6 +555,20 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(editor.isEnabled); XCTAssertTrue(editor.isHittable)
         editor.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:3),"首次点击必须唤起键盘，禁止重试聚焦")
+        if app.launchEnvironment["KEYBOARD_EXPERIMENT"] == "fixed" {
+            let visible = XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in
+                let frame = editor.frame
+                let top = max(app.navigationBars.firstMatch.frame.maxY,app.segmentedControls["workshop.mode"].frame.maxY)
+                var bottom = app.keyboards.firstMatch.frame.minY
+                for control in [app.buttons["keyboard.done"],app.buttons["revoice.generate"]] where control.exists {
+                    bottom = min(bottom,control.frame.minY)
+                }
+                return editor.isHittable && frame.minY > top && frame.maxY < bottom
+            },object:nil)
+            XCTAssertEqual(XCTWaiter.wait(for:[visible],timeout:3),.completed,"首次聚焦后编辑器必须在键盘和固定按钮上方，无测试滚动或再次聚焦")
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
+            attach(app,"keyboard-visible-first-focus-"+editor.identifier)
+        }
         attachKeyboardDescription(app.keyboards.firstMatch,name:"keyboard-first-focus-"+editor.identifier)
     }
     @discardableResult @MainActor private func pressSoft(_ labels:[String],in app:XCUIApplication) -> String {
@@ -1008,8 +1022,9 @@ final class InteractionUITests: XCTestCase {
             let distance = finite ? min(travel*0.75,max(40/app.frame.height,abs(rect.midY-center)/app.frame.height)) : travel*0.75
             let start = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper : lower))
             let end = app.coordinate(withNormalizedOffset:CGVector(dx:0.96,dy:above ? upper+distance : lower-distance))
-            if app.frame.height < 750 {
-                // A short viewport cannot absorb a fling past the pinned workshop picker.
+            if app.frame.height < 750 || app.keyboards.firstMatch.exists {
+                // A keyboard also makes a tall phone's viewport short. A fling can
+                // overshoot the target and oscillate around the pinned controls.
                 // Hold the finger at the end so the scroll settles at the requested offset.
                 start.press(forDuration:0.05,thenDragTo:end,withVelocity:.slow,thenHoldForDuration:0.2)
             } else {
