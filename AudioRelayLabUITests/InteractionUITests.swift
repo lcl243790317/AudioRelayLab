@@ -708,7 +708,10 @@ final class InteractionUITests: XCTestCase {
         XCTAssertEqual(notes.value as? String,"note\nsecond")
         reveal(editor,in:app,towardTop:true); editor.tap()
         app.buttons["离开输入页"].tap()
-        XCTAssertTrue(app.staticTexts["输入页已离开"].exists); XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["输入页已离开"].exists)
+        let hidden = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.keyboards.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for:[hidden],timeout:3),.completed)
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
     }
 
     @MainActor func testSelectedMusicTimingScreenshotsAcrossThemesAndLargeType() {
