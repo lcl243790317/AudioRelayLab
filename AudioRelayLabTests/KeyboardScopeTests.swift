@@ -7,9 +7,13 @@ final class KeyboardScopeTests:XCTestCase {
         let window = UIWindow(frame:CGRect(x:0,y:0,width:390,height:844))
         let owner = UIViewController(); window.rootViewController = owner
         owner.loadViewIfNeeded()
+        // A hidden disposable UIWindow does not automatically install its root view.
+        // Build the real content/sibling hierarchy without stealing the app key window.
+        owner.view.frame = window.bounds; window.addSubview(owner.view)
         let marker = UIView(frame:owner.view.bounds); owner.view.addSubview(marker)
         let keyboard = UIView(frame:CGRect(x:0,y:500,width:390,height:344)); window.addSubview(keyboard)
         XCTAssertTrue(KeyboardContentScope.owner(of:marker) === owner)
+        XCTAssertTrue(marker.window === window)
         XCTAssertFalse(keyboard.isDescendant(of:owner.view))
         let scope = KeyboardContentScope(); scope.attach(marker)
         XCTAssertNil(window.gestureRecognizers?.first { $0.delegate === scope })

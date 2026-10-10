@@ -34,6 +34,8 @@ Windows：CPU 99 项通过，0 失败，11.014 秒；静态 73 App／22 XCTest �
 
 第 [45 次标准完整 CI / 38017749082](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38017749082)，源码 `5bb9305d7c0b9698fa41d2061d3b53f73aa4bc6d`，diagnosticOnly=false：CPU／静态通过，Simulator 编译失败，DEBUG 嵌套通知 Observer 缺少 @MainActor，调用 record/editorID 报 actor isolation 错误。已给该观察器加主线程声明；原生／UI／Release 未执行，无本次 IPA。该次不计作通过，原始日志保留。
 
+第 [46 次完整 CI / 38018027628](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38018027628)，源码 `fac4b4bd652be4a2b8f704e568754db69a43e095`：CPU 99 项通过（45.647 秒）、Simulator Debug BUILD SUCCEEDED；原生 285 项实际执行，284 通过、1 失败（124.920 秒）。唯一失败为新 KeyboardScopeTests 的隐藏 UIWindow 夹具未将 root view 接入窗口，attach 按生产保护条件拒绝安装；已显式构造窗口内容／键盘 sibling 层级，并新增 marker.window 身份断言，原无窗口手势／内容有手势／拆卸断言全部保留。新状态发布／持久化测试通过。UI、SE、Release 未执行，未生成 IPA。官方 XCTest 检查点 11657351930／53,794 字节，SHA-256 `4ada62db11bc053851b2250ae97fad2913f666ab8f86b294835e0390ed771c10` 已核验。并在实际 UI 执行前审查修正预设 reset 用例顺序：离线重启夹具没有云端目录，合法可编辑 preset 的默认恢复先在有效目录中验证，再返回 custom 保存／重启，不放宽能力检查。
+
 | 验证项 | 当前结果 | 用例／证据 |
 |---|---|---|
 | 要说的话连续软键输入 | 待 macOS 执行 | 既有 RecognizedDraft 用例及新 EmptyAndRestoredText 用例 |

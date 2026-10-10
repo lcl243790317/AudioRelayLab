@@ -475,13 +475,10 @@ final class InteractionUITests: XCTestCase {
         pressSoft(["numbers","123","more, numbers"],in:app); pressSoft(["!"],in:app); expected += "!"
         assertKeyboardEdit(expected,editor:manualBaseline,keyboard:app.keyboards.firstMatch)
         app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app); waitForSavedDraft(in:app)
-        app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
-        let restored = openBaseInstruction(in:app)
-        XCTAssertEqual(restored.value as? String,expected)
-        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,"已关闭")
         // Exercise default reset under a legitimately editable preset, with its
-        // production confirmation rules; fixed-reference permission remains tested.
-        app.segmentedControls["revoice.mode"].buttons["预设声线"].tap()
+        // catalog loaded before the offline resume fixture; no capability bypass.
+        let mode = app.segmentedControls["revoice.mode"]
+        reveal(mode,in:app,towardTop:true); mode.buttons["预设声线"].tap()
         let preset = openBaseInstruction(in:app)
         XCTAssertEqual(preset.value as? String,"自然、放松的日常表达。")
         focusOnce(preset,in:app); clearWithSystemMenu(preset,in:app)
@@ -489,6 +486,13 @@ final class InteractionUITests: XCTestCase {
         app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
         app.buttons["revoice.instruction.reset"].tap()
         XCTAssertEqual(preset.value as? String,"自然、放松的日常表达。")
+        reveal(mode,in:app,towardTop:true); mode.buttons["自定义配音"].tap()
+        XCTAssertEqual(openBaseInstruction(in:app).value as? String,expected)
+        waitForSavedDraft(in:app)
+        app.terminate(); app.launchArguments.append("voice-recognition-keyboard-resume-test"); app.launch()
+        let restored = openBaseInstruction(in:app)
+        XCTAssertEqual(restored.value as? String,expected)
+        reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,"已关闭")
         attach(app,"baseline-restored-and-preset-reset")
     }
 
@@ -510,7 +514,7 @@ final class InteractionUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.exists)
         app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
         let baseline = openBaseInstruction(in:app); focusOnce(baseline,in:app)
-        _ = softWord("calm",editor:baseline,in:app,starting:"")
+        let baselineText = softWord("calm",editor:baseline,in:app,starting:"")
         app.buttons["keyboard.done"].tap(); assertKeyboardHidden(in:app)
         reveal(automatic,in:app); XCTAssertEqual(automatic.value as? String,manual)
         XCTAssertTrue(app.staticTexts["revoice.instruction.stale"].exists)
@@ -531,7 +535,7 @@ final class InteractionUITests: XCTestCase {
         XCTAssertNotEqual(automatic.value as? String,manual)
         setAutomaticInstruction(app.buttons["revoice.instruction.automatic"],to:false,in:app)
         XCTAssertFalse(automatic.exists)
-        XCTAssertEqual(openBaseInstruction(in:app).value as? String,"Calm")
+        XCTAssertEqual(openBaseInstruction(in:app).value as? String,baselineText)
         attach(app,"automatic-restored-manual-cancel-rematch-off")
     }
 
