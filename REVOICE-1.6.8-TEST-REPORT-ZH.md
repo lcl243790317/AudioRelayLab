@@ -25,12 +25,14 @@
 - `VoiceRevoiceView.swift`：DEBUG 事件记录焦点及页面生命周期，三个 SwiftUI 原生输入组件保持原样，业务权限不放宽。
 - `KeyboardDiagnostics.swift`：DEBUG opt-in 的单调 uptime／序号／session 日志，记录 begin/end/change、键盘显示隐藏、native editor 对象身份、手势决策、dismiss 来源、自动指令和自动保存顺序。只记录静态事件及三项白名单编辑器 ID，不记录文字、软键内容、密钥或配置；Release 不启用日志／实验。
 - `LegacyKeyboardExperiment.swift`：旧手势和生命周期仅保留于 DEBUG 对照。A=`legacy`，B=`no-outside`（仅去窗口手势），C=`no-disappear`（仅去强制退出收键盘），D=`coalesced-state`（仅使用去重复状态路径）；正式版本为 `fixed`。
-- UI 增加五项用例：四组同页面控制变量、空稿／恢复正文、基础风格、本次表达。每个输入序列只聚焦一次，每个真实软键检查精确内容和键盘持续存在；测试不靠逐字 refocus 或重试。系统全选／删除用于编辑自动生成文字，识别器注入只产生识别结果，不称其为系统键盘输入。
+- UI 增加四项用例：四组同页面控制变量、空稿／恢复正文、基础风格、本次表达；并扩展既有识别后用例诊断。每个输入序列只聚焦一次，每个真实软键检查精确内容和键盘持续存在；测试不靠逐字 refocus 或重试。系统全选／删除用于编辑自动生成文字，识别器注入只产生识别结果，不称其为系统键盘输入。
 - 原生新增内容边界、control 包装、裁剪编辑器命中及状态发布／持久化回归；工作流继续完整原生、完整 UI、SE 小屏、Debug/Release，并导出无文字的 DEBUG 键盘日志。
 
 ## 当前验证结果
 
 Windows：CPU 99 项通过，0 失败，11.014 秒；静态 73 App／22 XCTest 文件通过；96 份 Swift tree-sitter 语法解析无错误；这些不是 Xcode 类型检查、iOS 编译或真机证据。最初 sandbox 禁止 loopback 导致夹具失败，已停止该次，使用既有授权的 loopback 环境完整重跑通过，原日志保留于忽略目录 dist。
+
+第 [45 次标准完整 CI / 38017749082](https://github.com/lcl243790317/AudioRelayLab/actions/runs/38017749082)，源码 `5bb9305d7c0b9698fa41d2061d3b53f73aa4bc6d`，diagnosticOnly=false：CPU／静态通过，Simulator 编译失败，DEBUG 嵌套通知 Observer 缺少 @MainActor，调用 record/editorID 报 actor isolation 错误。已给该观察器加主线程声明；原生／UI／Release 未执行，无本次 IPA。该次不计作通过，原始日志保留。
 
 | 验证项 | 当前结果 | 用例／证据 |
 |---|---|---|

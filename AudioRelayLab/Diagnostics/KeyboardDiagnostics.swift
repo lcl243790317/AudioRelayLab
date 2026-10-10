@@ -49,7 +49,7 @@ import os
             for window in scene.windows { window.endEditing(true) }
         }
     }
-    private final class Observer:NSObject {
+    @MainActor private final class Observer:NSObject {
         private var started = false
         func start() {
             guard !started else { return }; started = true
